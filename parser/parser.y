@@ -5,13 +5,21 @@
 #include <string.h>
 #include "ast.h"
 
-void yyerror(const char *s);
-extern int yylineno;
-extern int yylex();
+/* Forward declaration for the reentrant lexer */
+typedef void* yyscan_t;
+int yylex(void* yylval_param, yyscan_t yyscanner);
+void yyerror(yyscan_t scanner, cdsl_rule_t** rule_ptr, int* error_count, const char *s);
 
-cdsl_rule_t* final_parsed_rule = NULL;
-int yy_error_count = 0;
+/* Helper to get line number from scanner */
+extern int yyget_lineno(yyscan_t yyscanner);
+
 %}
+
+%define api.pure full
+%lex-param {yyscan_t scanner}
+%parse-param {yyscan_t scanner}
+%parse-param {cdsl_rule_t** rule_ptr}
+%parse-param {int* error_count}
 
 %union {
     int int_val;
@@ -55,10 +63,10 @@ int yy_error_count = 0;
 %%
 
 program:
-    rule_declaration { final_parsed_rule = $1; }
-    | template_declaration { final_parsed_rule = $1; }
-    | program rule_declaration { final_parsed_rule = $2; }
-    | program template_declaration { final_parsed_rule = $2; }
+    rule_declaration { *rule_ptr = $1; }
+    | template_declaration { *rule_ptr = $1; }
+    | program rule_declaration { *rule_ptr = $2; }
+    | program template_declaration { *rule_ptr = $2; }
     ;
 
 rule_declaration:
@@ -71,7 +79,7 @@ rule_declaration:
     | RULE IDENTIFIER EXTENDS IDENTIFIER LBRACE meta_block RBRACE {
         $$ = cdsl_create_extends_rule($2, $4, $6);
     }
-    | error { yy_error_count++; yyerrok; yyclearin; $$ = NULL; }
+    | error { (*error_count)++; yyerrok; yyclearin; $$ = NULL; }
     ;
 
 template_declaration:
@@ -164,15 +172,8 @@ argument_list_nonempty:
 
 %%
 
-void yyerror(const char *s) {
-    fprintf(stderr, "Syntax error at line %d: %s\n", yylineno, s);
-    yy_error_count++;
-}
-
-int yyget_error_count(void) {
-    return yy_error_count;
-}
-
-void yyreset_error_count(void) {
-    yy_error_count = 0;
+void yyerror(yyscan_t scanner, cdsl_rule_t** rule_ptr, int* error_count, const char *s) {
+    (void)rule_ptr;
+    fprintf(stderr, "Syntax error at line %d: %s\n", yyget_lineno(scanner), s);
+    (*error_count)++;
 }

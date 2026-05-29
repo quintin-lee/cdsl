@@ -9,6 +9,8 @@
 %option yylineno
 %option noinput
 %option nounput
+%option reentrant
+%option bison-bridge
 
 %x BLOCK_COMMENT
 
@@ -36,11 +38,11 @@
 "OR"|\|\|               { return OR; }
 "NOT"|"!"               { return NOT; }
 
-"true"                  { yylval.bool_val = 1; return BOOL_LIT; }
-"false"                 { yylval.bool_val = 0; return BOOL_LIT; }
+"true"                  { yylval->bool_val = 1; return BOOL_LIT; }
+"false"                 { yylval->bool_val = 0; return BOOL_LIT; }
 
-[0-9]+\.[0-9]+          { yylval.float_val = atof(yytext); return FLOAT_LIT; }
-[0-9]+                  { yylval.int_val = atoi(yytext); return INT_LIT; }
+[0-9]+\.[0-9]+          { yylval->float_val = atof(yytext); return FLOAT_LIT; }
+[0-9]+                  { yylval->int_val = atoi(yytext); return INT_LIT; }
 
 \"([^\"]|\\.)*\"          {
                             size_t slen = strlen(yytext);
@@ -61,12 +63,12 @@
                                 }
                             }
                             s[j] = '\0';
-                            yylval.string_val = s;
+                            yylval->string_val = s;
                             return STRING_LIT;
                         }
 
 [a-zA-Z_][a-zA-Z0-9_\.]* {
-                            yylval.id_val = strdup(yytext);
+                            yylval->id_val = strdup(yytext);
                             return IDENTIFIER;
                         }
 

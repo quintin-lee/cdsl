@@ -79,6 +79,10 @@ add_executable(test_execution tests/test_execution.c)
 target_link_libraries(test_execution PRIVATE cdsl_static)
 add_test(NAME test_execution COMMAND test_execution)
 
+add_executable(test_parallel_parse tests/test_parallel_parse.c)
+target_link_libraries(test_parallel_parse PRIVATE cdsl_static)
+add_test(NAME test_parallel_parse COMMAND test_parallel_parse)
+
 # 7. Install targets
 include(GNUInstallDirs)
 

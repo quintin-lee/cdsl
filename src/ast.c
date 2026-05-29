@@ -527,19 +527,20 @@ cdsl_free_rule(cdsl_rule_t* rule)
 	free(rule);
 }
 
-extern cdsl_rule_t* final_parsed_rule;
-extern int yyget_error_count(void);
-extern void yyreset_error_count(void);
-extern void* yy_scan_string(const char*);
-extern void yy_delete_buffer(void*);
-extern int yyparse(void);
+/* Forward declarations for thread-safe parser */
+typedef void* yyscan_t;
+struct yy_buffer_state;
+int yylex_init(yyscan_t* scanner);
+int yylex_destroy(yyscan_t scanner);
+struct yy_buffer_state* yy_scan_string(const char*, yyscan_t);
+void yy_delete_buffer(struct yy_buffer_state*, yyscan_t);
+int yyparse(yyscan_t scanner, cdsl_rule_t** rule_ptr, int* error_count);
 
 /**
  * @brief Parse a DSL string into a rule AST.
  *
- * Uses Flex/Bison to tokenize and parse the source string.
- * The parser must be called from a single thread due to Flex's
- * use of global state.
+ * Uses a reentrant Flex/Bison parser to tokenize and parse the source string.
+ * This function is thread-safe as long as each caller has its own scanner.
  *
  * @param dsl_code NUL-terminated DSL source string
  * @return Parsed rule (caller must free with cdsl_free_rule), or NULL on error
@@ -557,12 +558,27 @@ cdsl_parse_string(const char* dsl_code)
 			CDSL_MAX_INPUT_LENGTH);
 		return NULL;
 	}
-	final_parsed_rule = NULL;
-	yyreset_error_count();
-	void* buf = yy_scan_string(dsl_code);
-	yyparse();
-	yy_delete_buffer(buf);
-	return final_parsed_rule;
+
+	yyscan_t scanner;
+	if (yylex_init(&scanner) != 0) {
+		return NULL;
+	}
+
+	cdsl_rule_t* rule = NULL;
+	int error_count = 0;
+	struct yy_buffer_state* buf = yy_scan_string(dsl_code, scanner);
+
+	if (yyparse(scanner, &rule, &error_count) != 0 || error_count > 0) {
+		if (rule) {
+			cdsl_free_rule(rule);
+			rule = NULL;
+		}
+	}
+
+	yy_delete_buffer(buf, scanner);
+	yylex_destroy(scanner);
+
+	return rule;
 }
 
 /**
