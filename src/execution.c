@@ -5,6 +5,13 @@
 #include <stdio.h>
 #include <math.h>
 #include <pthread.h>
+#include <time.h>
+
+static double get_time_us(void) {
+    struct timespec ts;
+    clock_gettime(CLOCK_MONOTONIC, &ts);
+    return ts.tv_sec * 1e6 + ts.tv_nsec / 1e3;
+}
 
 cdsl_context_t* cdsl_context_create(const cdsl_schema_t* schema) {
     cdsl_context_t* ctx = calloc(1, sizeof(*ctx));
@@ -157,6 +164,20 @@ cdsl_vm_t* cdsl_vm_create(const cdsl_schema_t* schema) {
 
 void cdsl_vm_set_debug(cdsl_vm_t* vm, int enabled) {
     if (vm) vm->debug_enabled = enabled;
+}
+
+cdsl_stats_t* cdsl_vm_get_stats(const cdsl_vm_t* vm) {
+    if (!vm) return NULL;
+    cdsl_stats_t* s = malloc(sizeof(cdsl_stats_t));
+    *s = vm->stats;
+    if (s->total_executions > 0) {
+        s->avg_time_us = s->total_time_us / s->total_executions;
+    }
+    return s;
+}
+
+void cdsl_vm_reset_stats(cdsl_vm_t* vm) {
+    if (vm) memset(&vm->stats, 0, sizeof(cdsl_stats_t));
 }
 
 void cdsl_vm_free(cdsl_vm_t* vm) {
@@ -512,8 +533,16 @@ static cdsl_rule_report_t* execute_simple_rule(cdsl_vm_t* vm, const cdsl_rule_t*
 
 cdsl_rule_report_t* cdsl_vm_execute(cdsl_vm_t* vm, const cdsl_rule_t* rule, cdsl_context_t* ctx) {
     if (!vm || !rule || !ctx) return NULL;
-    if (rule->metrics) return execute_metric_rule(vm, rule, ctx);
-    return execute_simple_rule(vm, rule, ctx);
+    double t0 = get_time_us();
+    cdsl_rule_report_t* rpt;
+    if (rule->metrics) rpt = execute_metric_rule(vm, rule, ctx);
+    else rpt = execute_simple_rule(vm, rule, ctx);
+    double elapsed = get_time_us() - t0;
+    vm->stats.total_executions++;
+    vm->stats.total_rules_executed++;
+    vm->stats.total_time_us += elapsed;
+    if (rpt) vm->stats.total_metrics_evaluated += rpt->metric_count;
+    return rpt;
 }
 
 void cdsl_report_free(cdsl_rule_report_t* report) {

@@ -98,6 +98,18 @@ typedef struct cdsl_func_entry {
 } cdsl_func_entry_t;
 
 /**
+ * @brief Execution statistics for performance monitoring.
+ */
+typedef struct {
+    long total_executions;        /**< Total rule executions */
+    long total_rules_executed;    /**< Total rules evaluated */
+    long total_metrics_evaluated; /**< Total metrics evaluated */
+    long total_actions_triggered; /**< Total actions triggered */
+    double total_time_us;         /**< Total execution time in microseconds */
+    double avg_time_us;           /**< Average execution time per rule */
+} cdsl_stats_t;
+
+/**
  * @brief Virtual Machine for DSL rule execution.
  *
  * The VM holds registered action and function callbacks, and a reference
@@ -116,6 +128,7 @@ typedef struct cdsl_vm {
     cdsl_func_entry_t* functions;      /**< Registered function callbacks */
     void* user_data;                   /**< User data passed to callbacks */
     int debug_enabled;                 /**< 1 to enable trace output */
+    cdsl_stats_t stats;                /**< Execution statistics */
 } cdsl_vm_t;
 
 /**
@@ -197,6 +210,9 @@ void cdsl_vm_free(cdsl_vm_t* vm);
 void cdsl_vm_register_action(cdsl_vm_t* vm, const char* action_name, cdsl_action_cb_t cb);
 void cdsl_vm_register_function(cdsl_vm_t* vm, const char* func_name, cdsl_func_cb_t cb);
 void cdsl_vm_set_debug(cdsl_vm_t* vm, int enabled);
+
+cdsl_stats_t* cdsl_vm_get_stats(const cdsl_vm_t* vm);
+void cdsl_vm_reset_stats(cdsl_vm_t* vm);
 /** @} */
 
 /** @name Rule Execution */
