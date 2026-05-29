@@ -16,6 +16,33 @@
 #include "abstract.h"
 
 /**
+ * @brief External cache interface for AI responses.
+ *
+ * Allows users to inject custom caching logic (e.g., in-memory, Redis, file-based)
+ * to avoid redundant LLM API calls for identical prompts.
+ */
+typedef struct {
+	void* ctx; /**< Opaque pointer for the cache implementation's state */
+
+	/**
+	 * @brief Retrieve a cached response.
+	 * @param ctx Opaque state pointer.
+	 * @param key The prompt string used as the cache key.
+	 * @return Allocated string containing the cached response, or NULL if miss.
+	 *         The caller is responsible for freeing the returned string.
+	 */
+	char* (*get)(void* ctx, const char* key);
+
+	/**
+	 * @brief Store a response in the cache.
+	 * @param ctx Opaque state pointer.
+	 * @param key The prompt string used as the cache key.
+	 * @param value The response string to cache.
+	 */
+	void (*put)(void* ctx, const char* key, const char* value);
+} cdsl_ai_cache_t;
+
+/**
  * @brief AI rule safety review result.
  *
  * Returned by cdsl_ai_review() after analyzing a DSL rule for
@@ -49,6 +76,7 @@ typedef struct {
 	char* api_base;		/**< API base URL (e.g. "https://api.openai.com/v1") */
 	char* model;		/**< Model name (e.g. "gpt-4o-mini") */
 	char* business_context; /**< Optional business context to guide DSL generation */
+	cdsl_ai_cache_t* cache; /**< Optional external cache implementation */
 } cdsl_ai_config_t;
 
 /**

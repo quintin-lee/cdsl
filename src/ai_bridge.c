@@ -80,6 +80,13 @@ call_llm_api(const char* prompt, const cdsl_ai_config_t* config)
 		return NULL;
 	}
 
+	if (config->cache && config->cache->get) {
+		char* cached = config->cache->get(config->cache->ctx, prompt);
+		if (cached) {
+			return cached;
+		}
+	}
+
 #ifdef CDSL_USE_CURL
 	CURL* curl = curl_easy_init();
 	if (!curl) {
@@ -281,6 +288,11 @@ call_llm_api(const char* prompt, const cdsl_ai_config_t* config)
 	}
 	*d = '\0';
 	free(result);
+
+	if (config->cache && config->cache->put) {
+		config->cache->put(config->cache->ctx, prompt, decoded);
+	}
+
 	return decoded;
 }
 
@@ -300,6 +312,7 @@ cdsl_ai_config_default(void)
 	cfg.api_base = NULL;
 	cfg.model = NULL;
 	cfg.business_context = NULL;
+	cfg.cache = NULL;
 	return cfg;
 }
 
@@ -845,6 +858,16 @@ call_llm_api_stream(const char* prompt,
 		return NULL;
 	}
 
+	if (config->cache && config->cache->get) {
+		char* cached = config->cache->get(config->cache->ctx, prompt);
+		if (cached) {
+			if (callback) {
+				callback(cached, user_data);
+			}
+			return cached;
+		}
+	}
+
 	char* escaped_prompt = malloc(strlen(prompt) * 4 + 1);
 	char* dst = escaped_prompt;
 	for (const char* s = prompt; *s; s++) {
@@ -975,6 +998,11 @@ call_llm_api_stream(const char* prompt,
 		}
 	}
 	pclose(fp);
+
+	if (config->cache && config->cache->put && result) {
+		config->cache->put(config->cache->ctx, prompt, result);
+	}
+
 	return result;
 }
 
