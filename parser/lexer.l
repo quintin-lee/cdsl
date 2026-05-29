@@ -40,8 +40,26 @@
 [0-9]+\.[0-9]+          { yylval.float_val = atof(yytext); return FLOAT_LIT; }
 [0-9]+                  { yylval.int_val = atoi(yytext); return INT_LIT; }
 
-\"[^\"]*\"              {
-                            yylval.string_val = strndup(yytext + 1, strlen(yytext) - 2);
+\"([^\"]|\\.)*\"          {
+                            size_t slen = strlen(yytext);
+                            char* s = malloc(slen);
+                            size_t j = 0;
+                            for (size_t i = 1; i < slen - 1; i++) {
+                                if (yytext[i] == '\\' && i + 1 < slen - 1) {
+                                    switch (yytext[i + 1]) {
+                                    case 'n': s[j++] = '\n'; i++; break;
+                                    case 't': s[j++] = '\t'; i++; break;
+                                    case 'r': s[j++] = '\r'; i++; break;
+                                    case '"': s[j++] = '"';  i++; break;
+                                    case '\\':s[j++] = '\\'; i++; break;
+                                    default:  s[j++] = yytext[i]; break;
+                                    }
+                                } else {
+                                    s[j++] = yytext[i];
+                                }
+                            }
+                            s[j] = '\0';
+                            yylval.string_val = s;
                             return STRING_LIT;
                         }
 
