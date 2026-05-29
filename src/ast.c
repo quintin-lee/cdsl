@@ -3,23 +3,6 @@
 #include <string.h>
 #include <stdio.h>
 
-/**
- * @brief Duplicate a string (internal).
- * @param s String to duplicate (NULL returns NULL)
- * @return Malloc'd copy
- */
-static char*
-dup_str(const char* s)
-{
-	if (!s) {
-		return NULL;
-	}
-	size_t len = strlen(s);
-	char* d = malloc(len + 1);
-	memcpy(d, s, len + 1);
-	return d;
-}
-
 /** @brief Create an identifier expression node. */
 cdsl_expr_node_t*
 cdsl_create_expr_id(char* id)

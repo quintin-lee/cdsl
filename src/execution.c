@@ -60,31 +60,6 @@ cdsl_context_free(cdsl_context_t* ctx)
 }
 
 /**
- * @brief Set or update a variable's type in the context (internal).
- * @param ctx  Target context
- * @param name Variable name
- * @param type New type
- */
-static void
-ctx_set(cdsl_context_t* ctx, const char* name, cdsl_type_t type)
-{
-	for (cdsl_context_entry_t* e = ctx->entries; e; e = e->next) {
-		if (strcmp(e->name, name) == 0) {
-			if (e->value.type == CDSL_TYPE_STRING) {
-				free(e->value.data.string_val);
-			}
-			e->value.type = type;
-			return;
-		}
-	}
-	cdsl_context_entry_t* e = calloc(1, sizeof(*e));
-	e->name = strdup(name);
-	e->value.type = type;
-	e->next = ctx->entries;
-	ctx->entries = e;
-}
-
-/**
  * @brief Look up a context entry by name (internal).
  * @param ctx  Context to search
  * @param name Variable name
@@ -1424,6 +1399,7 @@ codegen_action(FILE* f, cdsl_action_node_t* action, const char* indent)
 char*
 cdsl_codegen_rule_to_c(const cdsl_rule_t* rule, const cdsl_schema_t* schema)
 {
+	(void)schema;
 	if (!rule) {
 		return NULL;
 	}
@@ -1447,10 +1423,10 @@ cdsl_codegen_rule_to_c(const cdsl_rule_t* rule, const cdsl_schema_t* schema)
 		fprintf(f, "                 void* ctx, void* ud) {\n");
 		fprintf(f, "    int total = 0;\n");
 		for (cdsl_metric_node_t* m = rule->metrics; m; m = m->next) {
-			int weight = atoi(cdsl_meta_get(m->meta_list, "weight") ?: "0");
-			int critical =
-			    (strcmp(cdsl_meta_get(m->meta_list, "is_critical") ?: "false",
-				    "true") == 0);
+			const char* w_meta = cdsl_meta_get(m->meta_list, "weight");
+			int weight = atoi(w_meta ? w_meta : "0");
+			const char* c_meta = cdsl_meta_get(m->meta_list, "is_critical");
+			int critical = (strcmp(c_meta ? c_meta : "false", "true") == 0);
 			fprintf(f,
 				"    /* Metric: %s (weight=%d%s) */\n",
 				m->name,
@@ -1669,10 +1645,10 @@ cdsl_rule_to_dot(const cdsl_rule_t* rule)
 			rule->name,
 			rule->name);
 		for (cdsl_metric_node_t* m = rule->metrics; m; m = m->next) {
-			int weight = atoi(cdsl_meta_get(m->meta_list, "weight") ?: "0");
-			int critical =
-			    (strcmp(cdsl_meta_get(m->meta_list, "is_critical") ?: "false",
-				    "true") == 0);
+			const char* w_meta = cdsl_meta_get(m->meta_list, "weight");
+			int weight = atoi(w_meta ? w_meta : "0");
+			const char* c_meta = cdsl_meta_get(m->meta_list, "is_critical");
+			int critical = (strcmp(c_meta ? c_meta : "false", "true") == 0);
 			fprintf(
 			    f,
 			    "  metric_%s "

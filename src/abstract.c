@@ -332,7 +332,7 @@ cdsl_verify_rule(const cdsl_rule_t* rule,
 	}
 
 	if (rule->when_expr) {
-		cdsl_type_t t = resolve_expr_type(rule->when_expr, schema, err_buf, err_buf_sz);
+		resolve_expr_type(rule->when_expr, schema, err_buf, err_buf_sz);
 		if (err_buf[0]) {
 			return 0;
 		}
@@ -404,6 +404,7 @@ verify_action_detailed(cdsl_action_node_t* action,
 		       const char* context,
 		       cdsl_error_list_t* errors)
 {
+	(void)context;
 	if (!action) {
 		return;
 	}

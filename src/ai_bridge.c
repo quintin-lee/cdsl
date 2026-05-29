@@ -575,6 +575,7 @@ cdsl_ai_translate(const char* natural_language,
 cdsl_ai_review_t*
 cdsl_ai_review(const char* dsl_code, const cdsl_schema_t* schema, const cdsl_ai_config_t* config)
 {
+	(void)schema;
 	if (!dsl_code) {
 		return NULL;
 	}

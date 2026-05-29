@@ -34,6 +34,11 @@ target_include_directories(cdsl_objects PRIVATE
     $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
     $<BUILD_INTERFACE:${CMAKE_CURRENT_BINARY_DIR}>
 )
+if(MSVC)
+    target_compile_options(cdsl_objects PRIVATE /W4 /WX)
+else()
+    target_compile_options(cdsl_objects PRIVATE -Wall -Wextra -Wpedantic -Werror)
+endif()
 
 # 3. Static library
 add_library(cdsl_static STATIC $<TARGET_OBJECTS:cdsl_objects>)
