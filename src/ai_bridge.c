@@ -4,6 +4,35 @@
 #include <stdio.h>
 #include <ctype.h>
 
+/* Escapes single quotes in s for use inside a single-quoted shell argument.
+ * Replaces each ' with '"'"' (close-quote, double-quote single-quote, re-open).
+ * Returns allocated string caller must free. */
+static char*
+escape_sq(const char* s)
+{
+	size_t len = 0;
+	for (const char* p = s; *p; p++) {
+		len += (*p == '\'') ? 4 : 1;
+	}
+	char* out = malloc(len + 1);
+	if (!out) {
+		return NULL;
+	}
+	char* d = out;
+	for (const char* p = s; *p; p++) {
+		if (*p == '\'') {
+			*d++ = '\'';
+			*d++ = '"';
+			*d++ = '\'';
+			*d++ = '\'';
+		} else {
+			*d++ = *p;
+		}
+	}
+	*d = '\0';
+	return out;
+}
+
 /**
  * @brief Send a prompt to a remote LLM API via cURL (internal).
  *
@@ -45,31 +74,68 @@ call_llm_api(const char* prompt, const cdsl_ai_config_t* config)
 	}
 	*dst = '\0';
 
-	char cmd[16384];
+	char* s_url = escape_sq(config->api_base);
+	char* s_key = escape_sq(config->api_key);
+	char* s_model = escape_sq(config->model);
+	char* s_prompt = escape_sq(escaped_prompt);
+	free(escaped_prompt);
+
+	if (!s_url || !s_key || !s_model || !s_prompt) {
+		free(s_url);
+		free(s_key);
+		free(s_model);
+		free(s_prompt);
+		return NULL;
+	}
+
+	size_t cmd_len = strlen(s_url) + strlen(s_key) + strlen(s_model) + strlen(s_prompt) + 256;
+	char* cmd = malloc(cmd_len);
+	if (!cmd) {
+		free(s_url);
+		free(s_key);
+		free(s_model);
+		free(s_prompt);
+		return NULL;
+	}
 	snprintf(cmd,
-		 sizeof(cmd),
-		 "curl -s -X POST \"%s/chat/completions\" "
-		 "-H \"Content-Type: application/json\" "
-		 "-H \"Authorization: Bearer %s\" "
+		 cmd_len,
+		 "curl -s -X POST '%s/chat/completions' "
+		 "-H 'Content-Type: application/json' "
+		 "-H 'Authorization: Bearer %s' "
 		 "-d "
 		 "'{\"model\":\"%s\",\"messages\":[{\"role\":\"user\",\"content\":\"%s\"}],"
 		 "\"temperature\":0.1}'",
-		 config->api_base,
-		 config->api_key,
-		 config->model,
-		 escaped_prompt);
-	free(escaped_prompt);
+		 s_url,
+		 s_key,
+		 s_model,
+		 s_prompt);
+	free(s_url);
+	free(s_key);
+	free(s_model);
+	free(s_prompt);
 
 	FILE* fp = popen(cmd, "r");
+	free(cmd);
 	if (!fp) {
 		return NULL;
 	}
 
-	char* result = malloc(16384);
+	size_t cap = 8192;
+	char* result = malloc(cap);
 	size_t total = 0;
 	size_t n;
-	while ((n = fread(result + total, 1, 16383 - total, fp)) > 0) {
+	while ((n = fread(result + total, 1, cap - total - 1, fp)) > 0) {
 		total += n;
+		if (total >= cap - 1) {
+			cap *= 2;
+			char* new_result = realloc(result, cap);
+			if (!new_result) {
+				free(result);
+				pclose(fp);
+				return NULL;
+			}
+			result = new_result;
+		}
 	}
 	result[total] = '\0';
 	pclose(fp);
@@ -695,27 +761,54 @@ call_llm_api_stream(const char* prompt,
 	}
 	*dst = '\0';
 
-	char cmd[16384];
+	char* s_url = escape_sq(config->api_base);
+	char* s_key = escape_sq(config->api_key);
+	char* s_model = escape_sq(config->model);
+	char* s_prompt = escape_sq(escaped_prompt);
+	free(escaped_prompt);
+
+	if (!s_url || !s_key || !s_model || !s_prompt) {
+		free(s_url);
+		free(s_key);
+		free(s_model);
+		free(s_prompt);
+		return NULL;
+	}
+
+	size_t cmd_len = strlen(s_url) + strlen(s_key) + strlen(s_model) + strlen(s_prompt) + 256;
+	char* cmd = malloc(cmd_len);
+	if (!cmd) {
+		free(s_url);
+		free(s_key);
+		free(s_model);
+		free(s_prompt);
+		return NULL;
+	}
 	snprintf(cmd,
-		 sizeof(cmd),
-		 "curl -s -N -X POST \"%s/chat/completions\" "
-		 "-H \"Content-Type: application/json\" "
-		 "-H \"Authorization: Bearer %s\" "
+		 cmd_len,
+		 "curl -s -N -X POST '%s/chat/completions' "
+		 "-H 'Content-Type: application/json' "
+		 "-H 'Authorization: Bearer %s' "
 		 "-d "
 		 "'{\"model\":\"%s\",\"messages\":[{\"role\":\"user\",\"content\":\"%s\"}],"
 		 "\"temperature\":0.1,\"stream\":true}'",
-		 config->api_base,
-		 config->api_key,
-		 config->model,
-		 escaped_prompt);
-	free(escaped_prompt);
+		 s_url,
+		 s_key,
+		 s_model,
+		 s_prompt);
+	free(s_url);
+	free(s_key);
+	free(s_model);
+	free(s_prompt);
 
 	FILE* fp = popen(cmd, "r");
+	free(cmd);
 	if (!fp) {
 		return NULL;
 	}
 
-	char* result = malloc(16384);
+	size_t cap = 8192;
+	char* result = malloc(cap);
 	size_t total = 0;
 	result[0] = '\0';
 	char line[4096];
@@ -740,8 +833,9 @@ call_llm_api_stream(const char* prompt,
 		}
 
 		size_t len = end - content;
-		if (total + len + 1 > 16384) {
-			result = realloc(result, total + len + 64);
+		if (total + len + 1 > cap) {
+			cap = total + len + 64;
+			result = realloc(result, cap);
 		}
 		for (size_t i = 0; i < len; i++) {
 			if (content[i] == '\\' && i + 1 < len) {
