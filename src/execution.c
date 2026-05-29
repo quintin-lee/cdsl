@@ -32,6 +32,7 @@ cdsl_context_create(const cdsl_schema_t* schema)
 {
 	cdsl_context_t* ctx = calloc(1, sizeof(*ctx));
 	ctx->schema = schema;
+	ctx->map = cdsl_hashmap_create(64);
 	return ctx;
 }
 
@@ -46,6 +47,7 @@ cdsl_context_free(cdsl_context_t* ctx)
 	if (!ctx) {
 		return;
 	}
+	cdsl_hashmap_free(ctx->map, NULL);
 	cdsl_context_entry_t* e = ctx->entries;
 	while (e) {
 		cdsl_context_entry_t* next = e->next;
@@ -68,12 +70,10 @@ cdsl_context_free(cdsl_context_t* ctx)
 static cdsl_context_entry_t*
 ctx_get(cdsl_context_t* ctx, const char* name)
 {
-	for (cdsl_context_entry_t* e = ctx->entries; e; e = e->next) {
-		if (strcmp(e->name, name) == 0) {
-			return e;
-		}
+	if (!ctx || !ctx->map || !name) {
+		return NULL;
 	}
-	return NULL;
+	return (cdsl_context_entry_t*)cdsl_hashmap_get(ctx->map, name);
 }
 
 /**
@@ -102,6 +102,7 @@ cdsl_context_set_int(cdsl_context_t* ctx, const char* name, int val)
 		ne->value.data.int_val = val;
 		ne->next = ctx->entries;
 		ctx->entries = ne;
+		cdsl_hashmap_put(ctx->map, name, ne);
 	}
 }
 
@@ -129,6 +130,7 @@ cdsl_context_set_float(cdsl_context_t* ctx, const char* name, double val)
 		ne->value.data.float_val = val;
 		ne->next = ctx->entries;
 		ctx->entries = ne;
+		cdsl_hashmap_put(ctx->map, name, ne);
 	}
 }
 
@@ -156,6 +158,7 @@ cdsl_context_set_bool(cdsl_context_t* ctx, const char* name, int val)
 		ne->value.data.bool_val = val;
 		ne->next = ctx->entries;
 		ctx->entries = ne;
+		cdsl_hashmap_put(ctx->map, name, ne);
 	}
 }
 
@@ -183,6 +186,7 @@ cdsl_context_set_string(cdsl_context_t* ctx, const char* name, const char* val)
 		ne->value.data.string_val = strdup(val);
 		ne->next = ctx->entries;
 		ctx->entries = ne;
+		cdsl_hashmap_put(ctx->map, name, ne);
 	}
 }
 
@@ -256,6 +260,7 @@ cdsl_context_remove(cdsl_context_t* ctx, const char* name)
 	if (!ctx || !name) {
 		return 0;
 	}
+	cdsl_hashmap_remove(ctx->map, name, NULL);
 	cdsl_context_entry_t* prev = NULL;
 	for (cdsl_context_entry_t* e = ctx->entries; e; prev = e, e = e->next) {
 		if (strcmp(e->name, name) == 0) {

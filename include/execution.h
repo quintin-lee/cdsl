@@ -15,6 +15,7 @@
 
 #include "ast.h"
 #include "abstract.h"
+#include "cdsl_hashmap.h"
 
 /**
  * @brief Runtime value wrapper.
@@ -57,6 +58,7 @@ typedef struct cdsl_context_entry {
 typedef struct cdsl_context {
 	const cdsl_schema_t* schema;   /**< Associated schema */
 	cdsl_context_entry_t* entries; /**< Variable bindings */
+	cdsl_hashmap_t* map;	       /**< Fast lookup index */
 } cdsl_context_t;
 
 /**
