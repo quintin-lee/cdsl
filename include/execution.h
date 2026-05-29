@@ -242,6 +242,12 @@ cdsl_rule_report_t* cdsl_vm_execute_compiled(cdsl_vm_t* vm, cdsl_compiled_rule_t
                                               cdsl_context_t* ctx);
 /** @} */
 
+/** @name Code Generation */
+/** @{ */
+char* cdsl_codegen_rule_to_c(const cdsl_rule_t* rule, const cdsl_schema_t* schema);
+int cdsl_codegen_to_file(const cdsl_rule_t* rule, const cdsl_schema_t* schema, const char* filepath);
+/** @} */
+
 /**
  * @brief RuleSet entry with priority ordering.
  */
