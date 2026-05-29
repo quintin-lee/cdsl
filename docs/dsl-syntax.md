@@ -73,7 +73,22 @@ Functions must be registered via `cdsl_vm_register_function()` in the host progr
 
 ### 1.6 Comments
 
-> **Note**: Comments are not supported in the current grammar version.
+Two comment styles are supported:
+
+| Style            | Syntax        | Scope      |
+|------------------|---------------|------------|
+| Line comment     | `// text`     | To end of line |
+| Block comment    | `/* text */`  | May span multiple lines |
+
+**Examples**:
+
+```dsl
+// This is a single-line comment
+RULE check {              /* Block comment
+    META { description = "Test" }   can span multiple lines */
+    WHEN x > 0 THEN score(10)
+}
+```
 
 ---
 

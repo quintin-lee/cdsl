@@ -8,7 +8,17 @@
 %option noyywrap
 %option yylineno
 
+%x BLOCK_COMMENT
+
 %%
+
+"/*"                    { BEGIN(BLOCK_COMMENT); }
+<BLOCK_COMMENT>"*/"     { BEGIN(INITIAL); }
+<BLOCK_COMMENT>[^*\n]+  ;
+<BLOCK_COMMENT>"*"+     ;
+<BLOCK_COMMENT>\n       ;
+
+"//"[^\n]*              ;
 
 "RULE"                  { return RULE; }
 "META"                  { return META; }
