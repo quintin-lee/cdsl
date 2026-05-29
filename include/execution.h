@@ -94,6 +94,7 @@ typedef struct cdsl_vm {
     const cdsl_schema_t* schema;       /**< Schema reference */
     cdsl_action_cb_entry_t* callbacks; /**< Registered action callbacks */
     void* user_data;                   /**< User data passed to callbacks */
+    int debug_enabled;                 /**< 1 to enable trace output */
 } cdsl_vm_t;
 
 /**
@@ -173,6 +174,7 @@ int cdsl_context_load_json(cdsl_context_t* ctx, const char* json_str);
 cdsl_vm_t* cdsl_vm_create(const cdsl_schema_t* schema);
 void cdsl_vm_free(cdsl_vm_t* vm);
 void cdsl_vm_register_action(cdsl_vm_t* vm, const char* action_name, cdsl_action_cb_t cb);
+void cdsl_vm_set_debug(cdsl_vm_t* vm, int enabled);
 /** @} */
 
 /** @name Rule Execution */
