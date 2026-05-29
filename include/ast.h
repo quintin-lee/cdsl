@@ -194,65 +194,248 @@ typedef struct cdsl_rule {
 
 /** @name Expression Constructors */
 /** @{ */
+
+/**
+ * @brief Create an identifier (variable) expression.
+ * @param id Variable name (caller yields ownership of @p id string)
+ * @return Newly allocated expression node
+ */
 cdsl_expr_node_t* cdsl_create_expr_id(char* id);
+
+/**
+ * @brief Create an integer literal expression.
+ * @param val Integer value
+ * @return Newly allocated expression node
+ */
 cdsl_expr_node_t* cdsl_create_expr_int(int val);
+
+/**
+ * @brief Create a float literal expression.
+ * @param val Double-precision floating point value
+ * @return Newly allocated expression node
+ */
 cdsl_expr_node_t* cdsl_create_expr_float(double val);
+
+/**
+ * @brief Create a boolean literal expression.
+ * @param val 1 for true, 0 for false
+ * @return Newly allocated expression node
+ */
 cdsl_expr_node_t* cdsl_create_expr_bool(int val);
+
+/**
+ * @brief Create a string literal expression.
+ * @param val String value (caller yields ownership of @p val)
+ * @return Newly allocated expression node
+ */
 cdsl_expr_node_t* cdsl_create_expr_string(char* val);
+
+/**
+ * @brief Create a binary operation expression (e.g., a + b).
+ * @param op Operator type
+ * @param left Left operand (ownership transferred)
+ * @param right Right operand (ownership transferred)
+ * @return Newly allocated expression node
+ */
 cdsl_expr_node_t*
 cdsl_create_expr_binary(cdsl_op_t op, cdsl_expr_node_t* left, cdsl_expr_node_t* right);
+
+/**
+ * @brief Create a unary operation expression (e.g., !a).
+ * @param op Operator type (e.g., CDSL_OP_NOT, CDSL_OP_NEG)
+ * @param expr Operand (ownership transferred)
+ * @return Newly allocated expression node
+ */
 cdsl_expr_node_t* cdsl_create_expr_unary(cdsl_op_t op, cdsl_expr_node_t* expr);
+
+/**
+ * @brief Create a function call expression.
+ * @param func_name Name of the function (ownership transferred)
+ * @param args Argument list (ownership transferred)
+ * @return Newly allocated expression node
+ */
 cdsl_expr_node_t* cdsl_create_expr_call(char* func_name, cdsl_arg_node_t* args);
 /** @} */
 
 /** @name Argument List Functions */
 /** @{ */
+
+/**
+ * @brief Create an argument list head.
+ * @param expr First argument expression (ownership transferred)
+ * @return Newly allocated argument node
+ */
 cdsl_arg_node_t* cdsl_create_arg(cdsl_expr_node_t* expr);
+
+/**
+ * @brief Append an expression to an argument list.
+ * @param list Argument list head (can be NULL)
+ * @param expr Expression to append (ownership transferred)
+ * @return Updated list head
+ */
 cdsl_arg_node_t* cdsl_append_arg(cdsl_arg_node_t* list, cdsl_expr_node_t* expr);
 /** @} */
 
 /** @name Action Constructors */
 /** @{ */
+
+/**
+ * @brief Create an action invocation node.
+ * @param name Action name (ownership transferred)
+ * @param args Argument list (ownership transferred)
+ * @return Newly allocated action node
+ */
 cdsl_action_node_t* cdsl_create_action(char* name, cdsl_arg_node_t* args);
 /** @} */
 
 /** @name Metadata Functions */
 /** @{ */
+
+/**
+ * @brief Create a single metadata key-value item.
+ * @param key Metadata key (ownership transferred)
+ * @param value Metadata value (ownership transferred)
+ * @return Newly allocated metadata item
+ */
 cdsl_meta_item_t* cdsl_create_meta_item(char* key, char* value);
+
+/**
+ * @brief Append a metadata item to a list.
+ * @param list Metadata list head (can be NULL)
+ * @param item Item to append (ownership transferred)
+ * @return Updated list head
+ */
 cdsl_meta_item_t* cdsl_append_meta(cdsl_meta_item_t* list, cdsl_meta_item_t* item);
+
+/**
+ * @brief Retrieve a metadata value by key from a list.
+ * @param list Metadata list to search
+ * @param key Key to find
+ * @return String value if found, or NULL if not found
+ */
 char* cdsl_meta_get(cdsl_meta_item_t* list, const char* key);
 /** @} */
 
 /** @name Case/Metric Constructors */
 /** @{ */
+
+/**
+ * @brief Create a metric CASE branch.
+ * @param cond Condition expression (ownership transferred)
+ * @param action Action to execute on match (ownership transferred)
+ * @return Newly allocated case node
+ */
 cdsl_case_node_t* cdsl_create_case(cdsl_expr_node_t* cond, cdsl_action_node_t* action);
+
+/**
+ * @brief Append a CASE branch to a list.
+ * @param list CASE list head (can be NULL)
+ * @param item Item to append (ownership transferred)
+ * @return Updated list head
+ */
 cdsl_case_node_t* cdsl_append_case(cdsl_case_node_t* list, cdsl_case_node_t* item);
+
+/**
+ * @brief Create a METRIC block node.
+ * @param name Metric name (ownership transferred)
+ * @param meta Metadata list (ownership transferred)
+ * @param cases CASE branch list (ownership transferred)
+ * @param def_act DEFAULT action (ownership transferred)
+ * @return Newly allocated metric node
+ */
 cdsl_metric_node_t* cdsl_create_metric(char* name,
 				       cdsl_meta_item_t* meta,
 				       cdsl_case_node_t* cases,
 				       cdsl_action_node_t* def_act);
+
+/**
+ * @brief Append a METRIC node to a rule's metric list.
+ * @param list Metric list head (can be NULL)
+ * @param item Item to append (ownership transferred)
+ * @return Updated list head
+ */
 cdsl_metric_node_t* cdsl_append_metric(cdsl_metric_node_t* list, cdsl_metric_node_t* item);
 /** @} */
 
 /** @name Rule Constructors */
 /** @{ */
+
+/**
+ * @brief Create a simple WHEN/THEN rule.
+ * @param name Rule name (ownership transferred)
+ * @param meta Rule metadata (ownership transferred)
+ * @param when Condition expression (ownership transferred)
+ * @param then Action to execute (ownership transferred)
+ * @return Newly allocated rule
+ */
 cdsl_rule_t* cdsl_create_simple_rule(char* name,
 				     cdsl_meta_item_t* meta,
 				     cdsl_expr_node_t* when,
 				     cdsl_action_node_t* then);
+
+/**
+ * @brief Create a multi-metric scoring rule.
+ * @param name Rule name (ownership transferred)
+ * @param meta Rule metadata (ownership transferred)
+ * @param metrics List of metrics (ownership transferred)
+ * @return Newly allocated rule
+ */
 cdsl_rule_t*
 cdsl_create_metric_rule(char* name, cdsl_meta_item_t* meta, cdsl_metric_node_t* metrics);
+
+/**
+ * @brief Create a rule that extends a template.
+ * @param name Rule name (ownership transferred)
+ * @param template_name Name of the parent template (ownership transferred)
+ * @param meta Override metadata (ownership transferred)
+ * @return Newly allocated rule
+ */
 cdsl_rule_t* cdsl_create_extends_rule(char* name, char* template_name, cdsl_meta_item_t* meta);
 /** @} */
 
 /** @name Memory Management */
 /** @{ */
+
+/**
+ * @brief Recursively free an expression AST.
+ * @param expr Root node to free (NULL-safe)
+ */
 void cdsl_free_expr(cdsl_expr_node_t* expr);
+
+/**
+ * @brief Recursively free an argument list.
+ * @param arg Head node to free (NULL-safe)
+ */
 void cdsl_free_arg(cdsl_arg_node_t* arg);
+
+/**
+ * @brief Free an action node and its arguments.
+ * @param action Node to free (NULL-safe)
+ */
 void cdsl_free_action(cdsl_action_node_t* action);
+
+/**
+ * @brief Free a metadata list and all key/value strings.
+ * @param meta Head node to free (NULL-safe)
+ */
 void cdsl_free_meta(cdsl_meta_item_t* meta);
+
+/**
+ * @brief Free a CASE branch.
+ * @param cs Node to free (NULL-safe)
+ */
 void cdsl_free_case(cdsl_case_node_t* cs);
+
+/**
+ * @brief Free a METRIC block and all its cases.
+ * @param m Node to free (NULL-safe)
+ */
 void cdsl_free_metric(cdsl_metric_node_t* m);
+
+/**
+ * @brief Free a complete rule AST.
+ * @param rule Rule to free (NULL-safe)
+ */
 void cdsl_free_rule(cdsl_rule_t* rule);
 /** @} */
 

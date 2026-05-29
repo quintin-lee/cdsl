@@ -97,11 +97,14 @@ void cdsl_schema_register_action(
 /**
  * @brief Verify a rule against the schema (simple error string).
  *
- * @param rule Parsed AST rule
- * @param schema Registered schema
- * @param err_buf Buffer to receive error message on failure
- * @param err_buf_sz Size of error buffer
- * @return 1 if valid, 0 if errors found
+ * Checks that all referenced variables and actions in the rule are
+ * registered in the schema with compatible types.
+ *
+ * @param rule Parsed AST rule to verify
+ * @param schema Registered schema containing valid variables and actions
+ * @param[out] err_buf Buffer to receive error message on failure
+ * @param err_buf_sz Size of @p err_buf
+ * @return 1 if rule is valid, 0 if errors found (first error stored in @p err_buf)
  */
 int cdsl_verify_rule(const cdsl_rule_t* rule,
 		     const cdsl_schema_t* schema,
@@ -111,12 +114,12 @@ int cdsl_verify_rule(const cdsl_rule_t* rule,
 /**
  * @brief Verify a rule with detailed structured error reporting.
  *
- * Unlike cdsl_verify_rule(), this function collects ALL errors instead
- * of stopping at the first one. Useful for IDE-like diagnostics.
+ * Unlike cdsl_verify_rule(), this function collects all identified errors instead
+ * of stopping at the first one. Ideal for diagnostic tools and IDE integrations.
  *
- * @param rule Parsed AST rule
+ * @param rule Parsed AST rule to verify
  * @param schema Registered schema
- * @return Error list (must be freed with cdsl_error_list_free)
+ * @return Error list (must be freed with cdsl_error_list_free), or NULL if no errors found
  */
 cdsl_error_list_t* cdsl_verify_rule_detailed(const cdsl_rule_t* rule, const cdsl_schema_t* schema);
 

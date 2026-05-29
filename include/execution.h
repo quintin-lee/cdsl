@@ -188,18 +188,106 @@ typedef struct {
 
 /** @name Context Management */
 /** @{ */
+
+/**
+ * @brief Create an empty execution context.
+ *
+ * @param schema Associated schema used for type-safe variable lookups
+ * @return Newly allocated context (must be freed with cdsl_context_free), or NULL on failure
+ */
 cdsl_context_t* cdsl_context_create(const cdsl_schema_t* schema);
+
+/**
+ * @brief Free an execution context and all its variable bindings.
+ *
+ * @param ctx Context to free (NULL-safe)
+ */
 void cdsl_context_free(cdsl_context_t* ctx);
+
+/**
+ * @brief Bind an integer variable to the context.
+ *
+ * @param ctx Target context
+ * @param name Variable path (e.g. "user.age")
+ * @param val Integer value to bind
+ */
 void cdsl_context_set_int(cdsl_context_t* ctx, const char* name, int val);
+
+/**
+ * @brief Bind a float variable to the context.
+ *
+ * @param ctx Target context
+ * @param name Variable path (e.g. "item.price")
+ * @param val Double value to bind
+ */
 void cdsl_context_set_float(cdsl_context_t* ctx, const char* name, double val);
+
+/**
+ * @brief Bind a boolean variable to the context.
+ *
+ * @param ctx Target context
+ * @param name Variable path (e.g. "is_active")
+ * @param val Boolean value (non-zero for true, zero for false)
+ */
 void cdsl_context_set_bool(cdsl_context_t* ctx, const char* name, int val);
+
+/**
+ * @brief Bind a string variable to the context.
+ *
+ * @param ctx Target context
+ * @param name Variable path (e.g. "user.role")
+ * @param val String value (duplicated internally)
+ */
 void cdsl_context_set_string(cdsl_context_t* ctx, const char* name, const char* val);
 
+/**
+ * @brief Retrieve an integer variable from the context.
+ *
+ * @param ctx Source context
+ * @param name Variable path
+ * @param default_val Value to return if variable is missing or type mismatched
+ * @return Current value or @p default_val
+ */
 int cdsl_context_get_int(const cdsl_context_t* ctx, const char* name, int default_val);
+
+/**
+ * @brief Retrieve a float variable from the context.
+ *
+ * @param ctx Source context
+ * @param name Variable path
+ * @param default_val Value to return if variable is missing or type mismatched
+ * @return Current value or @p default_val
+ */
 double cdsl_context_get_float(const cdsl_context_t* ctx, const char* name, double default_val);
+
+/**
+ * @brief Retrieve a boolean variable from the context.
+ *
+ * @param ctx Source context
+ * @param name Variable path
+ * @param default_val Value to return if variable is missing or type mismatched
+ * @return Current value (0 or 1) or @p default_val
+ */
 int cdsl_context_get_bool(const cdsl_context_t* ctx, const char* name, int default_val);
+
+/**
+ * @brief Retrieve a string variable from the context.
+ *
+ * @param ctx Source context
+ * @param name Variable path
+ * @param default_val Value to return if variable is missing or type mismatched
+ * @return Internal string pointer (not owned by caller, valid until ctx is modified/freed) or @p default_val
+ */
 const char*
 cdsl_context_get_string(const cdsl_context_t* ctx, const char* name, const char* default_val);
+
+/**
+ * @brief Remove a variable binding from the context.
+ *
+ * @param ctx Target context
+ * @param name Variable path to remove
+ * @return 1 if removed, 0 if not found
+ */
 int cdsl_context_remove(cdsl_context_t* ctx, const char* name);
 
 /**
@@ -217,50 +305,190 @@ int cdsl_context_load_json(cdsl_context_t* ctx, const char* json_str);
 
 /** @name Virtual Machine */
 /** @{ */
+
+/**
+ * @brief Create a new DSL Virtual Machine.
+ *
+ * Each VM instance is associated with a schema and can hold its own
+ * set of action and function callbacks. For thread-safe execution,
+ * create one VM per thread.
+ *
+ * @param schema Associated schema (must remain valid for the lifetime of the VM)
+ * @return Newly allocated VM (must be freed with cdsl_vm_free), or NULL on failure
+ */
 cdsl_vm_t* cdsl_vm_create(const cdsl_schema_t* schema);
+
+/**
+ * @brief Free a DSL Virtual Machine.
+ *
+ * @param vm VM to free (NULL-safe)
+ */
 void cdsl_vm_free(cdsl_vm_t* vm);
+
+/**
+ * @brief Register a callback for a DSL action.
+ *
+ * Actions are triggered by the @c DO command in DSL rules.
+ *
+ * @param vm Target VM
+ * @param action_name Name of the action as defined in the schema
+ * @param cb Callback function to invoke
+ */
 void cdsl_vm_register_action(cdsl_vm_t* vm, const char* action_name, cdsl_action_cb_t cb);
+
+/**
+ * @brief Register a custom function for use in DSL expressions.
+ *
+ * @param vm Target VM
+ * @param func_name Name of the function to register
+ * @param cb Callback function to invoke
+ */
 void cdsl_vm_register_function(cdsl_vm_t* vm, const char* func_name, cdsl_func_cb_t cb);
+
+/**
+ * @brief Enable or disable debug trace output to stdout.
+ *
+ * @param vm Target VM
+ * @param enabled 1 to enable, 0 to disable
+ */
 void cdsl_vm_set_debug(cdsl_vm_t* vm, int enabled);
+
+/**
+ * @brief Get the current maximum expression nesting depth.
+ *
+ * @param vm Source VM
+ * @return Current depth limit
+ */
 int cdsl_vm_get_max_expr_depth(const cdsl_vm_t* vm);
+
+/**
+ * @brief Set the maximum expression nesting depth to prevent stack overflow.
+ *
+ * @param vm Target VM
+ * @param depth New depth limit (default is CDSL_MAX_EXPR_DEPTH)
+ */
 void cdsl_vm_set_max_expr_depth(cdsl_vm_t* vm, int depth);
 
+/**
+ * @brief Retrieve execution statistics from the VM.
+ *
+ * @param vm Source VM
+ * @return Internal stats pointer (valid until VM is freed)
+ */
 cdsl_stats_t* cdsl_vm_get_stats(const cdsl_vm_t* vm);
+
+/**
+ * @brief Reset all execution statistics in the VM to zero.
+ *
+ * @param vm Target VM
+ */
 void cdsl_vm_reset_stats(cdsl_vm_t* vm);
 /** @} */
 
 /** @name Rule Execution */
 /** @{ */
+
+/**
+ * @brief Execute a single DSL rule.
+ *
+ * This is the main entry point for rule evaluation. It evaluates the rule's
+ * logic against the provided context and triggers any associated actions.
+ *
+ * @param vm VM instance to use for execution
+ * @param rule Parsed AST rule to execute
+ * @param ctx Context containing variable bindings
+ * @return Detailed execution report (must be freed with cdsl_report_free), or NULL on error
+ */
 cdsl_rule_report_t* cdsl_vm_execute(cdsl_vm_t* vm, const cdsl_rule_t* rule, cdsl_context_t* ctx);
+
+/**
+ * @brief Free a rule evaluation report.
+ *
+ * @param report Report to free (NULL-safe)
+ */
 void cdsl_report_free(cdsl_rule_report_t* report);
+
+/**
+ * @brief Print a human-readable summary of a rule report to stdout.
+ *
+ * @param report Report to print
+ */
 void cdsl_report_print(const cdsl_rule_report_t* report);
+
+/**
+ * @brief Generate a JSON representation of a rule report.
+ *
+ * @param report Report to serialize
+ * @return Newly allocated JSON string (must be freed by caller)
+ */
 char* cdsl_report_to_json(const cdsl_rule_report_t* report);
 
-typedef struct cdsl_compiled_rule {
-	cdsl_rule_t* rule;
-	char* dsl_hash;
-	int verified;
-} cdsl_compiled_rule_t;
-
-typedef struct cdsl_compile_cache {
-	cdsl_hashmap_t* map;   /**< Map from DSL hash to compiled rule */
-	pthread_rwlock_t lock; /**< Lock for thread-safe access */
-} cdsl_compile_cache_t;
-
-cdsl_compile_cache_t* cdsl_compile_cache_create(int capacity);
-void cdsl_compile_cache_free(cdsl_compile_cache_t* cache);
+/**
+ * @brief Compile a DSL rule string into an AST with caching.
+ *
+ * This function handles parsing, verification, and caching. If the same DSL code
+ * (by hash) is already in the cache, the cached AST is returned.
+ *
+ * @param cache Global compilation cache (thread-safe)
+ * @param dsl_code Raw DSL rule string
+ * @param schema Schema to verify against
+ * @param[out] err_buf Buffer to store error messages on failure
+ * @param err_buf_sz Size of @p err_buf
+ * @return Compiled rule handle, or NULL on failure
+ */
 cdsl_compiled_rule_t* cdsl_compile(cdsl_compile_cache_t* cache,
 				   const char* dsl_code,
 				   const cdsl_schema_t* schema,
 				   char* err_buf,
 				   int err_buf_sz);
+
+/**
+ * @brief Execute a compiled rule handle.
+ *
+ * @param vm VM instance
+ * @param compiled Compiled rule handle from cdsl_compile()
+ * @param ctx Execution context
+ * @return Execution report
+ */
 cdsl_rule_report_t*
 cdsl_vm_execute_compiled(cdsl_vm_t* vm, cdsl_compiled_rule_t* compiled, cdsl_context_t* ctx);
+
+/**
+ * @brief Create a thread-safe compilation cache.
+ *
+ * @param capacity Initial capacity of the internal hashmap
+ * @return Newly allocated cache (must be freed with cdsl_compile_cache_free), or NULL on failure
+ */
+cdsl_compile_cache_t* cdsl_compile_cache_create(int capacity);
+
+/**
+ * @brief Free a compilation cache and all its cached rule ASTs.
+ *
+ * @param cache Cache to free (NULL-safe)
+ */
+void cdsl_compile_cache_free(cdsl_compile_cache_t* cache);
 /** @} */
 
 /** @name Code Generation */
 /** @{ */
+
+/**
+ * @brief Generate C code implementing a rule's logic.
+ *
+ * @param rule Rule AST to translate
+ * @param schema Schema for variable and action lookups
+ * @return Newly allocated C source string (must be freed by caller)
+ */
 char* cdsl_codegen_rule_to_c(const cdsl_rule_t* rule, const cdsl_schema_t* schema);
+
+/**
+ * @brief Generate C code for a rule and write it to a file.
+ *
+ * @param rule Rule AST to translate
+ * @param schema Schema for variable and action lookups
+ * @param filepath Path to the output C file
+ * @return 1 on success, 0 on failure
+ */
 int
 cdsl_codegen_to_file(const cdsl_rule_t* rule, const cdsl_schema_t* schema, const char* filepath);
 /** @} */
@@ -304,45 +532,189 @@ typedef struct {
 
 /** @name RuleSet Management */
 /** @{ */
+
+/**
+ * @brief Create an empty ruleset.
+ *
+ * @return Newly allocated ruleset (must be freed with cdsl_ruleset_free)
+ */
 cdsl_ruleset_t* cdsl_ruleset_create(void);
+
+/**
+ * @brief Free a ruleset and all its entries.
+ *
+ * @param set Ruleset to free (NULL-safe)
+ */
 void cdsl_ruleset_free(cdsl_ruleset_t* set);
+
+/**
+ * @brief Add a rule to the ruleset with a specific priority.
+ *
+ * @param set Target ruleset
+ * @param rule Rule AST to add
+ * @param priority Execution priority (lower values are executed first)
+ */
 void cdsl_ruleset_add(cdsl_ruleset_t* set, cdsl_rule_t* rule, int priority);
+
+/**
+ * @brief Remove a rule from the ruleset by its name.
+ *
+ * @param set Target ruleset
+ * @param rule_name Name of the rule to remove
+ * @return 1 if removed, 0 if not found
+ */
 int cdsl_ruleset_remove(cdsl_ruleset_t* set, const char* rule_name);
+
+/**
+ * @brief Execute all rules in a ruleset sequentially in priority order.
+ *
+ * @param vm VM instance
+ * @param set Ruleset to execute
+ * @param ctx Execution context
+ * @return Aggregate ruleset report (must be freed with cdsl_ruleset_report_free)
+ */
 cdsl_ruleset_report_t*
 cdsl_vm_execute_ruleset(cdsl_vm_t* vm, cdsl_ruleset_t* set, cdsl_context_t* ctx);
+
+/**
+ * @brief Execute all rules in a ruleset in parallel.
+ *
+ * Spawns multiple threads to evaluate rules concurrently. Each thread
+ * uses its own internal VM cloned from the provided @p vm.
+ *
+ * @param vm Prototype VM instance
+ * @param set Ruleset to execute
+ * @param ctx Shared execution context (thread-safe for reads)
+ * @param thread_count Number of threads to spawn
+ * @return Aggregate ruleset report
+ */
 cdsl_ruleset_report_t* cdsl_vm_execute_ruleset_parallel(cdsl_vm_t* vm,
 							cdsl_ruleset_t* set,
 							cdsl_context_t* ctx,
 							int thread_count);
+
+/**
+ * @brief Free a ruleset execution report.
+ *
+ * @param report Report to free (NULL-safe)
+ */
 void cdsl_ruleset_report_free(cdsl_ruleset_report_t* report);
+
+/**
+ * @brief Print a human-readable summary of a ruleset report to stdout.
+ *
+ * @param report Report to print
+ */
 void cdsl_ruleset_report_print(const cdsl_ruleset_report_t* report);
+
+/**
+ * @brief Load a rule from a file and add it to the ruleset.
+ *
+ * @param set Target ruleset
+ * @param filepath Path to the DSL file
+ * @param priority Execution priority
+ * @param schema Schema to verify against
+ * @param[out] err_buf Buffer for error messages
+ * @param err_buf_sz Size of error buffer
+ * @return 1 on success, 0 on failure
+ */
 int cdsl_ruleset_load_file(cdsl_ruleset_t* set,
 			   const char* filepath,
 			   int priority,
 			   const cdsl_schema_t* schema,
 			   char* err_buf,
 			   int err_buf_sz);
+
+/**
+ * @brief Load a rule from a string and add it to the ruleset.
+ *
+ * @param set Target ruleset
+ * @param dsl_code DSL rule string
+ * @param priority Execution priority
+ * @param schema Schema to verify against
+ * @param[out] err_buf Buffer for error messages
+ * @param err_buf_sz Size of error buffer
+ * @return 1 on success, 0 on failure
+ */
 int cdsl_ruleset_load_string(cdsl_ruleset_t* set,
 			     const char* dsl_code,
 			     int priority,
 			     const cdsl_schema_t* schema,
 			     char* err_buf,
 			     int err_buf_sz);
+
+/**
+ * @brief Reload a rule from a file (replaces existing rule with same name).
+ *
+ * @param set Target ruleset
+ * @param rule_name Name of the rule to replace
+ * @param filepath Path to the new DSL file
+ * @param schema Schema to verify against
+ * @param[out] err_buf Buffer for error messages
+ * @param err_buf_sz Size of error buffer
+ * @return 1 on success, 0 on failure
+ */
 int cdsl_ruleset_reload_file(cdsl_ruleset_t* set,
 			     const char* rule_name,
 			     const char* filepath,
 			     const cdsl_schema_t* schema,
 			     char* err_buf,
 			     int err_buf_sz);
+
+/**
+ * @brief Validate cross-rule dependencies within a ruleset.
+ *
+ * @param set Ruleset to validate
+ * @param[out] err_buf Buffer for error messages
+ * @param err_buf_sz Size of error buffer
+ * @return 1 if valid, 0 if invalid (e.g. circular dependencies)
+ */
 int cdsl_ruleset_validate_deps(const cdsl_ruleset_t* set, char* err_buf, int err_buf_sz);
+
+/**
+ * @brief Sort rules in the ruleset based on priority and dependencies.
+ *
+ * @param set Ruleset to sort
+ * @return 1 on success, 0 if sorting failed (e.g. cycle detected)
+ */
 int cdsl_ruleset_topo_sort(cdsl_ruleset_t* set);
 /** @} */
 
 /** @name Visualization */
 /** @{ */
+
+/**
+ * @brief Generate a Graphviz DOT representation of a single rule AST.
+ *
+ * @param rule Rule AST to visualize
+ * @return Newly allocated DOT string (must be freed by caller), or NULL on failure
+ */
 char* cdsl_rule_to_dot(const cdsl_rule_t* rule);
+
+/**
+ * @brief Generate a DOT representation of a rule and write it to a file.
+ *
+ * @param rule Rule AST to visualize
+ * @param filepath Path to the output .dot file
+ * @return 1 on success, 0 on failure
+ */
 int cdsl_rule_to_dot_file(const cdsl_rule_t* rule, const char* filepath);
+
+/**
+ * @brief Generate a DOT representation of a ruleset (dependency and priority graph).
+ *
+ * @param set Ruleset to visualize
+ * @return Newly allocated DOT string (must be freed by caller), or NULL on failure
+ */
 char* cdsl_ruleset_to_dot(const cdsl_ruleset_t* set);
+
+/**
+ * @brief Generate a DOT representation of a ruleset and write it to a file.
+ *
+ * @param set Ruleset to visualize
+ * @param filepath Path to the output .dot file
+ * @return 1 on success, 0 on failure
+ */
 int cdsl_ruleset_to_dot_file(const cdsl_ruleset_t* set, const char* filepath);
 /** @} */
 

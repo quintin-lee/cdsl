@@ -69,10 +69,36 @@ typedef struct cdsl_error_list {
 	int capacity;	       /**< Allocated capacity */
 } cdsl_error_list_t;
 
+/**
+ * @brief Create a new empty error list.
+ * @return Newly allocated list (must be freed with cdsl_error_list_free)
+ */
 cdsl_error_list_t* cdsl_error_list_create(void);
+
+/**
+ * @brief Free an error list and all contained error instances.
+ * @param list List to free (NULL-safe)
+ */
 void cdsl_error_list_free(cdsl_error_list_t* list);
+
+/**
+ * @brief Add an error to the list.
+ * @param list Target list
+ * @param err Error instance to add (ownership transferred to the list)
+ */
 void cdsl_error_list_add(cdsl_error_list_t* list, cdsl_error_t* err);
+
+/**
+ * @brief Check if the list contains any errors.
+ * @param list Source list
+ * @return 1 if count > 0, 0 otherwise
+ */
 int cdsl_error_list_has_errors(const cdsl_error_list_t* list);
+
+/**
+ * @brief Print all errors in the list to stderr.
+ * @param list Source list
+ */
 void cdsl_error_list_print(const cdsl_error_list_t* list);
 
 #endif
