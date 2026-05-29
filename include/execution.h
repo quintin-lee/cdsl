@@ -205,6 +205,25 @@ cdsl_rule_report_t* cdsl_vm_execute(cdsl_vm_t* vm, const cdsl_rule_t* rule, cdsl
 void cdsl_report_free(cdsl_rule_report_t* report);
 void cdsl_report_print(const cdsl_rule_report_t* report);
 char* cdsl_report_to_json(const cdsl_rule_report_t* report);
+
+typedef struct cdsl_compiled_rule {
+    cdsl_rule_t* rule;
+    char* dsl_hash;
+    int verified;
+} cdsl_compiled_rule_t;
+
+typedef struct cdsl_compile_cache {
+    cdsl_compiled_rule_t** entries;
+    int count;
+    int capacity;
+} cdsl_compile_cache_t;
+
+cdsl_compile_cache_t* cdsl_compile_cache_create(int capacity);
+void cdsl_compile_cache_free(cdsl_compile_cache_t* cache);
+cdsl_compiled_rule_t* cdsl_compile(cdsl_compile_cache_t* cache, const char* dsl_code,
+                                    const cdsl_schema_t* schema, char* err_buf, int err_buf_sz);
+cdsl_rule_report_t* cdsl_vm_execute_compiled(cdsl_vm_t* vm, cdsl_compiled_rule_t* compiled,
+                                              cdsl_context_t* ctx);
 /** @} */
 
 /**

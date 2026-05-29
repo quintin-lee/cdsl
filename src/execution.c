@@ -601,6 +601,75 @@ char* cdsl_report_to_json(const cdsl_rule_report_t* report) {
     return json;
 }
 
+static unsigned int hash_dsl_string(const char* s) {
+    unsigned int h = 5381;
+    for (; *s; s++) h = ((h << 5) + h) + (unsigned char)*s;
+    return h;
+}
+
+cdsl_compile_cache_t* cdsl_compile_cache_create(int capacity) {
+    cdsl_compile_cache_t* c = calloc(1, sizeof(*c));
+    c->capacity = capacity > 0 ? capacity : 64;
+    c->entries = calloc(c->capacity, sizeof(cdsl_compiled_rule_t*));
+    return c;
+}
+
+void cdsl_compile_cache_free(cdsl_compile_cache_t* cache) {
+    if (!cache) return;
+    for (int i = 0; i < cache->capacity; i++) {
+        cdsl_compiled_rule_t* e = cache->entries[i];
+        if (e) {
+            free(e->dsl_hash);
+            free(e);
+        }
+    }
+    free(cache->entries);
+    free(cache);
+}
+
+cdsl_compiled_rule_t* cdsl_compile(cdsl_compile_cache_t* cache, const char* dsl_code,
+                                    const cdsl_schema_t* schema, char* err_buf, int err_buf_sz) {
+    if (!cache || !dsl_code) {
+        if (err_buf) snprintf(err_buf, err_buf_sz, "NULL cache or dsl_code");
+        return NULL;
+    }
+    unsigned int idx = hash_dsl_string(dsl_code) % cache->capacity;
+    cdsl_compiled_rule_t* existing = cache->entries[idx];
+    if (existing && existing->dsl_hash && strcmp(existing->dsl_hash, dsl_code) == 0) {
+        return existing;
+    }
+    cdsl_rule_t* rule = cdsl_parse_string(dsl_code);
+    if (!rule) {
+        if (err_buf) snprintf(err_buf, err_buf_sz, "Parse error");
+        return NULL;
+    }
+    if (schema) {
+        char verr[512] = {0};
+        if (!cdsl_verify_rule(rule, schema, verr, sizeof(verr))) {
+            if (err_buf) snprintf(err_buf, err_buf_sz, "Verify failed: %s", verr);
+            cdsl_free_rule(rule);
+            return 0;
+        }
+    }
+    if (existing) {
+        cdsl_free_rule(existing->rule);
+        free(existing->dsl_hash);
+    } else {
+        existing = calloc(1, sizeof(*existing));
+        cache->entries[idx] = existing;
+    }
+    existing->rule = rule;
+    existing->dsl_hash = strdup(dsl_code);
+    existing->verified = 1;
+    return existing;
+}
+
+cdsl_rule_report_t* cdsl_vm_execute_compiled(cdsl_vm_t* vm, cdsl_compiled_rule_t* compiled,
+                                              cdsl_context_t* ctx) {
+    if (!vm || !compiled || !compiled->rule || !ctx) return NULL;
+    return cdsl_vm_execute(vm, compiled->rule, ctx);
+}
+
 cdsl_ruleset_t* cdsl_ruleset_create(void) {
     return calloc(1, sizeof(cdsl_ruleset_t));
 }
