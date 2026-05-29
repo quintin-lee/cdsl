@@ -136,7 +136,7 @@ install(FILES "${CMAKE_CURRENT_BINARY_DIR}/cdsl.pc"
 )
 
 # 10. Code formatting (clang-format)
-option(CDSL_FORMAT_ON_BUILD "Run clang-format before every build" OFF)
+option(CDSL_FORMAT_ON_BUILD "Run clang-format before every build" ON)
 
 find_program(CLANG_FORMAT clang-format)
 if(CLANG_FORMAT)
