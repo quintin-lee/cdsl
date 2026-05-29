@@ -25,6 +25,7 @@ compile_commands.json
 *.swo
 *~
 .cache
+.codegraph/
 
 # OS
 .DS_Store
