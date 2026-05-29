@@ -22,20 +22,8 @@ bison_target(MyParser parser/parser.y ${CMAKE_CURRENT_BINARY_DIR}/parser.tab.c)
 flex_target(MyLexer parser/lexer.l ${CMAKE_CURRENT_BINARY_DIR}/lexer.c)
 add_flex_bison_dependency(MyLexer MyParser)
 
-set(CDSL_SOURCES
-    src/ast.c
-    src/abstract.c
-    src/vm_context.c
-    src/vm_eval.c
-    src/vm_cache.c
-    src/vm_ruleset.c
-    src/vm_codegen.c
-    src/vm_visualize.c
-    src/cdsl_json.c
-    src/cdsl_error.c
-    src/cdsl_arena.c
-    src/cdsl_hashmap.c
-    src/ai_bridge.c
+file(GLOB CDSL_SOURCES CONFIGURE_DEPENDS "src/*.c")
+list(APPEND CDSL_SOURCES
     ${BISON_MyParser_OUTPUTS}
     ${FLEX_MyLexer_OUTPUTS}
 )
@@ -90,21 +78,13 @@ target_link_libraries(cdsl_demo PRIVATE cdsl_static)
 
 # 6. Tests
 enable_testing()
-add_executable(test_ast tests/test_ast.c)
-target_link_libraries(test_ast PRIVATE cdsl_static)
-add_test(NAME test_ast COMMAND test_ast)
-
-add_executable(test_execution tests/test_execution.c)
-target_link_libraries(test_execution PRIVATE cdsl_static)
-add_test(NAME test_execution COMMAND test_execution)
-
-add_executable(test_parallel_parse tests/test_parallel_parse.c)
-target_link_libraries(test_parallel_parse PRIVATE cdsl_static)
-add_test(NAME test_parallel_parse COMMAND test_parallel_parse)
-
-add_executable(test_parallel_cache tests/test_parallel_cache.c)
-target_link_libraries(test_parallel_cache PRIVATE cdsl_static)
-add_test(NAME test_parallel_cache COMMAND test_parallel_cache)
+file(GLOB TEST_SOURCES CONFIGURE_DEPENDS "tests/test_*.c")
+foreach(test_src ${TEST_SOURCES})
+    get_filename_component(test_name ${test_src} NAME_WE)
+    add_executable(${test_name} ${test_src})
+    target_link_libraries(${test_name} PRIVATE cdsl_static)
+    add_test(NAME ${test_name} COMMAND ${test_name})
+endforeach()
 
 # 7. Install targets
 include(GNUInstallDirs)
@@ -160,18 +140,13 @@ option(CDSL_FORMAT_ON_BUILD "Run clang-format before every build" OFF)
 
 find_program(CLANG_FORMAT clang-format)
 if(CLANG_FORMAT)
-    set(CDSL_FORMAT_FILES
-        include/ast.h include/abstract.h include/execution.h
-        include/ai_bridge.h include/cdsl_json.h include/cdsl_error.h
-        include/cdsl_arena.h include/cdsl_hashmap.h
-        src/ast.c src/abstract.c
-        src/vm_eval.c src/vm_context.c src/vm_cache.c
-        src/vm_ruleset.c src/vm_codegen.c src/vm_visualize.c
-        src/cdsl_json.c src/cdsl_error.c src/cdsl_arena.c src/cdsl_hashmap.c
-        src/ai_bridge.c src/execution_internal.h
-        demo/main.c
-        tests/test.h tests/test_ast.c tests/test_execution.c
-        tests/test_parallel_cache.c tests/test_parallel_parse.c
+    file(GLOB_RECURSE CDSL_FORMAT_FILES CONFIGURE_DEPENDS
+        "include/*.h"
+        "src/*.c"
+        "src/*.h"
+        "demo/*.c"
+        "tests/*.c"
+        "tests/*.h"
     )
 
     add_custom_target(format
