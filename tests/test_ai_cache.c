@@ -30,9 +30,9 @@ test_ai_cache_injection(void)
 
 	cdsl_hashmap_t* map = cdsl_hashmap_create(10);
 	cdsl_ai_cache_t cache = {
-		.ctx = map,
-		.get = my_cache_get,
-		.put = my_cache_put,
+	    .ctx = map,
+	    .get = my_cache_get,
+	    .put = my_cache_put,
 	};
 
 	cdsl_ai_config_t cfg = cdsl_ai_config_default();

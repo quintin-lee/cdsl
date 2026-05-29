@@ -911,15 +911,18 @@ cdsl_ai_review(const char* dsl_code, const cdsl_schema_t* schema, const cdsl_ai_
 			if (root) {
 				cdsl_json_value_t* v;
 				if ((v = find_json_key(root, "approved"))) {
-					rev->approved = (v->type == JSON_BOOL) ? v->value.bool_val : 0;
+					rev->approved =
+					    (v->type == JSON_BOOL) ? v->value.bool_val : 0;
 				}
 				if ((v = find_json_key(root, "risk_score"))) {
-					rev->risk_score = (v->type == JSON_NUMBER) ? (int)v->value.number_val : 0;
+					rev->risk_score =
+					    (v->type == JSON_NUMBER) ? (int)v->value.number_val : 0;
 				}
 				if ((v = find_json_key(root, "reason")) && v->type == JSON_STRING) {
 					rev->reason = strdup(v->value.string_val);
 				}
-				if ((v = find_json_key(root, "suggestions")) && v->type == JSON_STRING) {
+				if ((v = find_json_key(root, "suggestions")) &&
+				    v->type == JSON_STRING) {
 					rev->suggestions = strdup(v->value.string_val);
 				}
 				cdsl_json_free(root);
@@ -1104,8 +1107,7 @@ call_llm_api_stream(const char* prompt,
 	char line[4096];
 	while (fgets(line, sizeof(line), fp)) {
 		if (strncmp(line, "data: ", 6) == 0) {
-			process_sse_data(
-			    line + 6, &result, &total, &cap, callback, user_data);
+			process_sse_data(line + 6, &result, &total, &cap, callback, user_data);
 		}
 	}
 	pclose(fp);

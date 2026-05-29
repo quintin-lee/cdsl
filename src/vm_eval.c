@@ -295,7 +295,8 @@ cdsl_eval_expr_internal(
 						"[TRACE]   calling function: %s()\n",
 						expr->data.call.func_name);
 				}
-				result = fn->cb(expr->data.call.func_name, expr->data.call.args, ctx, vm);
+				result = fn->cb(
+				    expr->data.call.func_name, expr->data.call.args, ctx, vm);
 				if (debug) {
 					fprintf(stderr, "[TRACE]   function result: ");
 					switch (result.type) {

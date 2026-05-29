@@ -45,7 +45,8 @@ builtin_contains(const char* name, cdsl_arg_node_t* args, cdsl_context_t* ctx, c
 
 	if (haystack.type == CDSL_TYPE_STRING && needle.type == CDSL_TYPE_STRING &&
 	    haystack.data.string_val && needle.data.string_val) {
-		res.data.bool_val = (strstr(haystack.data.string_val, needle.data.string_val) != NULL);
+		res.data.bool_val =
+		    (strstr(haystack.data.string_val, needle.data.string_val) != NULL);
 	}
 	return res;
 }
@@ -56,8 +57,9 @@ builtin_contains(const char* name, cdsl_arg_node_t* args, cdsl_context_t* ctx, c
 static time_t
 parse_iso_date(const char* s)
 {
-	if (!s || strlen(s) < 10)
+	if (!s || strlen(s) < 10) {
 		return 0;
+	}
 	struct tm tm = {0};
 	if (sscanf(s, "%d-%d-%d", &tm.tm_year, &tm.tm_mon, &tm.tm_mday) != 3) {
 		return 0;
