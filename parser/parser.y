@@ -67,7 +67,7 @@ rule_declaration:
     | RULE IDENTIFIER EXTENDS IDENTIFIER '{' meta_block '}' {
         $$ = cdsl_create_extends_rule($2, $4, $6);
     }
-    | error '}' { yy_error_count++; yyerrok; $$ = NULL; }
+    | error { yy_error_count++; yyerrok; yyclearin; $$ = NULL; }
     ;
 
 template_declaration:
@@ -77,19 +77,6 @@ template_declaration:
             cdsl_meta_item_t* m = cdsl_create_meta_item(strdup("__is_template"), strdup("true"));
             $$->meta_list = cdsl_append_meta($$->meta_list, m);
         }
-    }
-    | error '}' { yy_error_count++; yyerrok; $$ = NULL; }
-    ;
-
-rule_declaration:
-    RULE IDENTIFIER '{' meta_block WHEN expression THEN action_statement '}' {
-        $$ = cdsl_create_simple_rule($2, $4, $6, $8);
-    }
-    | RULE IDENTIFIER '{' meta_block metric_list '}' {
-        $$ = cdsl_create_metric_rule($2, $4, $5);
-    }
-    | RULE IDENTIFIER EXTENDS IDENTIFIER '{' meta_block '}' {
-        $$ = cdsl_create_extends_rule($2, $4, $6);
     }
     ;
 
