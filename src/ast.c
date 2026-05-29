@@ -168,9 +168,9 @@ cdsl_create_meta_item(char* key, char* value)
 }
 
 /**
- * @brief Prepend a meta item to a metadata list.
+ * @brief Append a meta item to a metadata list.
  * @param list Existing list (may be NULL)
- * @param item Item to prepend
+ * @param item Item to append
  * @return New head of the list
  */
 cdsl_meta_item_t*
@@ -179,8 +179,12 @@ cdsl_append_meta(cdsl_meta_item_t* list, cdsl_meta_item_t* item)
 	if (!list) {
 		return item;
 	}
-	item->next = list;
-	return item;
+	cdsl_meta_item_t* cur = list;
+	while (cur->next) {
+		cur = cur->next;
+	}
+	cur->next = item;
+	return list;
 }
 
 /**
@@ -199,9 +203,9 @@ cdsl_create_case(cdsl_expr_node_t* cond, cdsl_action_node_t* action)
 }
 
 /**
- * @brief Prepend a case item to a case list.
+ * @brief Append a case item to a case list.
  * @param list Existing list (may be NULL)
- * @param item Item to prepend
+ * @param item Item to append
  * @return New head of the list
  */
 cdsl_case_node_t*
@@ -210,19 +214,20 @@ cdsl_append_case(cdsl_case_node_t* list, cdsl_case_node_t* item)
 	if (!list) {
 		return item;
 	}
-	item->next = list;
-	return item;
+	cdsl_case_node_t* cur = list;
+	while (cur->next) {
+		cur = cur->next;
+	}
+	cur->next = item;
+	return list;
 }
 
 /**
  * @brief Create a metric node for scoring rules.
  *
- * The case list is reversed internally to restore the original
- * DSL declaration order (the parser prepends entries).
- *
  * @param name  Metric name (takes ownership)
  * @param meta  Metadata list (takes ownership)
- * @param cases CASE branch list (takes ownership, will be reversed)
+ * @param cases CASE branch list (takes ownership)
  * @param def_act DEFAULT action (takes ownership)
  * @return New metric node
  */
@@ -235,22 +240,15 @@ cdsl_create_metric(char* name,
 	cdsl_metric_node_t* m = calloc(1, sizeof(*m));
 	m->name = name;
 	m->meta_list = meta;
-	cdsl_case_node_t* prev = NULL;
-	while (cases) {
-		cdsl_case_node_t* next = cases->next;
-		cases->next = prev;
-		prev = cases;
-		cases = next;
-	}
-	m->case_list = prev;
+	m->case_list = cases;
 	m->default_action = def_act;
 	return m;
 }
 
 /**
- * @brief Prepend a metric to a metric list.
+ * @brief Append a metric to a metric list.
  * @param list Existing list (may be NULL)
- * @param item Item to prepend
+ * @param item Item to append
  * @return New head of the list
  */
 cdsl_metric_node_t*
@@ -259,8 +257,12 @@ cdsl_append_metric(cdsl_metric_node_t* list, cdsl_metric_node_t* item)
 	if (!list) {
 		return item;
 	}
-	item->next = list;
-	return item;
+	cdsl_metric_node_t* cur = list;
+	while (cur->next) {
+		cur = cur->next;
+	}
+	cur->next = item;
+	return list;
 }
 
 /**
