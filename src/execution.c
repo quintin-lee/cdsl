@@ -290,6 +290,7 @@ cdsl_vm_create(const cdsl_schema_t* schema)
 	cdsl_vm_t* vm = calloc(1, sizeof(*vm));
 	vm->schema = schema;
 	vm->debug_enabled = 0;
+	vm->max_expr_depth = CDSL_MAX_EXPR_DEPTH;
 	return vm;
 }
 
@@ -304,6 +305,20 @@ cdsl_vm_set_debug(cdsl_vm_t* vm, int enabled)
 {
 	if (vm) {
 		vm->debug_enabled = enabled;
+	}
+}
+
+int
+cdsl_vm_get_max_expr_depth(const cdsl_vm_t* vm)
+{
+	return vm ? vm->max_expr_depth : CDSL_MAX_EXPR_DEPTH;
+}
+
+void
+cdsl_vm_set_max_expr_depth(cdsl_vm_t* vm, int depth)
+{
+	if (vm && depth > 0) {
+		vm->max_expr_depth = depth;
 	}
 }
 
@@ -425,10 +440,17 @@ cdsl_vm_register_function(cdsl_vm_t* vm, const char* func_name, cdsl_func_cb_t c
  * @return Evaluated value
  */
 static cdsl_value_t
-eval_expr(cdsl_expr_node_t* expr, cdsl_context_t* ctx, cdsl_vm_t* vm, int debug)
+eval_expr(cdsl_expr_node_t* expr, cdsl_context_t* ctx, cdsl_vm_t* vm, int debug, int depth)
 {
 	cdsl_value_t result = {.type = CDSL_TYPE_VOID};
 	if (!expr) {
+		return result;
+	}
+	int limit = vm ? vm->max_expr_depth : CDSL_MAX_EXPR_DEPTH;
+	if (depth >= limit) {
+		if (debug) {
+			fprintf(stderr, "[TRACE]   max expr depth (%d) exceeded\n", limit);
+		}
 		return result;
 	}
 
@@ -497,7 +519,7 @@ eval_expr(cdsl_expr_node_t* expr, cdsl_context_t* ctx, cdsl_vm_t* vm, int debug)
 		break;
 	}
 	case CDSL_EXPR_UNARY: {
-		cdsl_value_t v = eval_expr(expr->data.unary.expr, ctx, vm, debug);
+		cdsl_value_t v = eval_expr(expr->data.unary.expr, ctx, vm, debug, depth + 1);
 		if (expr->data.unary.op == CDSL_OP_NOT) {
 			result.type = CDSL_TYPE_BOOL;
 			result.data.bool_val = !v.data.bool_val;
@@ -513,7 +535,8 @@ eval_expr(cdsl_expr_node_t* expr, cdsl_context_t* ctx, cdsl_vm_t* vm, int debug)
 	case CDSL_EXPR_BINARY: {
 		cdsl_op_t op = expr->data.binary.op;
 		if (op == CDSL_OP_AND) {
-			cdsl_value_t l = eval_expr(expr->data.binary.left, ctx, vm, debug);
+			cdsl_value_t l =
+			    eval_expr(expr->data.binary.left, ctx, vm, debug, depth + 1);
 			if (!l.data.bool_val) {
 				result.type = CDSL_TYPE_BOOL;
 				result.data.bool_val = 0;
@@ -522,7 +545,8 @@ eval_expr(cdsl_expr_node_t* expr, cdsl_context_t* ctx, cdsl_vm_t* vm, int debug)
 				}
 				break;
 			}
-			cdsl_value_t r = eval_expr(expr->data.binary.right, ctx, vm, debug);
+			cdsl_value_t r =
+			    eval_expr(expr->data.binary.right, ctx, vm, debug, depth + 1);
 			result.type = CDSL_TYPE_BOOL;
 			result.data.bool_val = r.data.bool_val;
 			if (debug) {
@@ -534,7 +558,8 @@ eval_expr(cdsl_expr_node_t* expr, cdsl_context_t* ctx, cdsl_vm_t* vm, int debug)
 			break;
 		}
 		if (op == CDSL_OP_OR) {
-			cdsl_value_t l = eval_expr(expr->data.binary.left, ctx, vm, debug);
+			cdsl_value_t l =
+			    eval_expr(expr->data.binary.left, ctx, vm, debug, depth + 1);
 			if (l.data.bool_val) {
 				result.type = CDSL_TYPE_BOOL;
 				result.data.bool_val = 1;
@@ -543,7 +568,8 @@ eval_expr(cdsl_expr_node_t* expr, cdsl_context_t* ctx, cdsl_vm_t* vm, int debug)
 				}
 				break;
 			}
-			cdsl_value_t r = eval_expr(expr->data.binary.right, ctx, vm, debug);
+			cdsl_value_t r =
+			    eval_expr(expr->data.binary.right, ctx, vm, debug, depth + 1);
 			result.type = CDSL_TYPE_BOOL;
 			result.data.bool_val = r.data.bool_val;
 			if (debug) {
@@ -554,8 +580,8 @@ eval_expr(cdsl_expr_node_t* expr, cdsl_context_t* ctx, cdsl_vm_t* vm, int debug)
 			}
 			break;
 		}
-		cdsl_value_t l = eval_expr(expr->data.binary.left, ctx, vm, debug);
-		cdsl_value_t r = eval_expr(expr->data.binary.right, ctx, vm, debug);
+		cdsl_value_t l = eval_expr(expr->data.binary.left, ctx, vm, debug, depth + 1);
+		cdsl_value_t r = eval_expr(expr->data.binary.right, ctx, vm, debug, depth + 1);
 
 		if (l.type == CDSL_TYPE_STRING && r.type == CDSL_TYPE_STRING &&
 		    (op == CDSL_OP_EQ || op == CDSL_OP_NE)) {
@@ -743,7 +769,8 @@ execute_metric_rule(cdsl_vm_t* vm, const cdsl_rule_t* rule, cdsl_context_t* ctx)
 					"[TRACE] eval CASE condition for metric '%s'\n",
 					m->name);
 			}
-			cdsl_value_t cond = eval_expr(c->condition, ctx, vm, vm->debug_enabled);
+			cdsl_value_t cond = eval_expr(c->condition, ctx, vm, vm->debug_enabled, 0);
+
 			if (cond.type == CDSL_TYPE_BOOL && cond.data.bool_val) {
 				if (vm->debug_enabled) {
 					fprintf(stderr, "[TRACE]   CASE matched\n");
@@ -752,7 +779,7 @@ execute_metric_rule(cdsl_vm_t* vm, const cdsl_rule_t* rule, cdsl_context_t* ctx)
 				if (c->action && strcmp(c->action->action_name, "score") == 0 &&
 				    c->action->args) {
 					cdsl_value_t sv = eval_expr(
-					    c->action->args->expr, ctx, vm, vm->debug_enabled);
+					    c->action->args->expr, ctx, vm, vm->debug_enabled, 0);
 					mr->score_obtained =
 					    (sv.type == CDSL_TYPE_INT) ? sv.data.int_val : 0;
 				} else {
@@ -779,7 +806,7 @@ execute_metric_rule(cdsl_vm_t* vm, const cdsl_rule_t* rule, cdsl_context_t* ctx)
 			    strcmp(m->default_action->action_name, "score") == 0 &&
 			    m->default_action->args) {
 				cdsl_value_t sv = eval_expr(
-				    m->default_action->args->expr, ctx, vm, vm->debug_enabled);
+				    m->default_action->args->expr, ctx, vm, vm->debug_enabled, 0);
 				mr->score_obtained =
 				    (sv.type == CDSL_TYPE_INT) ? sv.data.int_val : 0;
 			} else if (m->default_action &&
@@ -790,7 +817,8 @@ execute_metric_rule(cdsl_vm_t* vm, const cdsl_rule_t* rule, cdsl_context_t* ctx)
 					    eval_expr(m->default_action->args->next->expr,
 						      ctx,
 						      vm,
-						      vm->debug_enabled);
+						      vm->debug_enabled,
+						      0);
 					if (rv.type == CDSL_TYPE_STRING) {
 						mr->violation_reason = strdup(rv.data.string_val);
 					}
@@ -884,7 +912,7 @@ execute_simple_rule(cdsl_vm_t* vm, const cdsl_rule_t* rule, cdsl_context_t* ctx)
 	if (vm->debug_enabled) {
 		fprintf(stderr, "[TRACE] Evaluating simple rule '%s'\n", rule->name);
 	}
-	cdsl_value_t cond = eval_expr(rule->when_expr, ctx, vm, vm->debug_enabled);
+	cdsl_value_t cond = eval_expr(rule->when_expr, ctx, vm, vm->debug_enabled, 0);
 	int triggered = (cond.type == CDSL_TYPE_BOOL) ? cond.data.bool_val : 0;
 	if (vm->debug_enabled) {
 		fprintf(stderr, "[TRACE] WHEN result: %s\n", triggered ? "true" : "false");

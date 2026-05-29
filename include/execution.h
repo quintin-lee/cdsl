@@ -130,6 +130,7 @@ typedef struct cdsl_vm {
 	void* user_data;		   /**< User data passed to callbacks */
 	int debug_enabled;		   /**< 1 to enable trace output */
 	cdsl_stats_t stats;		   /**< Execution statistics */
+	int max_expr_depth; /**< Max expression nesting depth (default CDSL_MAX_EXPR_DEPTH) */
 } cdsl_vm_t;
 
 /**
@@ -211,6 +212,8 @@ void cdsl_vm_free(cdsl_vm_t* vm);
 void cdsl_vm_register_action(cdsl_vm_t* vm, const char* action_name, cdsl_action_cb_t cb);
 void cdsl_vm_register_function(cdsl_vm_t* vm, const char* func_name, cdsl_func_cb_t cb);
 void cdsl_vm_set_debug(cdsl_vm_t* vm, int enabled);
+int cdsl_vm_get_max_expr_depth(const cdsl_vm_t* vm);
+void cdsl_vm_set_max_expr_depth(cdsl_vm_t* vm, int depth);
 
 cdsl_stats_t* cdsl_vm_get_stats(const cdsl_vm_t* vm);
 void cdsl_vm_reset_stats(cdsl_vm_t* vm);
