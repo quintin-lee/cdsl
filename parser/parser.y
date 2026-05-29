@@ -5,6 +5,10 @@
 #include <string.h>
 #include "ast.h"
 
+#if defined(__GNUC__) || defined(__clang__)
+#pragma GCC diagnostic ignored "-Wunused-but-set-variable"
+#endif
+
 /* Forward declaration for the reentrant lexer */
 typedef void* yyscan_t;
 int yylex(void* yylval_param, yyscan_t yyscanner);
