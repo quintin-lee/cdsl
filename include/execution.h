@@ -240,6 +240,8 @@ int cdsl_ruleset_load_string(cdsl_ruleset_t* set, const char* dsl_code, int prio
 int cdsl_ruleset_reload_file(cdsl_ruleset_t* set, const char* rule_name,
                               const char* filepath, const cdsl_schema_t* schema,
                               char* err_buf, int err_buf_sz);
+int cdsl_ruleset_validate_deps(const cdsl_ruleset_t* set, char* err_buf, int err_buf_sz);
+int cdsl_ruleset_topo_sort(cdsl_ruleset_t* set);
 /** @} */
 
 #endif

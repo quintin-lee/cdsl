@@ -807,3 +807,110 @@ cdsl_ruleset_report_t* cdsl_vm_execute_ruleset_parallel(cdsl_vm_t* vm, cdsl_rule
     rpt->summary = strdup(buf);
     return rpt;
 }
+
+int cdsl_ruleset_validate_deps(const cdsl_ruleset_t* set, char* err_buf, int err_buf_sz) {
+    if (!set) return 1;
+    for (cdsl_ruleset_entry_t* e = set->entries; e; e = e->next) {
+        if (!e->rule || !e->rule->meta_list) continue;
+        char* deps = cdsl_meta_get(e->rule->meta_list, "depends_on");
+        if (!deps) continue;
+        char dep_buf[1024];
+        strncpy(dep_buf, deps, sizeof(dep_buf) - 1);
+        dep_buf[sizeof(dep_buf) - 1] = '\0';
+        char* token = strtok(dep_buf, ",");
+        while (token) {
+            while (*token == ' ') token++;
+            int found = 0;
+            for (cdsl_ruleset_entry_t* f = set->entries; f; f = f->next) {
+                if (f->rule && f->rule->name && strcmp(f->rule->name, token) == 0) {
+                    found = 1;
+                    break;
+                }
+            }
+            if (!found) {
+                if (err_buf) snprintf(err_buf, err_buf_sz,
+                    "Rule '%s' depends on '%s' which is not in the ruleset",
+                    e->rule->name, token);
+                return 0;
+            }
+            token = strtok(NULL, ",");
+        }
+    }
+    return 1;
+}
+
+int cdsl_ruleset_topo_sort(cdsl_ruleset_t* set) {
+    if (!set || set->count <= 1) return 1;
+
+    int n = set->count;
+    cdsl_ruleset_entry_t** arr = malloc(sizeof(cdsl_ruleset_entry_t*) * n);
+    int idx = 0;
+    for (cdsl_ruleset_entry_t* e = set->entries; e; e = e->next) arr[idx++] = e;
+
+    int* in_degree = calloc(n, sizeof(int));
+    for (int i = 0; i < n; i++) {
+        if (!arr[i]->rule || !arr[i]->rule->meta_list) continue;
+        char* deps = cdsl_meta_get(arr[i]->rule->meta_list, "depends_on");
+        if (!deps) continue;
+        char dep_buf[1024];
+        strncpy(dep_buf, deps, sizeof(dep_buf) - 1);
+        dep_buf[sizeof(dep_buf) - 1] = '\0';
+        char* token = strtok(dep_buf, ",");
+        while (token) {
+            while (*token == ' ') token++;
+            for (int j = 0; j < n; j++) {
+                if (arr[j]->rule && arr[j]->rule->name && strcmp(arr[j]->rule->name, token) == 0) {
+                    in_degree[i]++;
+                }
+            }
+            token = strtok(NULL, ",");
+        }
+    }
+
+    int changed = 1;
+    while (changed) {
+        changed = 0;
+        for (int i = 0; i < n; i++) {
+            if (in_degree[i] == 0 && arr[i]->priority != -1) {
+                arr[i]->priority = -1;
+                for (int j = 0; j < n; j++) {
+                    if (arr[j]->rule && arr[j]->rule->meta_list && arr[j]->priority != -1) {
+                        char* deps = cdsl_meta_get(arr[j]->rule->meta_list, "depends_on");
+                        if (deps && strstr(deps, arr[i]->rule->name)) {
+                            in_degree[j]--;
+                        }
+                    }
+                }
+                changed = 1;
+            }
+        }
+    }
+
+    int new_p = 1;
+    for (int i = 0; i < n; i++) {
+        if (arr[i]->priority == -1) {
+            arr[i]->priority = new_p++;
+        }
+    }
+
+    set->entries = NULL;
+    cdsl_ruleset_entry_t* tail = NULL;
+    for (int p = 1; p <= n; p++) {
+        for (int i = 0; i < n; i++) {
+            if (arr[i]->priority == p) {
+                arr[i]->next = NULL;
+                if (!set->entries) {
+                    set->entries = arr[i];
+                    tail = arr[i];
+                } else {
+                    tail->next = arr[i];
+                    tail = arr[i];
+                }
+            }
+        }
+    }
+
+    free(in_degree);
+    free(arr);
+    return 1;
+}
