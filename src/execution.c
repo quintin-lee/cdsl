@@ -4,6 +4,7 @@
 #include <string.h>
 #include <stdio.h>
 #include <math.h>
+#include <pthread.h>
 
 cdsl_context_t* cdsl_context_create(const cdsl_schema_t* schema) {
     cdsl_context_t* ctx = calloc(1, sizeof(*ctx));
@@ -730,4 +731,79 @@ int cdsl_ruleset_reload_file(cdsl_ruleset_t* set, const char* rule_name,
                               char* err_buf, int err_buf_sz) {
     cdsl_ruleset_remove(set, rule_name);
     return cdsl_ruleset_load_file(set, filepath, 0, schema, err_buf, err_buf_sz);
+}
+
+typedef struct {
+    cdsl_vm_t* vm;
+    cdsl_rule_t* rule;
+    cdsl_context_t* ctx;
+    cdsl_rule_report_t* result;
+} parallel_thread_arg_t;
+
+static void* parallel_worker(void* arg) {
+    parallel_thread_arg_t* ta = (parallel_thread_arg_t*)arg;
+    ta->result = cdsl_vm_execute(ta->vm, ta->rule, ta->ctx);
+    return NULL;
+}
+
+cdsl_ruleset_report_t* cdsl_vm_execute_ruleset_parallel(cdsl_vm_t* vm, cdsl_ruleset_t* set,
+                                                          cdsl_context_t* ctx, int thread_count) {
+    if (!vm || !set || !ctx) return NULL;
+    if (set->count == 0) return cdsl_vm_execute_ruleset(vm, set, ctx);
+    if (thread_count <= 0) thread_count = 4;
+    if (thread_count > set->count) thread_count = set->count;
+
+    cdsl_ruleset_report_t* rpt = calloc(1, sizeof(*rpt));
+    rpt->rule_count = set->count;
+    rpt->rule_reports = calloc(set->count, sizeof(cdsl_rule_report_t*));
+
+    int idx = 0;
+    for (cdsl_ruleset_entry_t* e = set->entries; e; e = e->next) {
+        int batch = (thread_count < set->count - idx) ? thread_count : set->count - idx;
+        if (batch > thread_count) batch = thread_count;
+
+        pthread_t* threads = malloc(sizeof(pthread_t) * batch);
+        parallel_thread_arg_t* args = malloc(sizeof(parallel_thread_arg_t) * batch);
+
+        cdsl_ruleset_entry_t* cur = e;
+        for (int i = 0; i < batch && cur; i++, cur = cur->next) {
+            args[i].vm = vm;
+            args[i].rule = cur->rule;
+            args[i].ctx = ctx;
+            args[i].result = NULL;
+            pthread_create(&threads[i], NULL, parallel_worker, &args[i]);
+        }
+
+        for (int i = 0; i < batch; i++) {
+            pthread_join(threads[i], NULL);
+            rpt->rule_reports[idx++] = args[i].result;
+        }
+
+        free(threads);
+        free(args);
+        e = cur ? cur : e;
+    }
+
+    int agg_score = 0, agg_max = 0;
+    for (int i = 0; i < rpt->rule_count; i++) {
+        cdsl_rule_report_t* rr = rpt->rule_reports[i];
+        if (!rr) continue;
+        agg_score += rr->total_obtained_score;
+        agg_max += rr->total_max_score;
+        switch (rr->status) {
+            case CDSL_STATUS_PASSED:           rpt->total_passed++; break;
+            case CDSL_STATUS_PARTIALLY_PASSED: rpt->total_partially++; break;
+            case CDSL_STATUS_FAILED:           rpt->total_failed++; break;
+            default:                           rpt->total_error++; break;
+        }
+    }
+    rpt->aggregate_score = agg_score;
+    rpt->aggregate_max = agg_max;
+
+    char buf[256];
+    snprintf(buf, sizeof(buf), "%d rules: %d passed, %d partial, %d failed | Score: %d/%d (parallel)",
+             rpt->rule_count, rpt->total_passed, rpt->total_partially,
+             rpt->total_failed, agg_score, agg_max);
+    rpt->summary = strdup(buf);
+    return rpt;
 }

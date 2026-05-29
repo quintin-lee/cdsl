@@ -229,6 +229,8 @@ void cdsl_ruleset_free(cdsl_ruleset_t* set);
 void cdsl_ruleset_add(cdsl_ruleset_t* set, cdsl_rule_t* rule, int priority);
 int cdsl_ruleset_remove(cdsl_ruleset_t* set, const char* rule_name);
 cdsl_ruleset_report_t* cdsl_vm_execute_ruleset(cdsl_vm_t* vm, cdsl_ruleset_t* set, cdsl_context_t* ctx);
+cdsl_ruleset_report_t* cdsl_vm_execute_ruleset_parallel(cdsl_vm_t* vm, cdsl_ruleset_t* set,
+                                                          cdsl_context_t* ctx, int thread_count);
 void cdsl_ruleset_report_free(cdsl_ruleset_report_t* report);
 void cdsl_ruleset_report_print(const cdsl_ruleset_report_t* report);
 int cdsl_ruleset_load_file(cdsl_ruleset_t* set, const char* filepath, int priority,

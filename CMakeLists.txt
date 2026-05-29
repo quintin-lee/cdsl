@@ -33,6 +33,8 @@ target_include_directories(cdsl_static PUBLIC
     $<BUILD_INTERFACE:${CMAKE_CURRENT_BINARY_DIR}>
 )
 set_target_properties(cdsl_static PROPERTIES OUTPUT_NAME cdsl)
+find_package(Threads REQUIRED)
+target_link_libraries(cdsl_static PUBLIC Threads::Threads)
 
 # 3. Shared library
 add_library(cdsl_shared SHARED ${CDSL_SOURCES})
@@ -40,6 +42,7 @@ target_include_directories(cdsl_shared PUBLIC
     $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
     $<BUILD_INTERFACE:${CMAKE_CURRENT_BINARY_DIR}>
 )
+target_link_libraries(cdsl_shared PUBLIC Threads::Threads)
 set_target_properties(cdsl_shared PROPERTIES
     OUTPUT_NAME cdsl
     VERSION ${PROJECT_VERSION}
