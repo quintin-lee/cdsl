@@ -17,6 +17,8 @@
 "METRIC"                { return METRIC; }
 "CASE"                  { return CASE; }
 "DEFAULT"               { return DEFAULT; }
+"TEMPLATE"              { return TEMPLATE; }
+"EXTENDS"               { return EXTENDS; }
 
 "AND"|&&                { return AND; }
 "OR"|\|\|               { return OR; }

@@ -232,6 +232,8 @@ cdsl_rule_t* cdsl_create_simple_rule(char* name, cdsl_meta_item_t* meta,
                                       cdsl_expr_node_t* when, cdsl_action_node_t* then);
 cdsl_rule_t* cdsl_create_metric_rule(char* name, cdsl_meta_item_t* meta,
                                       cdsl_metric_node_t* metrics);
+cdsl_rule_t* cdsl_create_extends_rule(char* name, char* template_name,
+                                       cdsl_meta_item_t* meta);
 /** @} */
 
 /** @name Memory Management */
@@ -255,6 +257,13 @@ void cdsl_free_rule(cdsl_rule_t* rule);
  * @return Parsed rule, or NULL on parse error
  */
 cdsl_rule_t* cdsl_parse_string(const char* dsl_code);
+
+/** @name Template Registry */
+/** @{ */
+void cdsl_template_register(cdsl_rule_t* template_rule);
+cdsl_rule_t* cdsl_template_get(const char* name);
+void cdsl_template_clear(void);
+/** @} */
 
 #endif
 /** @} */

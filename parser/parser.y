@@ -25,7 +25,7 @@ cdsl_rule_t* final_parsed_rule = NULL;
     struct cdsl_rule* rule;
 }
 
-%token RULE META WHEN THEN METRIC CASE DEFAULT
+%token RULE META WHEN THEN METRIC CASE DEFAULT TEMPLATE EXTENDS
 %token <id_val> IDENTIFIER
 %token <int_val> INT_LIT
 %token <float_val> FLOAT_LIT
@@ -37,7 +37,7 @@ cdsl_rule_t* final_parsed_rule = NULL;
 %right NOT
 %nonassoc EQ NE LT GT LE GE
 
-%type <rule> program rule_declaration
+%type <rule> program rule_declaration template_declaration
 %type <meta_list> meta_block meta_list meta_item
 %type <expr> expression
 %type <arg_list> argument_list argument_list_nonempty
@@ -49,6 +49,17 @@ cdsl_rule_t* final_parsed_rule = NULL;
 
 program:
     rule_declaration { final_parsed_rule = $1; }
+    | template_declaration { final_parsed_rule = $1; }
+    ;
+
+template_declaration:
+    TEMPLATE IDENTIFIER '{' meta_block metric_list '}' {
+        $$ = cdsl_create_metric_rule($2, $4, $5);
+        if ($$) {
+            cdsl_meta_item_t* m = cdsl_create_meta_item(strdup("__is_template"), strdup("true"));
+            $$->meta_list = cdsl_append_meta($$->meta_list, m);
+        }
+    }
     ;
 
 rule_declaration:
@@ -57,6 +68,9 @@ rule_declaration:
     }
     | RULE IDENTIFIER '{' meta_block metric_list '}' {
         $$ = cdsl_create_metric_rule($2, $4, $5);
+    }
+    | RULE IDENTIFIER EXTENDS IDENTIFIER '{' meta_block '}' {
+        $$ = cdsl_create_extends_rule($2, $4, $6);
     }
     ;
 

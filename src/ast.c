@@ -261,3 +261,77 @@ cdsl_rule_t* cdsl_parse_string(const char* dsl_code) {
     yy_delete_buffer(buf);
     return final_parsed_rule;
 }
+
+typedef struct cdsl_template_entry {
+    char* name;
+    cdsl_rule_t* rule;
+    struct cdsl_template_entry* next;
+} cdsl_template_entry_t;
+
+static cdsl_template_entry_t* template_registry = NULL;
+
+void cdsl_template_register(cdsl_rule_t* template_rule) {
+    if (!template_rule || !template_rule->name) return;
+    cdsl_template_entry_t* e = calloc(1, sizeof(*e));
+    e->name = strdup(template_rule->name);
+    e->rule = template_rule;
+    e->next = template_registry;
+    template_registry = e;
+}
+
+cdsl_rule_t* cdsl_template_get(const char* name) {
+    for (cdsl_template_entry_t* e = template_registry; e; e = e->next) {
+        if (strcmp(e->name, name) == 0) return e->rule;
+    }
+    return NULL;
+}
+
+void cdsl_template_clear(void) {
+    cdsl_template_entry_t* e = template_registry;
+    while (e) {
+        cdsl_template_entry_t* next = e->next;
+        free(e->name);
+        free(e);
+        e = next;
+    }
+    template_registry = NULL;
+}
+
+static cdsl_metric_node_t* copy_metric_list(cdsl_metric_node_t* src) {
+    if (!src) return NULL;
+    cdsl_metric_node_t* head = NULL;
+    cdsl_metric_node_t* tail = NULL;
+    for (cdsl_metric_node_t* m = src; m; m = m->next) {
+        cdsl_metric_node_t* nm = calloc(1, sizeof(*nm));
+        nm->name = strdup(m->name);
+        nm->meta_list = NULL;
+        for (cdsl_meta_item_t* mi = m->meta_list; mi; mi = mi->next) {
+            cdsl_meta_item_t* nmi = cdsl_create_meta_item(strdup(mi->key), strdup(mi->value));
+            nm->meta_list = cdsl_append_meta(nm->meta_list, nmi);
+        }
+        nm->case_list = NULL;
+        for (cdsl_case_node_t* c = m->case_list; c; c = c->next) {
+            nm->case_list = cdsl_append_case(nm->case_list, cdsl_create_case(c->condition, c->action));
+        }
+        nm->default_action = m->default_action;
+        nm->next = NULL;
+        if (!head) { head = nm; tail = nm; }
+        else { tail->next = nm; tail = nm; }
+    }
+    return head;
+}
+
+cdsl_rule_t* cdsl_create_extends_rule(char* name, char* template_name, cdsl_meta_item_t* meta) {
+    cdsl_rule_t* tpl = cdsl_template_get(template_name);
+    if (!tpl) {
+        fprintf(stderr, "Template '%s' not found\n", template_name);
+        free(name);
+        cdsl_free_meta(meta);
+        return NULL;
+    }
+    cdsl_rule_t* rule = calloc(1, sizeof(*rule));
+    rule->name = name;
+    rule->meta_list = meta;
+    rule->metrics = copy_metric_list(tpl->metrics);
+    return rule;
+}
