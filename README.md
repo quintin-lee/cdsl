@@ -2,123 +2,175 @@
 
 [![CI](https://github.com/quintin-lee/cdsl/actions/workflows/ci.yml/badge.svg)](https://github.com/quintin-lee/cdsl/actions/workflows/ci.yml)
 [![Docs](https://img.shields.io/badge/docs-github--pages-blue)](https://quintin-lee.github.io/cdsl/)
+[![License: MIT](https://img.shields.io/badge/license-MIT-green)](LICENSE)
+[![C Standard](https://img.shields.io/badge/C-99-blue)](https://en.wikipedia.org/wiki/C99)
 
-An AI-powered DSL rule engine framework in C with three-layer architecture (Syntax → Abstract → Execution), natural language translation, multi-metric scoring, and tri-state audit results.
+**C-DSL** is an AI-powered domain-specific language rule engine for business rule validation. It translates natural language rules into executable DSL, evaluates them with multi-metric scoring, and produces tri-state audit reports (PASSED / PARTIALLY PASSED / FAILED).
+
+---
+
+## Table of Contents
+
+- [Features](#features)
+- [Quick Start](#quick-start)
+- [Integration](#integration)
+- [Architecture Overview](#architecture-overview)
+- [DSL Syntax](#dsl-syntax)
+- [Project Structure](#project-structure)
+- [API Overview](#api-overview)
+- [Documentation](#documentation)
+- [Thread Safety](#thread-safety)
+- [License](#license)
+
+---
 
 ## Features
 
 ### Core Engine
-- **Three-layer architecture**: Syntax (Flex/Bison) → Abstract (Schema verification) → Execution (VM)
-- **Dual rule types**: Simple WHEN/THEN pass-fail rules and multi-metric METRIC/CASE/DEFAULT scoring rules
-- **Tri-state results**: PASSED / PARTIALLY_PASSED / FAILED with weighted scoring and critical-rule veto
-- **Zero external dependencies**: Custom JSON parser, arena allocator, hash map — no third-party libs
+
+- **Three-layer architecture** — Syntax (Flex/Bison) → Abstract (Schema verification) → Execution (VM)
+- **Dual rule types** — Simple WHEN/THEN pass-fail and multi-metric METRIC/CASE/DEFAULT scoring
+- **Tri-state results** — PASSED / PARTIALLY PASSED / FAILED with weighted scoring and critical-rule veto
+- **Zero external dependencies** — Custom JSON parser, arena allocator, hash map; no third-party libraries
 
 ### Rule Management
-- **RuleSet batch execution**: Priority-ordered rule groups with aggregate reports
-- **Hot reload**: Load, remove, and reload rules at runtime from files or strings
-- **Dependency & topology**: `depends_on` metadata with topological sort for ordered execution
-- **Parallel execution**: Multi-threaded RuleSet evaluation via pthreads
 
-### Advanced Features
-- **Rule templates & inheritance**: `TEMPLATE`/`EXTENDS` keywords for reusable rule definitions
-- **Custom functions**: Register C callbacks as expression functions (e.g., `strlen(x)`)
-- **Expression compilation cache**: Cache parsed+verified rules by DSL hash for repeated use
-- **Performance monitoring**: Per-VM execution statistics (counts, timing)
-- **Debug trace mode**: Step-by-step expression evaluation output
+- **RuleSet batch execution** — Priority-ordered rule groups with aggregate reports
+- **Hot reload** — Load, remove, and reload rules at runtime from files or strings
+- **Dependency & topology** — `depends_on` metadata with topological sort for ordered execution
+- **Parallel execution** — Multi-threaded RuleSet evaluation via pthreads
+
+### Advanced Capabilities
+
+- **Rule templates & inheritance** — `TEMPLATE` / `EXTENDS` keywords for reusable rule definitions
+- **Custom functions** — Register C callbacks as expression functions (e.g., `strlen(x)`)
+- **Expression compilation cache** — Cache parsed and verified rules by DSL hash
+- **Performance monitoring** — Per-VM execution statistics (counts, timing)
+- **Debug trace mode** — Step-by-step expression evaluation output
 
 ### AI Integration
-- **Mock mode** (offline): Keyword-based NL-to-DSL translation and rule safety review
-- **LLM API mode**: OpenAI-compatible API via curl for real translation and review
-- **Streaming support**: Callback-based SSE streaming for translation and review
+
+- **Mock mode (offline)** — Keyword-based NL-to-DSL translation and structural rule safety review
+- **LLM API mode** — OpenAI-compatible API via cURL for real translation and review
+- **Streaming support** — Callback-based SSE streaming for translation and review
 
 ### Code Generation & Visualization
-- **C code generation**: Translate DSL rules to executable C code
-- **Graphviz DOT output**: Visualize rules and rule sets as directed graphs
+
+- **C code generation** — Translate DSL rules to executable C code
+- **Graphviz DOT output** — Visualize rules and rule sets as directed graphs
+
+---
 
 ## Quick Start
 
 ### Requirements
 
-- C99 compiler (GCC / Clang)
-- CMake 3.14+
-- Flex 2.6+
-- Bison 3.8+
+| Tool     | Minimum Version |
+|----------|-----------------|
+| C99 compiler (GCC / Clang) | —               |
+| CMake    | 3.14            |
+| Flex     | 2.6             |
+| Bison    | 3.8             |
 
 ### Build & Run
 
 ```bash
-mkdir build && cd build
-cmake ..
-make -j$(nproc)
+git clone <repo-url>
+cd cdsl
+cmake -B build && cmake --build build -j$(nproc)
 
 # Run demo (6 scenarios)
-./cdsl_demo
+./build/cdsl_demo
 
 # Run tests
-ctest
+ctest --test-dir build --output-on-failure
 
 # Generate Doxygen docs
-make doc
-# → docs/html/index.html
+cmake --build build --target doc
+# → build/docs/html/index.html
 # Or view online: https://quintin-lee.github.io/cdsl/
 ```
 
-### Integration
+### Demo Scenarios
 
-**add_subdirectory:**
+| #  | Scenario                  | Description                                          |
+|----|---------------------------|------------------------------------------------------|
+| 1  | Supplier Qualification    | AI-generated DSL with blacklist + capital + scoring  |
+| 2  | Document Format Audit     | Format (critical) + signature + size scoring         |
+| 3  | Content Safety Audit      | Sensitive words + PII + spam scoring                 |
+| 4  | JSON Context              | Variable bindings loaded from JSON string            |
+| 5  | Simple Rules              | Independent pass/fail checks                         |
+| 6  | RuleSet Batch             | Priority-ordered multi-rule execution                |
+
+---
+
+## Integration
+
+### Method 1: add_subdirectory
+
 ```cmake
 add_subdirectory(path/to/cdsl)
 target_link_libraries(your_app PRIVATE cdsl)
 ```
 
-**Installed (find_package):**
+### Method 2: Installed find_package
+
 ```bash
-cmake --install . --prefix /usr/local
+cmake --install build --prefix /usr/local
 ```
+
 ```cmake
 find_package(cdsl REQUIRED)
 target_link_libraries(your_app PRIVATE cdsl::cdsl_static)
 ```
 
-**pkg-config:**
+### Method 3: pkg-config
+
 ```bash
 pkg-config --cflags --libs cdsl
 ```
 
-## Architecture
+---
+
+## Architecture Overview
 
 ```
-┌─────────────────────────────────────────────┐
-│             AI Bridge Layer                  │
-│   NL → DSL translation + Safety Review      │
-│   (mock / OpenAI-compatible API / stream)    │
-└──────────────────┬──────────────────────────┘
-                   │ DSL String
-                   ▼
-┌─────────────────────────────────────────────┐
-│  1. Syntax Layer (Flex/Bison → AST)         │
-│     parser/lexer.l → parser/parser.y        │
-│     Output: cdsl_rule_t (AST)               │
-└──────────────────┬──────────────────────────┘
-                   │ Raw AST
-                   ▼
-┌─────────────────────────────────────────────┐
-│  2. Abstract Layer (Schema Verification)    │
-│     Type checking, variable resolution,     │
-│     action signature validation             │
-└──────────────────┬──────────────────────────┘
-                   │ Verified AST
-                   ▼
-┌─────────────────────────────────────────────┐
-│  3. Execution Layer (VM + Context)          │
-│     AST interpreter, scoring, report gen    │
-│     RuleSet / parallel / debug / stats      │
-└─────────────────────────────────────────────┘
+┌─────────────────────────────────────────────────────┐
+│                  AI Bridge Layer                     │
+│   NL → DSL translation + Safety Review              │
+│   (mock / OpenAI-compatible API / stream)            │
+└────────────────────┬────────────────────────────────┘
+                     │ DSL String
+                     ▼
+┌─────────────────────────────────────────────────────┐
+│  1. Syntax Layer (Flex/Bison → AST)                 │
+│     parser/lexer.l → parser/parser.y                │
+│     Output: cdsl_rule_t (AST)                       │
+└────────────────────┬────────────────────────────────┘
+                     │ Raw AST
+                     ▼
+┌─────────────────────────────────────────────────────┐
+│  2. Abstract Layer (Schema Verification)            │
+│     Type checking, variable resolution,             │
+│     action signature validation                     │
+└────────────────────┬────────────────────────────────┘
+                     │ Verified AST
+                     ▼
+┌─────────────────────────────────────────────────────┐
+│  3. Execution Layer (VM + Context)                  │
+│     AST interpreter, scoring, report generation     │
+│     RuleSet / parallel / debug / stats / codegen    │
+└─────────────────────────────────────────────────────┘
 ```
+
+See [Architecture Document](docs/architecture.md) for a detailed breakdown.
+
+---
 
 ## DSL Syntax
 
 ### Simple Rule (WHEN/THEN)
+
 ```
 RULE check_blacklist {
     META { description = "Blacklist check" }
@@ -126,10 +178,12 @@ RULE check_blacklist {
     THEN reject_supplier("blacklisted")
 }
 ```
+
 - WHEN **true** → trigger THEN → status **FAILED**
 - WHEN **false** → no action → status **PASSED**
 
 ### Scoring Rule (METRIC/CASE/DEFAULT)
+
 ```
 RULE supplier_audit {
     META { description = "Supplier audit" pass_threshold = "80" partial_threshold = "60" }
@@ -148,6 +202,7 @@ RULE supplier_audit {
 ```
 
 ### Template Inheritance
+
 ```
 TEMPLATE base_metric {
     META { description = "Base template" }
@@ -159,28 +214,39 @@ RULE my_rule EXTENDS base_metric {
 }
 ```
 
+See [DSL Syntax Reference](docs/dsl-syntax.md) for full grammar details.
+
+---
+
 ## Project Structure
 
 ```
 cdsl/
 ├── include/          # Public headers (8 files)
 ├── src/              # Core implementation
-│   ├── ast.c         # AST construction & free
-│   ├── abstract.c    # Schema verification
-│   ├── execution.c   # VM, context, RuleSet, stats, codegen, visualization
-│   ├── ai_bridge.c   # NL ↔ DSL translation & review
-│   ├── cdsl_json.c   # Zero-dependency JSON parser
-│   ├── cdsl_error.c  # Structured error reporting
-│   ├── cdsl_arena.c  # Arena memory allocator
-│   └── cdsl_hashmap.c# Hash table
+│   ├── ast.c         #         AST construction & free
+│   ├── abstract.c    #    Schema verification
+│   ├── execution.c   #    VM, context, RuleSet, stats, codegen, visualization
+│   ├── ai_bridge.c   #    NL ↔ DSL translation & review
+│   ├── cdsl_json.c   #    Zero-dependency JSON parser
+│   ├── cdsl_error.c  #    Structured error reporting
+│   ├── cdsl_arena.c  #    Arena memory allocator
+│   └── cdsl_hashmap.c#    Hash table
 ├── parser/           # Flex/Bison grammar
 │   ├── lexer.l
 │   └── parser.y
 ├── demo/main.c       # 6 demo scenarios
-├── tests/            # Unit tests (41 tests)
-├── docs/             # Documentation (5 Markdown + Doxygen)
+├── tests/            # Unit tests (41+ tests)
+├── docs/             # Documentation
+│   ├── architecture.md
+│   ├── api-reference.md
+│   ├── dsl-syntax.md
+│   ├── modules.md
+│   └── user-guide.md
 └── cmake/            # Build configuration
 ```
+
+---
 
 ## API Overview
 
@@ -212,25 +278,36 @@ char* dsl = cdsl_ai_translate("supplier blacklist check", schema, &cfg);
 cdsl_ai_review_t* review = cdsl_ai_review(dsl, schema, &cfg);
 ```
 
-## Examples
+See [API Reference](docs/api-reference.md) for the complete function documentation.
 
-- **Supplier audit**: Blacklist (critical) + capital + experience scoring
-- **Document audit**: Format (critical) + signature + size scoring
-- **Content moderation**: Sensitive words + PII + spam score
-- **JSON context**: Load variable bindings from JSON
-- **Simple rules**: Independent pass/fail checks
-- **RuleSet batch**: Priority-ordered multi-rule execution
+---
+
+## Documentation
+
+| Document               | Audience           | Description                            |
+|------------------------|--------------------|----------------------------------------|
+| [API Reference](docs/api-reference.md)    | Developers         | Complete API function and type documentation |
+| [Architecture](docs/architecture.md)      | Architects         | System design, data flow, threading    |
+| [DSL Syntax](docs/dsl-syntax.md)          | Rule authors       | Complete language syntax and examples  |
+| [Modules](docs/modules.md)                | Contributors       | Internal module design and data structures |
+| [User Guide](docs/user-guide.md)          | Users              | Step-by-step usage with code examples  |
+| [Doxygen](https://quintin-lee.github.io/cdsl/) | Developers     | Generated API documentation (GitHub Pages) |
+
+---
 
 ## Thread Safety
 
-| Operation | Safe |
-|-----------|------|
-| `cdsl_parse_string()` | ❌ (Flex global state) |
-| `cdsl_vm_execute()` | ✅ (per-thread VM) |
-| `cdsl_context_*()` | ✅ (per-thread Context) |
-| Schema read-only | ✅ |
-| Rule read-only | ✅ |
+| Operation                          | Thread Safe | Notes                                    |
+|------------------------------------|-------------|------------------------------------------|
+| `cdsl_parse_string()`              | ❌          | Flex/Bison use global state              |
+| `cdsl_vm_execute()`                | ✅          | Each thread needs its own VM instance    |
+| `cdsl_context_*()`                 | ✅          | Each thread needs its own Context        |
+| Schema (read-only)                 | ✅          | Can be shared across threads             |
+| Rule (read-only)                   | ✅          | Can be shared after parsing              |
+| `cdsl_compile_cache_t`             | ❌          | Not thread-safe; protect with mutex      |
+
+---
 
 ## License
 
-MIT
+MIT. See [LICENSE](LICENSE) for details.

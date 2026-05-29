@@ -1,36 +1,42 @@
 # API Reference Manual
 
-## Module Index
-
-| Module | Header | Description |
-|--------|--------|-------------|
-| [AST](#ast-module) | `ast.h` | Abstract syntax tree definition |
-| [Abstract](#abstract-module) | `abstract.h` | Schema verification |
-| [Execution](#execution-module) | `execution.h` | VM, context, reports, RuleSet, codegen, visualization |
-| [AI Bridge](#ai-bridge-module) | `ai_bridge.h` | AI integration (mock + LLM + streaming) |
-| [Error](#error-module) | `cdsl_error.h` | Error reporting |
-| [Arena](#arena-module) | `cdsl_arena.h` | Memory allocator |
-| [Hashmap](#hashmap-module) | `cdsl_hashmap.h` | Hash table |
-| [JSON](#json-module) | `cdsl_json.h` | JSON parser |
+**Revision**: 1.0 &nbsp;·&nbsp; **Audience**: Developers
 
 ---
 
-## AST Module
+## Module Index
+
+| Module                                            | Header               | Description                         |
+|---------------------------------------------------|----------------------|-------------------------------------|
+| [AST](#1-ast-module)                              | `ast.h`              | Abstract syntax tree construction   |
+| [Abstract](#2-abstract-module)                    | `abstract.h`         | Schema verification                 |
+| [Execution](#3-execution-module)                  | `execution.h`        | VM, context, reports, RuleSet       |
+| [AI Bridge](#4-ai-bridge-module)                  | `ai_bridge.h`        | AI integration (mock + LLM)         |
+| [Error](#5-error-module)                          | `cdsl_error.h`       | Error reporting                     |
+| [Arena](#6-arena-module)                          | `cdsl_arena.h`       | Arena memory allocator              |
+| [Hashmap](#7-hashmap-module)                      | `cdsl_hashmap.h`     | Hash table                          |
+| [JSON](#8-json-module)                            | `cdsl_json.h`        | JSON parser                         |
+
+---
+
+## 1. AST Module
 
 ### Type Definitions
 
 #### `cdsl_type_t`
+
 ```c
 typedef enum {
-    CDSL_TYPE_INT,    // 32-bit integer
-    CDSL_TYPE_FLOAT,  // 64-bit float
-    CDSL_TYPE_BOOL,   // boolean
-    CDSL_TYPE_STRING, // string
-    CDSL_TYPE_VOID    // void
+    CDSL_TYPE_INT,    /**< 32-bit signed integer  */
+    CDSL_TYPE_FLOAT,  /**< 64-bit double-precision float */
+    CDSL_TYPE_BOOL,   /**< Boolean (0 or non-zero) */
+    CDSL_TYPE_STRING, /**< NUL-terminated string  */
+    CDSL_TYPE_VOID    /**< No value (error or void) */
 } cdsl_type_t;
 ```
 
 #### `cdsl_op_t`
+
 ```c
 typedef enum {
     CDSL_OP_EQ, CDSL_OP_NE, CDSL_OP_LT, CDSL_OP_GT,
@@ -40,6 +46,7 @@ typedef enum {
 ```
 
 #### `cdsl_rule_t`
+
 ```c
 typedef struct cdsl_rule {
     char* name;
@@ -54,50 +61,74 @@ typedef struct cdsl_rule {
 ### Functions
 
 #### `cdsl_parse_string`
+
 ```c
 cdsl_rule_t* cdsl_parse_string(const char* dsl_code);
 ```
-Parse a DSL string into an AST rule. Returns NULL on error.
 
-#### `cdsl_register_template`
-```c
-void cdsl_register_template(const char* name, cdsl_rule_t* rule);
-```
-Register a TEMPLATE rule for EXTENDS lookup during parsing.
+Parses a DSL string into an AST rule. Returns NULL on parse failure. **Not thread-safe** (Flex uses global state).
 
-#### `cdsl_create_simple_rule`
-```c
-cdsl_rule_t* cdsl_create_simple_rule(char* name, cdsl_meta_item_t* meta,
-                                      cdsl_expr_node_t* when, cdsl_action_node_t* then);
-```
-Create a simple WHEN/THEN rule.
-
-#### `cdsl_create_metric_rule`
-```c
-cdsl_rule_t* cdsl_create_metric_rule(char* name, cdsl_meta_item_t* meta,
-                                      cdsl_metric_node_t* metrics);
-```
-Create a multi-metric scoring rule.
-
-#### `cdsl_meta_get`
-```c
-char* cdsl_meta_get(cdsl_meta_item_t* list, const char* key);
-```
-Find a metadata value by key. Returns NULL if not found.
+| Returns | Condition          |
+|---------|--------------------|
+| Rule    | Successful parse   |
+| NULL    | Parse error        |
 
 #### `cdsl_free_rule`
+
 ```c
 void cdsl_free_rule(cdsl_rule_t* rule);
 ```
-Free a rule and all of its child nodes.
+
+Recursively frees a rule and all its child nodes (expressions, actions, metrics, metadata).
+
+#### `cdsl_template_register`
+
+```c
+void cdsl_template_register(cdsl_rule_t* template_rule);
+```
+
+Registers a TEMPLATE rule for EXTENDS resolution during parsing.
+
+#### `cdsl_template_get`
+
+```c
+cdsl_rule_t* cdsl_template_get(const char* name);
+```
+
+Looks up a registered template by name. Returns NULL if not found.
+
+#### `cdsl_template_clear`
+
+```c
+void cdsl_template_clear(void);
+```
+
+Clears all registered templates from the global registry. Does not free the template rules.
+
+#### `cdsl_create_extends_rule`
+
+```c
+cdsl_rule_t* cdsl_create_extends_rule(char* name, char* template_name, cdsl_meta_item_t* meta);
+```
+
+Creates a rule that inherits metrics from a registered TEMPLATE. Copies all metrics from the template into the new rule. Returns NULL if the template is not found.
+
+#### `cdsl_meta_get`
+
+```c
+char* cdsl_meta_get(cdsl_meta_item_t* list, const char* key);
+```
+
+Finds a metadata value by key. Returns NULL if the key is not present.
 
 ---
 
-## Abstract Module
+## 2. Abstract Module
 
 ### Type Definitions
 
 #### `cdsl_schema_t`
+
 ```c
 typedef struct cdsl_schema {
     cdsl_var_schema_t* vars;
@@ -106,6 +137,7 @@ typedef struct cdsl_schema {
 ```
 
 #### `cdsl_var_schema_t`
+
 ```c
 typedef struct cdsl_var_schema {
     char* name;
@@ -115,6 +147,7 @@ typedef struct cdsl_var_schema {
 ```
 
 #### `cdsl_action_schema_t`
+
 ```c
 typedef struct cdsl_action_schema {
     char* name;
@@ -127,52 +160,41 @@ typedef struct cdsl_action_schema {
 
 ### Functions
 
-#### `cdsl_schema_create`
-```c
-cdsl_schema_t* cdsl_schema_create(void);
-```
-Create an empty schema.
-
-#### `cdsl_schema_free`
-```c
-void cdsl_schema_free(cdsl_schema_t* schema);
-```
-Free a schema and all registered variables/actions.
-
-#### `cdsl_schema_register_var`
-```c
-void cdsl_schema_register_var(cdsl_schema_t* schema, const char* name, cdsl_type_t type);
-```
-Register a variable with its type.
-
-#### `cdsl_schema_register_action`
-```c
-void cdsl_schema_register_action(cdsl_schema_t* schema, const char* name,
-                                  cdsl_type_t ret_type, int arg_count, ...);
-```
-Register an action with its signature. Variadic args are `cdsl_type_t` values for argument types.
+| Function                                  | Returns     | Description                              |
+|-------------------------------------------|-------------|------------------------------------------|
+| `cdsl_schema_create()`                    | `schema*`   | Create an empty schema                   |
+| `cdsl_schema_free(schema)`                | `void`      | Free schema and all registrations        |
+| `cdsl_schema_register_var(schema, name, type)` | `void` | Register a typed variable             |
+| `cdsl_schema_register_action(schema, name, ret_type, arg_count, ...)` | `void` | Register an action with variadic argument types |
+| `cdsl_verify_rule(rule, schema, err_buf, err_buf_sz)` | `int` (1=valid) | Fast-fail verification with string error |
+| `cdsl_verify_rule_detailed(rule, schema)` | `error_list*` | Collect all errors into structured list   |
 
 #### `cdsl_verify_rule`
+
 ```c
 int cdsl_verify_rule(const cdsl_rule_t* rule, const cdsl_schema_t* schema,
                       char* err_buf, int err_buf_sz);
 ```
-Verify a rule against the schema. Returns 1 if valid, 0 on error with message in err_buf.
+
+Verifies a rule against the schema. Returns 1 if valid, 0 on error. On failure, `err_buf` contains a human-readable error message.
 
 #### `cdsl_verify_rule_detailed`
+
 ```c
 cdsl_error_list_t* cdsl_verify_rule_detailed(const cdsl_rule_t* rule,
-                                               const cdsl_schema_t* schema);
+                                              const cdsl_schema_t* schema);
 ```
-Verify with detailed error collection (all errors, not just first). Returns error list to inspect or print.
+
+Verifies a rule and collects all errors found (does not stop at the first error). Returns an error list that must be freed with `cdsl_error_list_free()`.
 
 ---
 
-## Execution Module
+## 3. Execution Module
 
 ### Type Definitions
 
 #### `cdsl_value_t`
+
 ```c
 typedef struct cdsl_value {
     cdsl_type_t type;
@@ -186,16 +208,18 @@ typedef struct cdsl_value {
 ```
 
 #### `cdsl_rule_status_t`
+
 ```c
 typedef enum {
-    CDSL_STATUS_PASSED,
-    CDSL_STATUS_PARTIALLY_PASSED,
-    CDSL_STATUS_FAILED,
-    CDSL_STATUS_ERROR
+    CDSL_STATUS_PASSED,           /**< Met or exceeded pass_threshold */
+    CDSL_STATUS_PARTIALLY_PASSED, /**< Met partial_threshold but not pass_threshold */
+    CDSL_STATUS_FAILED,           /**< Below all thresholds or critical metric failed */
+    CDSL_STATUS_ERROR             /**< Execution error */
 } cdsl_rule_status_t;
 ```
 
 #### `cdsl_rule_report_t`
+
 ```c
 typedef struct {
     char* rule_name;
@@ -210,6 +234,7 @@ typedef struct {
 ```
 
 #### `cdsl_metric_result_t`
+
 ```c
 typedef struct {
     char* metric_name;
@@ -224,18 +249,20 @@ typedef struct {
 ```
 
 #### `cdsl_stats_t`
+
 ```c
 typedef struct {
-    long total_executions;
-    long total_rules_executed;
-    long total_metrics_evaluated;
-    long total_actions_triggered;
-    double total_time_us;
-    double avg_time_us;
+    long total_executions;        /**< Number of VM execute() calls */
+    long total_rules_executed;    /**< Number of individual rule evaluations */
+    long total_metrics_evaluated; /**< Number of metric evaluations */
+    long total_actions_triggered; /**< Number of action callbacks invoked */
+    double total_time_us;         /**< Total execution time in microseconds */
+    double avg_time_us;           /**< Average time per execution */
 } cdsl_stats_t;
 ```
 
 #### `cdsl_compiled_rule_t`
+
 ```c
 typedef struct cdsl_compiled_rule {
     cdsl_rule_t* rule;
@@ -245,6 +272,7 @@ typedef struct cdsl_compiled_rule {
 ```
 
 #### `cdsl_compile_cache_t`
+
 ```c
 typedef struct cdsl_compile_cache {
     cdsl_compiled_rule_t** entries;
@@ -254,6 +282,7 @@ typedef struct cdsl_compile_cache {
 ```
 
 #### `cdsl_ruleset_report_t`
+
 ```c
 typedef struct {
     cdsl_rule_report_t** rule_reports;
@@ -269,355 +298,148 @@ typedef struct {
 
 ### Context Management
 
-#### `cdsl_context_create`
-```c
-cdsl_context_t* cdsl_context_create(const cdsl_schema_t* schema);
-```
-Create an empty context bound to a schema.
-
-#### `cdsl_context_free`
-```c
-void cdsl_context_free(cdsl_context_t* ctx);
-```
-Free a context and all its variable bindings.
-
-#### `cdsl_context_set_int` / `cdsl_context_set_float` / `cdsl_context_set_bool` / `cdsl_context_set_string`
-```c
-void cdsl_context_set_int(cdsl_context_t* ctx, const char* name, int val);
-void cdsl_context_set_float(cdsl_context_t* ctx, const char* name, double val);
-void cdsl_context_set_bool(cdsl_context_t* ctx, const char* name, int val);
-void cdsl_context_set_string(cdsl_context_t* ctx, const char* name, const char* val);
-```
-Set a context variable value by name. Replaces existing binding if present.
+| Function                                               | Description                                      |
+|--------------------------------------------------------|--------------------------------------------------|
+| `cdsl_context_create(schema)`                          | Create empty context bound to a schema           |
+| `cdsl_context_free(ctx)`                               | Free context and all variable bindings           |
+| `cdsl_context_set_int(ctx, name, val)`                 | Set or update an integer variable                |
+| `cdsl_context_set_float(ctx, name, val)`               | Set or update a float variable                   |
+| `cdsl_context_set_bool(ctx, name, val)`                | Set or update a boolean variable                 |
+| `cdsl_context_set_string(ctx, name, val)`              | Set or update a string variable                  |
+| `cdsl_context_load_json(ctx, json_str)`                | Load variables from JSON (returns 1 on success)  |
 
 #### `cdsl_context_load_json`
+
 ```c
 int cdsl_context_load_json(cdsl_context_t* ctx, const char* json_str);
 ```
-Load variables from a JSON string. Supports nested objects (flattened with dot notation). Returns 1 on success.
+
+Loads variables from a JSON string. Nested objects are flattened with dot notation (e.g., `{"user":{"age":25}}` → `user.age`). Returns 1 on success, 0 on parse failure.
 
 ### Virtual Machine
 
-#### `cdsl_vm_create`
-```c
-cdsl_vm_t* cdsl_vm_create(const cdsl_schema_t* schema);
-```
-Create a virtual machine instance. One VM per thread recommended.
-
-#### `cdsl_vm_free`
-```c
-void cdsl_vm_free(cdsl_vm_t* vm);
-```
-Free a VM and all registered callbacks.
-
-#### `cdsl_vm_register_action`
-```c
-void cdsl_vm_register_action(cdsl_vm_t* vm, const char* action_name, cdsl_action_cb_t cb);
-```
-Register an action callback triggered by THEN/DEFAULT/CASE action execution.
-
-#### `cdsl_vm_register_function`
-```c
-void cdsl_vm_register_function(cdsl_vm_t* vm, const char* func_name, cdsl_func_cb_t cb);
-```
-Register a custom function callback usable in expressions (e.g., `strlen(x)`).
-
-#### `cdsl_vm_set_debug`
-```c
-void cdsl_vm_set_debug(cdsl_vm_t* vm, int enabled);
-```
-Enable or disable debug trace output to stderr. When enabled, each expression evaluation prints type and value.
-
-#### `cdsl_vm_get_stats`
-```c
-cdsl_stats_t* cdsl_vm_get_stats(const cdsl_vm_t* vm);
-```
-Get execution statistics for this VM. Returns pointer to internal stats struct.
-
-#### `cdsl_vm_reset_stats`
-```c
-void cdsl_vm_reset_stats(cdsl_vm_t* vm);
-```
-Reset all execution statistics counters to zero.
+| Function                                       | Description                                      |
+|------------------------------------------------|--------------------------------------------------|
+| `cdsl_vm_create(schema)`                       | Create a VM instance (one per thread)            |
+| `cdsl_vm_free(vm)`                             | Free VM and registered callbacks                 |
+| `cdsl_vm_register_action(vm, name, cb)`        | Register an action callback                      |
+| `cdsl_vm_register_function(vm, name, cb)`      | Register a function callback for expressions     |
+| `cdsl_vm_set_debug(vm, enabled)`               | Enable/disable debug trace to stderr             |
+| `cdsl_vm_get_stats(vm)`                        | Get execution statistics (caller must free)      |
+| `cdsl_vm_reset_stats(vm)`                      | Reset all statistics counters                    |
 
 ### Rule Execution
 
-#### `cdsl_vm_execute`
-```c
-cdsl_rule_report_t* cdsl_vm_execute(cdsl_vm_t* vm, const cdsl_rule_t* rule, cdsl_context_t* ctx);
-```
-Execute a single rule. Returns report with per-metric results and tri-state decision.
-
-#### `cdsl_report_free`
-```c
-void cdsl_report_free(cdsl_rule_report_t* report);
-```
-Free a rule execution report.
-
-#### `cdsl_report_print`
-```c
-void cdsl_report_print(const cdsl_rule_report_t* report);
-```
-Print a human-readable report to stdout.
-
-#### `cdsl_report_to_json`
-```c
-char* cdsl_report_to_json(const cdsl_rule_report_t* report);
-```
-Serialize report to JSON string. Must be freed with `free()`.
+| Function                                                       | Description                                         |
+|----------------------------------------------------------------|-----------------------------------------------------|
+| `cdsl_vm_execute(vm, rule, ctx)`                               | Execute a single rule, return report                |
+| `cdsl_report_free(report)`                                     | Free a rule execution report                        |
+| `cdsl_report_print(report)`                                    | Print human-readable report to stdout               |
+| `cdsl_report_to_json(report)`                                  | Serialize report to JSON string (caller frees)      |
 
 ### Compilation Cache
 
-#### `cdsl_compile_cache_create`
-```c
-cdsl_compile_cache_t* cdsl_compile_cache_create(int capacity);
-```
-Create a compilation cache. Passing 0 uses a default capacity of 64.
-
-#### `cdsl_compile_cache_free`
-```c
-void cdsl_compile_cache_free(cdsl_compile_cache_t* cache);
-```
-Free the cache and all stored compiled rules.
-
-#### `cdsl_compile`
-```c
-cdsl_compiled_rule_t* cdsl_compile(cdsl_compile_cache_t* cache, const char* dsl_code,
-                                    const cdsl_schema_t* schema, char* err_buf, int err_buf_sz);
-```
-Parse, verify, and cache a DSL string. Returns compiled rule on success, NULL on failure. Subsequent calls with the same DSL string return the cached result.
-
-#### `cdsl_vm_execute_compiled`
-```c
-cdsl_rule_report_t* cdsl_vm_execute_compiled(cdsl_vm_t* vm, cdsl_compiled_rule_t* compiled,
-                                              cdsl_context_t* ctx);
-```
-Execute a compiled rule from the cache. Avoids re-parsing and re-verification.
+| Function                                                        | Description                                        |
+|-----------------------------------------------------------------|----------------------------------------------------|
+| `cdsl_compile_cache_create(capacity)`                           | Create cache (0 = default 64 slots)                |
+| `cdsl_compile_cache_free(cache)`                                | Free cache and compiled rules                      |
+| `cdsl_compile(cache, dsl_code, schema, err_buf, sz)`            | Parse + verify + cache; returns compiled rule      |
+| `cdsl_vm_execute_compiled(vm, compiled, ctx)`                   | Execute a cached compiled rule                     |
 
 ### Code Generation
 
-#### `cdsl_codegen_rule_to_c`
-```c
-char* cdsl_codegen_rule_to_c(const cdsl_rule_t* rule, const cdsl_schema_t* schema);
-```
-Generate equivalent C source code from a DSL rule. Returns malloc'd string.
-
-#### `cdsl_codegen_to_file`
-```c
-int cdsl_codegen_to_file(const cdsl_rule_t* rule, const cdsl_schema_t* schema, const char* filepath);
-```
-Generate C code and write it to a file. Returns 1 on success.
+| Function                                                        | Description                                        |
+|-----------------------------------------------------------------|----------------------------------------------------|
+| `cdsl_codegen_rule_to_c(rule, schema)`                          | Generate C source from rule (caller frees)         |
+| `cdsl_codegen_to_file(rule, schema, filepath)`                  | Write generated C to file (returns 1 on success)   |
 
 ### Visualization
 
-#### `cdsl_rule_to_dot`
-```c
-char* cdsl_rule_to_dot(const cdsl_rule_t* rule);
-```
-Generate Graphviz DOT graph for a single rule. Node colors: blue=variables, green=conditions, pink=functions, yellow=literals.
-
-#### `cdsl_rule_to_dot_file`
-```c
-int cdsl_rule_to_dot_file(const cdsl_rule_t* rule, const char* filepath);
-```
-Write DOT graph to file. Returns 1 on success.
-
-#### `cdsl_ruleset_to_dot`
-```c
-char* cdsl_ruleset_to_dot(const cdsl_ruleset_t* set);
-```
-Generate DOT graph for a ruleset with dependency arrows.
-
-#### `cdsl_ruleset_to_dot_file`
-```c
-int cdsl_ruleset_to_dot_file(const cdsl_ruleset_t* set, const char* filepath);
-```
-Write ruleset DOT graph to file. Returns 1 on success.
+| Function                                                        | Description                                        |
+|-----------------------------------------------------------------|----------------------------------------------------|
+| `cdsl_rule_to_dot(rule)`                                        | Generate DOT graph for a single rule               |
+| `cdsl_rule_to_dot_file(rule, filepath)`                         | Write single-rule DOT to file                      |
+| `cdsl_ruleset_to_dot(set)`                                      | Generate DOT graph for a ruleset with dependencies |
+| `cdsl_ruleset_to_dot_file(set, filepath)`                       | Write ruleset DOT to file                          |
 
 ### RuleSet Management
 
-#### `cdsl_ruleset_create`
-```c
-cdsl_ruleset_t* cdsl_ruleset_create(void);
-```
-Create an empty ruleset.
-
-#### `cdsl_ruleset_free`
-```c
-void cdsl_ruleset_free(cdsl_ruleset_t* set);
-```
-Free a ruleset. Rules within the set are NOT freed (caller owns them).
-
-#### `cdsl_ruleset_add`
-```c
-void cdsl_ruleset_add(cdsl_ruleset_t* set, cdsl_rule_t* rule, int priority);
-```
-Add a rule to a ruleset. Lower priority = executes first. Rules are inserted in sorted order.
-
-#### `cdsl_ruleset_remove`
-```c
-int cdsl_ruleset_remove(cdsl_ruleset_t* set, const char* rule_name);
-```
-Remove a rule from the set by name. Returns 1 if found and removed, 0 otherwise. Does NOT free the rule.
-
-#### `cdsl_vm_execute_ruleset`
-```c
-cdsl_ruleset_report_t* cdsl_vm_execute_ruleset(cdsl_vm_t* vm, cdsl_ruleset_t* set, cdsl_context_t* ctx);
-```
-Execute all rules in a ruleset in priority order. Returns a batch report with aggregate scores.
-
-#### `cdsl_vm_execute_ruleset_parallel`
-```c
-cdsl_ruleset_report_t* cdsl_vm_execute_ruleset_parallel(cdsl_vm_t* vm, cdsl_ruleset_t* set,
-                                                          cdsl_context_t* ctx, int thread_count);
-```
-Execute rules in parallel using the specified number of threads. Pass 0 to use hardware concurrency. Creates internal per-thread VM clones.
-
-#### `cdsl_ruleset_report_free`
-```c
-void cdsl_ruleset_report_free(cdsl_ruleset_report_t* report);
-```
-Free a batch execution report.
-
-#### `cdsl_ruleset_report_print`
-```c
-void cdsl_ruleset_report_print(const cdsl_ruleset_report_t* report);
-```
-Print a human-readable batch report to stdout.
-
-#### `cdsl_ruleset_load_file`
-```c
-int cdsl_ruleset_load_file(cdsl_ruleset_t* set, const char* filepath, int priority,
-                            const cdsl_schema_t* schema, char* err_buf, int err_buf_sz);
-```
-Parse a DSL file and add the resulting rule to a ruleset. Returns 1 on success.
-
-#### `cdsl_ruleset_load_string`
-```c
-int cdsl_ruleset_load_string(cdsl_ruleset_t* set, const char* dsl_code, int priority,
-                              const cdsl_schema_t* schema, char* err_buf, int err_buf_sz);
-```
-Parse a DSL string and add the resulting rule to a ruleset. Returns 1 on success.
-
-#### `cdsl_ruleset_reload_file`
-```c
-int cdsl_ruleset_reload_file(cdsl_ruleset_t* set, const char* rule_name,
-                              const char* filepath, const cdsl_schema_t* schema,
-                              char* err_buf, int err_buf_sz);
-```
-Re-parse a DSL file and replace an existing rule in the set. Old rule is freed. Returns 1 on success.
-
-#### `cdsl_ruleset_validate_deps`
-```c
-int cdsl_ruleset_validate_deps(const cdsl_ruleset_t* set, char* err_buf, int err_buf_sz);
-```
-Validate that all dependency references in `depends_on` meta resolve to existing rules in the set.
-
-#### `cdsl_ruleset_topo_sort`
-```c
-int cdsl_ruleset_topo_sort(cdsl_ruleset_t* set);
-```
-Topologically sort rules based on `depends_on` meta. Returns 1 on success, 0 if cycle detected.
+| Function                                                                  | Description                                      |
+|---------------------------------------------------------------------------|--------------------------------------------------|
+| `cdsl_ruleset_create()`                                                   | Create empty ruleset                             |
+| `cdsl_ruleset_free(set)`                                                  | Free ruleset (rules NOT freed)                   |
+| `cdsl_ruleset_add(set, rule, priority)`                                   | Add rule with priority (lower = earlier)         |
+| `cdsl_ruleset_remove(set, rule_name)`                                     | Remove rule by name (returns 1 if found)         |
+| `cdsl_vm_execute_ruleset(vm, set, ctx)`                                   | Execute all rules in priority order              |
+| `cdsl_vm_execute_ruleset_parallel(vm, set, ctx, thread_count)`            | Execute rules in parallel (0 = default 4)        |
+| `cdsl_ruleset_report_free(report)`                                        | Free batch report                                |
+| `cdsl_ruleset_report_print(report)`                                       | Print batch report to stdout                     |
+| `cdsl_ruleset_load_file(set, filepath, priority, schema, err_buf, sz)`    | Parse DSL file and add to ruleset                |
+| `cdsl_ruleset_load_string(set, dsl, priority, schema, err_buf, sz)`       | Parse DSL string and add to ruleset              |
+| `cdsl_ruleset_reload_file(set, rule_name, filepath, schema, err_buf, sz)` | Replace rule by re-reading file                  |
+| `cdsl_ruleset_validate_deps(set, err_buf, sz)`                            | Validate depends_on references (returns 1 if OK) |
+| `cdsl_ruleset_topo_sort(set)`                                              | Topologically sort by depends_on                 |
 
 ---
 
-## AI Bridge Module
+## 4. AI Bridge Module
 
 ### Type Definitions
 
 #### `cdsl_ai_config_t`
+
 ```c
 typedef struct {
-    int use_mock;           // 1 = offline generation, 0 = LLM API
-    char* api_key;          // API key for LLM service
-    char* api_base;         // API base URL (e.g. "https://api.openai.com/v1")
-    char* model;            // Model name (e.g. "gpt-4o-mini")
-    char* business_context; // Optional business info to guide DSL generation
+    int use_mock;           /**< 1 = offline generation, 0 = LLM API */
+    char* api_key;          /**< API key for LLM service */
+    char* api_base;         /**< API base URL (e.g. "https://api.openai.com/v1") */
+    char* model;            /**< Model name (e.g. "gpt-4o-mini") */
+    char* business_context; /**< Optional business info to guide DSL generation */
 } cdsl_ai_config_t;
 ```
 
 #### `cdsl_ai_review_t`
+
 ```c
 typedef struct {
-    int approved;
-    int risk_score;
-    char* reason;
-    char* suggestions;
+    int approved;       /**< 1 if rule passes safety review */
+    int risk_score;     /**< 0-100 risk score (higher = riskier) */
+    char* reason;       /**< Review explanation */
+    char* suggestions;  /**< Improvement suggestions */
 } cdsl_ai_review_t;
 ```
 
-#### `cdsl_ai_stream_cb_t`
+#### Callback Type
+
 ```c
 typedef void (*cdsl_ai_stream_cb_t)(const char* chunk, void* user_data);
 ```
-Callback for streaming AI responses. Called for each text chunk received.
 
 ### Functions
 
-#### `cdsl_ai_config_default`
-```c
-cdsl_ai_config_t cdsl_ai_config_default(void);
-```
-Return default config with mock mode enabled (`use_mock = 1`).
-
-#### `cdsl_ai_translate`
-```c
-char* cdsl_ai_translate(const char* natural_language,
-                         const cdsl_schema_t* schema,
-                         const cdsl_ai_config_t* config);
-```
-Translate natural language to DSL code. In offline mode generates DSL from schema variables; in API mode calls LLM. The `business_context` field in config provides additional context for generation. Must be freed with `free()`.
-
-#### `cdsl_ai_review`
-```c
-cdsl_ai_review_t* cdsl_ai_review(const char* dsl_code,
-                                   const cdsl_schema_t* schema,
-                                   const cdsl_ai_config_t* config);
-```
-Review DSL code for safety and correctness. Analyzes structure, missing elements, and risk factors. Must be freed with `cdsl_ai_review_free()`.
-
-#### `cdsl_ai_review_free`
-```c
-void cdsl_ai_review_free(cdsl_ai_review_t* review);
-```
-Free an AI review result.
-
-#### `cdsl_ai_translate_stream`
-```c
-char* cdsl_ai_translate_stream(const char* natural_language,
-                                const cdsl_schema_t* schema,
-                                const cdsl_ai_config_t* config,
-                                cdsl_ai_stream_cb_t callback, void* user_data);
-```
-Streaming NL-to-DSL translation. Chunks delivered via callback. Returns complete response string or NULL on error. In mock mode, falls back to non-streaming implementation.
-
-#### `cdsl_ai_review_stream`
-```c
-char* cdsl_ai_review_stream(const char* dsl_code,
-                             const cdsl_schema_t* schema,
-                             const cdsl_ai_config_t* config,
-                             cdsl_ai_stream_cb_t callback, void* user_data);
-```
-Streaming DSL safety review. Chunks delivered via callback. Returns complete response string or NULL on error. In mock mode, falls back to non-streaming implementation.
+| Function                                                          | Description                                        |
+|-------------------------------------------------------------------|----------------------------------------------------|
+| `cdsl_ai_config_default()`                                        | Return config with mock mode enabled               |
+| `cdsl_ai_translate(nl, schema, config)`                           | NL to DSL translation (caller frees result)        |
+| `cdsl_ai_review(dsl_code, schema, config)`                        | DSL safety review (caller frees result)            |
+| `cdsl_ai_review_free(review)`                                     | Free review result                                 |
+| `cdsl_ai_translate_stream(nl, schema, config, cb, user_data)`     | Streaming translation with per-chunk callback      |
+| `cdsl_ai_review_stream(dsl_code, schema, config, cb, user_data)`  | Streaming review with per-chunk callback           |
 
 ---
 
-## Error Module
+## 5. Error Module
 
 ### Type Definitions
 
-#### `cdsl_error_kind_t`
 ```c
 typedef enum {
-    CDSL_ERR_SYNTAX,   // Parse error
-    CDSL_ERR_TYPE,     // Type mismatch
-    CDSL_ERR_SEMANTIC, // Unknown variable/action
-    CDSL_ERR_RUNTIME   // Runtime error
+    CDSL_ERR_SYNTAX,   /**< Parse error */
+    CDSL_ERR_TYPE,     /**< Type mismatch */
+    CDSL_ERR_SEMANTIC, /**< Unknown variable/action */
+    CDSL_ERR_RUNTIME   /**< Execution-time error */
 } cdsl_error_kind_t;
-```
 
-#### `cdsl_error_t`
-```c
 typedef struct {
     cdsl_error_kind_t kind;
     int line;
@@ -625,10 +447,7 @@ typedef struct {
     char* message;
     char* hint;
 } cdsl_error_t;
-```
 
-#### `cdsl_error_list_t`
-```c
 typedef struct {
     cdsl_error_t** errors;
     int count;
@@ -638,135 +457,46 @@ typedef struct {
 
 ### Functions
 
-#### `cdsl_error_create`
-```c
-cdsl_error_t* cdsl_error_create(cdsl_error_kind_t kind, int line, int column,
-                                  const char* message, const char* hint);
-```
-Create an error instance. Copies message and hint strings.
-
-#### `cdsl_error_free`
-```c
-void cdsl_error_free(cdsl_error_t* err);
-```
-Free a single error.
-
-#### `cdsl_error_print`
-```c
-void cdsl_error_print(const cdsl_error_t* err);
-```
-Print an error to stdout in a formatted way.
-
-#### `cdsl_error_list_create`
-```c
-cdsl_error_list_t* cdsl_error_list_create(void);
-```
-Create an empty error list.
-
-#### `cdsl_error_list_add`
-```c
-void cdsl_error_list_add(cdsl_error_list_t* list, cdsl_error_t* err);
-```
-Add an error to the list.
-
-#### `cdsl_error_list_free`
-```c
-void cdsl_error_list_free(cdsl_error_list_t* list);
-```
-Free an error list and all contained errors.
-
-#### `cdsl_error_list_print`
-```c
-void cdsl_error_list_print(const cdsl_error_list_t* list);
-```
-Print all errors in a list.
+| Function                                         | Description                               |
+|--------------------------------------------------|-------------------------------------------|
+| `cdsl_error_create(kind, line, col, msg, hint)`  | Create structured error (copies strings)  |
+| `cdsl_error_free(err)`                           | Free single error                         |
+| `cdsl_error_print(err)`                          | Print error to stderr in formatted style  |
+| `cdsl_error_list_create()`                       | Create empty error list                   |
+| `cdsl_error_list_add(list, err)`                 | Add error to list (takes ownership)       |
+| `cdsl_error_list_free(list)`                     | Free list and all contained errors        |
+| `cdsl_error_list_has_errors(list)`               | Returns 1 if list contains errors         |
+| `cdsl_error_list_print(list)`                    | Print all errors in list                  |
 
 ---
 
-## Arena Module
+## 6. Arena Module
 
-### Functions
-
-#### `cdsl_arena_create`
-```c
-cdsl_arena_t* cdsl_arena_create(size_t block_size);
-```
-Create an arena. Pass 0 for default 64KB block size.
-
-#### `cdsl_arena_alloc`
-```c
-void* cdsl_arena_alloc(cdsl_arena_t* arena, size_t size);
-```
-Allocate memory from the arena (8-byte aligned).
-
-#### `cdsl_arena_strdup`
-```c
-char* cdsl_arena_strdup(cdsl_arena_t* arena, const char* s);
-```
-Duplicate a string in arena memory.
-
-#### `cdsl_arena_free`
-```c
-void cdsl_arena_free(cdsl_arena_t* arena);
-```
-Free all arena memory at once. Does not free individual allocations.
+| Function                           | Description                                   |
+|------------------------------------|-----------------------------------------------|
+| `cdsl_arena_create(block_size)`    | Create arena (0 = default 64KB block size)    |
+| `cdsl_arena_alloc(arena, size)`    | Allocate 8-byte aligned memory from arena     |
+| `cdsl_arena_strdup(arena, s)`      | Duplicate string in arena memory              |
+| `cdsl_arena_free(arena)`           | Free all arena memory at once (bulk release)  |
 
 ---
 
-## Hashmap Module
+## 7. Hashmap Module
 
-### Functions
-
-#### `cdsl_hashmap_create`
-```c
-cdsl_hashmap_t* cdsl_hashmap_create(int bucket_count);
-```
-Create a hash map. Pass 0 for default 64 buckets.
-
-#### `cdsl_hashmap_free`
-```c
-void cdsl_hashmap_free(cdsl_hashmap_t* map, cdsl_hashmap_free_fn free_fn);
-```
-Free a hash map and optionally destroy values with the provided callback.
-
-#### `cdsl_hashmap_put`
-```c
-int cdsl_hashmap_put(cdsl_hashmap_t* map, const char* key, void* value);
-```
-Insert or update a key-value pair. Returns 1 if new, 0 if existing value was replaced.
-
-#### `cdsl_hashmap_get`
-```c
-void* cdsl_hashmap_get(cdsl_hashmap_t* map, const char* key);
-```
-Look up a value by key. Returns NULL if not found.
-
-#### `cdsl_hashmap_remove`
-```c
-int cdsl_hashmap_remove(cdsl_hashmap_t* map, const char* key, cdsl_hashmap_free_fn free_fn);
-```
-Remove an entry. If `free_fn` is not NULL, calls it with the value. Returns 1 if removed, 0 if not found.
-
-#### `cdsl_hashmap_contains`
-```c
-int cdsl_hashmap_contains(cdsl_hashmap_t* map, const char* key);
-```
-Check if a key exists. Returns 1 if found, 0 if not.
+| Function                                         | Description                                   |
+|--------------------------------------------------|-----------------------------------------------|
+| `cdsl_hashmap_create(bucket_count)`              | Create hash map (0 = default 64 buckets)      |
+| `cdsl_hashmap_free(map, free_fn)`                | Free map; optional destructor for values      |
+| `cdsl_hashmap_put(map, key, value)`              | Insert or update; returns 1 on success        |
+| `cdsl_hashmap_get(map, key)`                     | Look up by key; returns NULL if not found     |
+| `cdsl_hashmap_remove(map, key, free_fn)`         | Remove entry; returns 1 if found, 0 otherwise |
+| `cdsl_hashmap_contains(map, key)`                | Check key existence; returns 1 if found       |
 
 ---
 
-## JSON Module
+## 8. JSON Module
 
-### Functions
-
-#### `cdsl_json_parse`
-```c
-cdsl_json_value_t* cdsl_json_parse(const char* json);
-```
-Parse a JSON string into a value tree. Returns NULL on parse error.
-
-#### `cdsl_json_free`
-```c
-void cdsl_json_free(cdsl_json_value_t* val);
-```
-Free a JSON value tree recursively.
+| Function                     | Description                                  |
+|------------------------------|----------------------------------------------|
+| `cdsl_json_parse(json)`      | Parse JSON string into value tree            |
+| `cdsl_json_free(val)`        | Recursively free JSON value tree             |

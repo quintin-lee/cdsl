@@ -1,14 +1,18 @@
 # Module Design Document
 
+**Revision**: 1.0 &nbsp;·&nbsp; **Audience**: Contributors
+
+---
+
 ## Module Overview
 
 ```
 cdsl/
 ├── Core Modules
-│   ├── ast          — Abstract syntax tree definition and construction
+│   ├── ast          — Abstract syntax tree construction
 │   ├── abstract     — Schema verification and type checking
 │   ├── execution    — VM engine, context, reports, RuleSet, codegen, visualization
-│   └── ai_bridge    — AI translation and safety review (mock + LLM + streaming)
+│   └── ai_bridge    — AI translation and safety review
 │
 ├── Infrastructure
 │   ├── cdsl_json    — Zero-dependency JSON parser
@@ -23,8 +27,8 @@ cdsl/
 └── Build & Docs
     ├── CMakeLists.txt
     ├── Doxyfile
-    ├── cmake/       — Package config templates
-    └── docs/        — Markdown documentation
+    ├── cmake/        — Package config templates
+    └── docs/         — Markdown documentation
 ```
 
 ---
@@ -32,77 +36,71 @@ cdsl/
 ## 1. AST Module (`ast.h` / `ast.c`)
 
 ### Responsibility
-Define all DSL syntax node types, provide node construction and memory free APIs.
 
-### Core Data Structures
+Defines all DSL syntax node types and provides constructors/free functions for the abstract syntax tree (AST). The AST is the output of the parser and the input to verification and execution.
+
+### Data Structure
 
 ```
-cdsl_rule_t (Rule)
-├── name                   — Rule name
-├── meta_list              — Metadata linked list (description, weight, ...)
-├── when_expr              — WHEN expression (simple rule)
-├── then_action            — THEN action (simple rule)
-├── template_name          — Name of template this rule extends (or NULL)
-└── metrics                — METRIC linked list (scoring rule)
-    └── cdsl_metric_node_t
-        ├── name           — Metric name
-        ├── meta_list      — Metric metadata (weight, is_critical)
-        ├── case_list      — CASE branch linked list
-        │   └── cdsl_case_node_t
-        │       ├── condition  — Condition expression
-        │       └── action     — Hit action
-        └── default_action — DEFAULT action
+cdsl_rule_t
+├── name                   — Rule identifier string
+├── meta_list              — cdsl_meta_item_t linked list
+│   └── { key, value, next }
+├── when_expr              — cdsl_expr_node_t (NULL for metric rules)
+├── then_action            — cdsl_action_node_t (NULL for metric rules)
+├── metrics                — cdsl_metric_node_t linked list (NULL for simple rules)
+│   └── cdsl_metric_node_t
+│       ├── name
+│       ├── meta_list
+│       ├── case_list      — cdsl_case_node_t linked list
+│       │   └── cdsl_case_node_t
+│       │       ├── condition  — cdsl_expr_node_t
+│       │       └── action     — cdsl_action_node_t
+│       └── default_action — cdsl_action_node_t
+└── template_name          — Name of extended template (or NULL)
 ```
 
-### Expression Node Types
+### Expression Types
 
-| Type | Data | Example |
-|------|------|---------|
-| `CDSL_EXPR_ID` | Variable name | `user.age` |
-| `CDSL_EXPR_INT` | Integer value | `18` |
-| `CDSL_EXPR_FLOAT` | Float value | `3.14` |
-| `CDSL_EXPR_BOOL` | Boolean value | `true` |
-| `CDSL_EXPR_STRING` | String value | `"hello"` |
-| `CDSL_EXPR_BINARY` | Binary operation | `a + b`, `x == y` |
-| `CDSL_EXPR_UNARY` | Unary operation | `!flag` |
-| `CDSL_EXPR_CALL` | Function call | `strlen(name)` |
+| Enum                 | Data Field       | Example         |
+|----------------------|------------------|-----------------|
+| `CDSL_EXPR_ID`       | `string`         | `user.age`      |
+| `CDSL_EXPR_INT`      | `int`            | `42`            |
+| `CDSL_EXPR_FLOAT`    | `double`         | `3.14`          |
+| `CDSL_EXPR_BOOL`     | `int`            | `true`          |
+| `CDSL_EXPR_STRING`   | `string`         | `"hello"`       |
+| `CDSL_EXPR_BINARY`   | `op + left + right` | `a > b`      |
+| `CDSL_EXPR_UNARY`    | `op + expr`      | `!flag`         |
+| `CDSL_EXPR_CALL`     | `name + args`    | `strlen(x)`     |
 
-### Key API
+### Parser Integration
 
-```c
-// Parse DSL string into AST
-cdsl_rule_t* cdsl_parse_string(const char* dsl_code);
+The parser (`parser.y`) calls AST constructors (e.g., `cdsl_create_expr_binary()`) as it reduces grammar rules. The `cdsl_parse_string()` function wraps the Flex/Bison pipeline:
 
-// Build expression nodes
-cdsl_expr_node_t* cdsl_create_expr_binary(cdsl_op_t op, cdsl_expr_node_t* left, cdsl_expr_node_t* right);
-cdsl_expr_node_t* cdsl_create_expr_call(char* name, cdsl_arg_node_t* args);
-
-// Metadata access
-char* cdsl_meta_get(cdsl_meta_item_t* list, const char* key);
-
-// Free entire rule tree
-void cdsl_free_rule(cdsl_rule_t* rule);
 ```
+dsl_string → yy_scan_string() → yyparse() → final_parsed_rule
+```
+
+### Template Registration
+
+Templates are stored in a global linked list within `ast.c`. When a `RULE ... EXTENDS` is parsed, `cdsl_create_extends_rule()` copies metrics from the registered template into the new rule via a deep copy of each metric's metadata and case structure (action/expression pointers are shared, not deep-copied).
 
 ---
 
 ## 2. Abstract Module (`abstract.h` / `abstract.c`)
 
 ### Responsibility
-Schema registration and static rule verification. Intercepts type errors and undefined variables before execution.
+
+Schema registration and static semantic verification of AST rules before execution. Catches type errors, undefined variables, and invalid action signatures.
 
 ### Schema Structure
 
 ```
 cdsl_schema_t
-├── vars (cdsl_var_schema_t linked list)
-│   └── { name: "user.age", type: CDSL_TYPE_INT }
-│   └── { name: "user.name", type: CDSL_TYPE_STRING }
-│   └── ...
-└── actions (cdsl_action_schema_t linked list)
-    └── { name: "block", return: VOID, arg_count: 1, arg_types: [STRING] }
-    └── { name: "score", return: VOID, arg_count: 1, arg_types: [INT] }
-    └── ...
+├── vars     — cdsl_var_schema_t linked list
+│   └── { name: "user.age", type: CDSL_TYPE_INT, next }
+└── actions  — cdsl_action_schema_t linked list
+    └── { name: "block", return_type: VOID, arg_count: 1, arg_types: [STRING], next }
 ```
 
 ### Verification Flow
@@ -110,273 +108,183 @@ cdsl_schema_t
 ```
 cdsl_verify_rule(rule, schema)
     │
-    ├─ Walk all expression nodes
-    │   └─ resolve_expr_type() → find variable type, check type compatibility
+    ├── If rule uses metrics:
+    │   For each metric:
+    │     For each case:
+    │       resolve_expr_type(condition) → checks variable existence + type compatibility
+    │       verify_action(action) → checks name, arg count, arg types
+    │     verify_action(default_action)
     │
-    ├─ Walk all Action calls
-    │   └─ verify_action() → find Action Schema, check arg count and types
-    │
-    └─ Return 1 (pass) or 0 (fail, err_buf contains error)
+    └── If simple rule:
+        resolve_expr_type(when_expr)
+        verify_action(then_action)
 ```
 
-### Error Reporting
+### Type Resolution Rules
 
-`cdsl_verify_rule_detailed()` returns `cdsl_error_list_t` with all found errors:
+| Operation                  | Condition                  | Result type |
+|----------------------------|----------------------------|-------------|
+| Literal (INT/FLOAT/BOOL/STRING) | —                      | Its type    |
+| Variable lookup (ID)       | Must exist in schema       | Schema type |
+| Binary comparison (==, !=, <, >, <=, >=) | Compatible operands | BOOL |
+| Logical AND / OR           | —                          | BOOL        |
+| String comparison          | Only == and != allowed     | BOOL        |
+| Type promotion             | INT + FLOAT → FLOAT        | FLOAT       |
+| Type mismatch              | INT vs STRING              | ERROR       |
 
-```c
-cdsl_error_list_t* errors = cdsl_verify_rule_detailed(rule, schema);
-for (int i = 0; i < errors->count; i++) {
-    cdsl_error_print(errors->errors[i]);
-}
-```
+### Error Collection
 
-### Key API
+Two verification modes:
 
-```c
-cdsl_schema_t* cdsl_schema_create(void);
-void cdsl_schema_free(cdsl_schema_t* schema);
-void cdsl_schema_register_var(cdsl_schema_t* schema, const char* name, cdsl_type_t type);
-void cdsl_schema_register_action(cdsl_schema_t* schema, const char* name,
-                                  cdsl_type_t ret_type, int arg_count, ...);
-int cdsl_verify_rule(const cdsl_rule_t* rule, const cdsl_schema_t* schema,
-                      char* err_buf, int err_buf_sz);
-cdsl_error_list_t* cdsl_verify_rule_detailed(const cdsl_rule_t* rule,
-                                              const cdsl_schema_t* schema);
-```
+| Function                  | Behavior                           | Use case              |
+|---------------------------|------------------------------------|-----------------------|
+| `cdsl_verify_rule()`      | Fail-fast, first error as string   | Quick validation      |
+| `cdsl_verify_rule_detailed()` | Collect all errors into list    | IDE / batch reporting |
 
 ---
 
 ## 3. Execution Module (`execution.h` / `execution.c`)
 
 ### Responsibility
-AST interpretation, context binding, action callback dispatch, report generation, RuleSet management, compilation cache, code generation, and visualization.
 
-### Context
+The largest module. Handles: runtime context binding, AST interpretation, action dispatch, report generation, RuleSet management, compilation caching, code generation, and Graphviz visualization.
+
+### Context (`cdsl_context_t`)
 
 ```
 cdsl_context_t
-├── schema   — Associated schema reference
-└── entries  — Variable binding linked list
-    ├── { name: "user.age", value: {INT, 25} }
+├── schema   — Pointer to associated schema (read-only)
+└── entries  — cdsl_context_entry_t linked list
+    ├── { name: "user.age",  value: {INT, 25} }
     ├── { name: "user.name", value: {STRING, "Alice"} }
     └── ...
 ```
 
 Two binding methods:
-1. **API binding**: `cdsl_context_set_int(ctx, "user.age", 25)`
-2. **JSON loading**: `cdsl_context_load_json(ctx, "{\"user\":{\"age\":25}}")`
 
-### VM Execution Flow
+1. **API binding**: type-specific setters (`cdsl_context_set_int`, etc.)
+2. **JSON loading**: `cdsl_context_load_json()` parses JSON and recursively binds variables with dot-notation keys
+
+### Expression Evaluation (`eval_expr`)
 
 ```
-cdsl_vm_execute(vm, rule, ctx)
+eval_expr(expr, ctx, vm, debug)
     │
-    ├─ Simple rule (rule->metrics == NULL)
-    │   ├─ eval_expr(rule->when_expr, ctx) → bool
-    │   ├─ if true: trigger_action(rule->then_action) → FAILED
-    │   └─ if false: → PASSED
-    │
-    └─ Scoring rule (rule->metrics != NULL)
-        ├─ for each metric:
-        │   ├─ for each case:
-        │   │   ├─ eval_expr(case.condition, ctx)
-        │   │   └─ if true: trigger_action(case.action), break
-        │   ├─ if no case matched: trigger_action(default_action)
-        │   ├─ check is_critical → veto if failed
-        │   └─ accumulate score
-        ├─ aggregate total score
-        ├─ check thresholds (pass_threshold, partial_threshold)
-        └─ determine tri-state status
+    ├── CDSL_EXPR_INT      → return typed value
+    ├── CDSL_EXPR_FLOAT    → return typed value
+    ├── CDSL_EXPR_BOOL     → return typed value
+    ├── CDSL_EXPR_STRING   → return typed value
+    ├── CDSL_EXPR_ID       → ctx_get() lookup
+    ├── CDSL_EXPR_UNARY    → recurse + apply NOT
+    ├── CDSL_EXPR_BINARY   → recurse left/right + apply operator
+    │   ├── AND/OR → short-circuit evaluation
+    │   └── Comparison → numeric or string comparison
+    └── CDSL_EXPR_CALL     → lookup registered function + invoke callback
 ```
 
 ### Tri-state Decision Logic
 
 ```
-if (any_critical_metric_failed):
+if (any is_critical metric failed):
     status = FAILED (veto)
-else if (total_score >= pass_threshold):
-    status = PASSED
-else if (total_score >= partial_threshold):
-    status = PARTIALLY_PASSED
 else:
-    status = FAILED
+    total = sum of all metric scores
+    if (total >= pass_threshold):      → PASSED
+    else if (total >= partial_threshold): → PARTIALLY_PASSED
+    else:                              → FAILED
 ```
 
 ### RuleSet Batch Execution
 
 ```
 cdsl_ruleset_t
-├── entries (sorted by priority)
-│   ├── { rule: r1, priority: 1 }  ← executes first
-│   ├── { rule: r2, priority: 2 }
-│   └── { rule: r3, priority: 3 }  ← executes last
+├── entries — priority-sorted linked list
+│   ├── { rule: r1, priority: 1 }
+│   ├── { rule: r2, priority: 5 }
+│   └── { rule: r3, priority: 10 }
 └── count: 3
-
-cdsl_vm_execute_ruleset(vm, set, ctx)
-    → cdsl_ruleset_report_t (per-rule reports + aggregates)
 ```
 
-### Debug Trace Mode
-
-When enabled via `cdsl_vm_set_debug(vm, 1)`:
-- Each expression evaluation prints type and value to stderr
-- Each triggered action prints its name and arguments
-- Each metric evaluation shows matched case and score
-- Useful for debugging rule logic during development
-
-### Hot Reload
-
-```c
-// Load from file
-cdsl_ruleset_load_file(set, "path/to/rules.dsl", 1, schema, err, sizeof(err));
-
-// Remove by name
-cdsl_ruleset_remove(set, "rule_name");
-
-// Reload file (re-parses and replaces in-place)
-cdsl_ruleset_reload_file(set, "rule_name", "path/to/rules.dsl", schema, err, sizeof(err));
-```
-
-### Parallel Execution
-
-```c
-// Thread_count=0 uses hardware concurrency
-cdsl_ruleset_report_t* rpt = cdsl_vm_execute_ruleset_parallel(vm, set, ctx, 4);
-```
-
-Internal implementation creates per-thread VM clones and splits rules across threads.
-
-### Custom Function Registration
-
-```c
-// C callback
-cdsl_value_t my_strlen(const char* name, cdsl_arg_node_t* args, void* ud) {
-    cdsl_value_t v = { .type = CDSL_TYPE_INT, .data.int_val = 0 };
-    if (args && args->expr && args->expr->type == CDSL_EXPR_STRING)
-        v.data.int_val = strlen(args->expr->data.string_val);
-    return v;
-}
-
-// Register
-cdsl_vm_register_function(vm, "strlen", my_strlen);
-
-// Use in DSL: WHEN strlen(user.name) > 10 THEN ...
-```
-
-### Template & Inheritance
-
-Templates define reusable metric structures:
-
-```
-TEMPLATE base_audit {
-    METRIC blacklist {
-        META { weight = "30" is_critical = "true" }
-        CASE supplier.is_blacklisted == false THEN score(30)
-        DEFAULT fail_metric(0, "blacklisted")
-    }
-}
-
-RULE supplier_audit EXTENDS base_audit {
-    METRIC capital {
-        META { weight = "40" }
-        CASE supplier.capital >= 5000000 THEN score(40)
-        DEFAULT score(0)
-    }
-}
-```
-
-Templates are registered globally; `EXTENDS` copies template metrics into the rule before parsing custom ones.
+Rules are maintained in ascending priority order. `cdsl_vm_execute_ruleset()` iterates through entries and aggregates per-rule reports.
 
 ### Compilation Cache
 
-```c
-cdsl_compile_cache_t* cache = cdsl_compile_cache_create(64);
+The cache is a hash table indexed by the DSL source string (djb2 hash). On cache hit, parsing and verification are skipped:
 
-// Parse + verify + cache
-cdsl_compiled_rule_t* cr = cdsl_compile(cache, dsl_string, schema, err, sizeof(err));
-
-// Execute from cache (no re-parse)
-cdsl_rule_report_t* rpt = cdsl_vm_execute_compiled(vm, cr, ctx);
+```
+cdsl_compile(cache, dsl_string, schema)
+    │
+    ├── hash = hash_dsl_string(dsl_string)
+    ├── if cache[hash] matches → return cached rule
+    ├── else:
+    │   ├── cdsl_parse_string(dsl_string) → rule
+    │   ├── cdsl_verify_rule(rule, schema) → verify
+    │   └── cache[hash] = rule
+    └── return rule
 ```
 
-Internal hash is computed from the DSL string and schema pointer for cache lookups.
+### Code Generation (`cdsl_codegen_rule_to_c`)
 
-### Performance Monitoring
+Translates DSL rules to equivalent C source code:
 
-```c
-cdsl_stats_t* stats = cdsl_vm_get_stats(vm);
-printf("Executions: %ld, Avg time: %.2f us\n", stats->total_executions, stats->avg_time_us);
-cdsl_vm_reset_stats(vm);
-```
+- Metric rules → C function with `get_int` callbacks and `goto` dispatch
+- Simple rules → C function with `if (condition) { action(); return 0; }`
 
-### Code Generation (DSL → C)
+### Visualization (`cdsl_rule_to_dot`)
 
-```c
-char* c_code = cdsl_codegen_rule_to_c(rule, schema);
-// Output: C function that evaluates the rule
-cdsl_codegen_to_file(rule, schema, "generated_rule.c");
-```
+Generates Graphviz DOT format:
 
-### Visualization (Graphviz DOT)
-
-```c
-// Single rule graph
-char* dot = cdsl_rule_to_dot(rule);
-cdsl_rule_to_dot_file(rule, "rule.dot");
-
-// Ruleset with dependencies
-char* set_dot = cdsl_ruleset_to_dot(ruleset);
-cdsl_ruleset_to_dot_file(ruleset, "ruleset.dot");
-```
+- Variables → blue ellipses
+- Conditions → green diamonds
+- Functions → pink boxes
+- Literals → yellow boxes
+- Critical metrics → salmon boxes
 
 ---
 
 ## 4. AI Bridge Module (`ai_bridge.h` / `ai_bridge.c`)
 
 ### Responsibility
-Natural language to DSL translation, DSL rule safety review, with streaming support.
+
+Natural language to DSL translation and DSL rule safety review, with offline (mock) and online (LLM API) modes.
 
 ### Work Modes
 
-| Mode | `use_mock` | Description |
-|------|-----------|-------------|
-| Offline | 1 | Schema-based generic DSL generation, structural rule review |
-| API mode | 0 | OpenAI-compatible LLM API calls |
-| Stream (API) | 0 + stream call | Callback-based SSE streaming translation/review |
+| Mode   | `use_mock` | Mechanism              | Description                     |
+|--------|------------|------------------------|----------------------------------|
+| Offline | 1          | Schema-based generation | Creates rules from schema vars   |
+| API     | 0          | cURL + LLM API         | OpenAI-compatible HTTP calls     |
+| Stream  | 0 + stream | SSE callbacks           | Streaming chunk delivery         |
 
-### Offline Generation
+### Offline Generation Strategy
 
-The offline mode generates DSL rules dynamically from the registered schema:
-- Creates one METRIC per schema variable
-- Generates type-appropriate CASE conditions (e.g., `>= 0` for INT, `!= ""` for STRING)
-- Supports simple WHEN/THEN rules when input contains "when" / "if" keywords
-- Rule name is extracted from the first word of the natural language input
-- `business_context` field can provide additional guidance for API mode prompts
+When no API is configured, the bridge generates DSL rules dynamically:
 
-| Check | Points | Description |
-|-------|--------|-------------|
-| META block exists | +10 | Rule has metadata description |
-| METRIC block exists | +15 | Uses multi-metric structure |
-| CASE + DEFAULT complete | +15 | Each metric has full branches |
-| is_critical marker | +10 | Has critical compliance item |
-| weight assignment | +10 | Metrics have weight distribution |
-| description field | +10 | Has functional description |
+1. If input contains "when" or "if" keywords → simple WHEN/THEN rule
+2. Otherwise → multi-metric scoring rule with one metric per schema variable
+3. Each metric uses a type-appropriate CASE condition (e.g., `>= 0` for INT, `!= ""` for STRING)
+4. Rule name is extracted from the first word of natural language input
 
-Score ≥ 50 → approved = 1
+### Review Scoring (Mock Mode)
 
-### Streaming API
+| Check                 | Points | Description                |
+|-----------------------|--------|----------------------------|
+| META block            | +15    | Has metadata block         |
+| METRIC block          | +15    | Uses multi-metric structure|
+| CASE + DEFAULT        | +15    | Has complete branches      |
+| is_critical           | +10    | Has critical metric marker |
+| score() usage         | +10    | Has score function calls   |
 
-```c
-void my_chunk_callback(const char* chunk, void* user_data) {
-    printf("%s", chunk);
-    fflush(stdout);
-}
+Score ≥ 40 → approved.
 
-char* full = cdsl_ai_translate_stream("supplier audit", schema, &cfg,
-                                       my_chunk_callback, NULL);
-char* review = cdsl_ai_review_stream(dsl, schema, &cfg,
-                                      my_chunk_callback, NULL);
-```
+### API Integration
+
+The bridge constructs a cURL command to call an OpenAI-compatible chat completions endpoint:
+
+- Non-streaming: `curl -s -X POST`
+- Streaming: `curl -s -N` (SSE mode) with per-chunk callback invocation
+
+Response parsing extracts the `content` field from the JSON response and optionally extracts DSL from ` ```dsl ` code blocks.
 
 ---
 
@@ -384,30 +292,43 @@ char* review = cdsl_ai_review_stream(dsl, schema, &cfg,
 
 ### 5.1 JSON Parser (`cdsl_json.h` / `cdsl_json.c`)
 
-Zero-dependency lightweight JSON parser:
-- Objects, arrays, strings, numbers, booleans, null
-- Nested structures
-- Used by `cdsl_context_load_json()`
+A zero-dependency, recursive-descent JSON parser supporting:
+
+- Objects (`{}`), arrays (`[]`), strings, numbers, booleans, null
+- Nested structures (arbitrary depth)
+- Used by `cdsl_context_load_json()` to bind context variables
+
+The parser does NOT handle escape sequences (e.g., `\n`, `\"`) — these are passed through literally.
 
 ### 5.2 Error Reporting (`cdsl_error.h` / `cdsl_error.c`)
 
-Structured error types:
-- `CDSL_ERR_SYNTAX` — Syntax error
-- `CDSL_ERR_TYPE` — Type error
-- `CDSL_ERR_SEMANTIC` — Semantic error
-- `CDSL_ERR_RUNTIME` — Runtime error
+Structured error types with hint support:
+
+| Kind                 | Meaning                    |
+|----------------------|----------------------------|
+| `CDSL_ERR_SYNTAX`    | Parse error                |
+| `CDSL_ERR_TYPE`      | Type mismatch              |
+| `CDSL_ERR_SEMANTIC`  | Unknown variable/action    |
+| `CDSL_ERR_RUNTIME`   | Execution error            |
+
+Error lists are dynamically allocated (initial capacity 16, doubles as needed).
 
 ### 5.3 Arena Allocator (`cdsl_arena.h` / `cdsl_arena.c`)
 
-Batch memory allocator for same-lifetime objects (AST nodes):
-- 8-byte aligned
-- Default 64KB block size
-- One-shot free of all memory
+A bump allocator for same-lifetime objects:
+
+- 8-byte aligned allocations
+- Default 64 KB block size
+- New blocks allocated on demand (when current block is exhausted)
+- One-shot `free()` releases all memory at once
+- Ideal for AST node allocation during parsing
 
 ### 5.4 Hash Table (`cdsl_hashmap.h` / `cdsl_hashmap.c`)
 
-O(1) average lookup key-value table:
-- Separate chaining for collision resolution
-- String keys, generic value pointers
-- Optional destructor callback
-- Used by template registry and compile cache
+A separate-chaining hash table with djb2 hashing:
+
+- String keys, generic `void*` values
+- O(1) average lookup
+- Optional destructor callback per entry for value cleanup
+- Used by: template registry, compile cache
+- Not thread-safe

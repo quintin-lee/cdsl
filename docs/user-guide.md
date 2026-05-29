@@ -1,78 +1,76 @@
 # User Guide
 
+**Revision**: 1.0 &nbsp;·&nbsp; **Audience**: Application Developers
+
+---
+
+## Table of Contents
+
+- [Quick Start](#1-quick-start)
+- [Core API Usage](#2-core-api-usage)
+- [Scoring Rules](#3-scoring-rules)
+- [RuleSet Batch Execution](#4-ruleset-batch-execution)
+- [Debug Trace Mode](#5-debug-trace-mode)
+- [Performance Monitoring](#6-performance-monitoring)
+- [Compilation Cache](#7-compilation-cache)
+- [Custom Functions](#8-custom-functions)
+- [Templates & Inheritance](#9-templates--inheritance)
+- [Code Generation](#10-code-generation-dsl--c)
+- [Visualization](#11-visualization-graphviz-dot)
+- [AI Integration](#12-ai-integration)
+- [Custom Actions](#13-custom-actions)
+- [Error Handling](#14-error-handling)
+- [Thread Safety](#15-thread-safety-notes)
+
+---
+
 ## 1. Quick Start
 
 ### 1.1 Requirements
 
-- C compiler (GCC / Clang)
-- CMake 3.14+
-- Flex 2.6+
-- Bison 3.8+
+| Tool     | Minimum Version |
+|----------|-----------------|
+| C99 compiler (GCC / Clang) | — |
+| CMake    | 3.14            |
+| Flex     | 2.6             |
+| Bison    | 3.8             |
 
 ### 1.2 Build
 
 ```bash
 git clone <repo-url>
-cd dsl
-mkdir build && cd build
-cmake ..
-make -j$(nproc)
+cd cdsl
+cmake -B build && cmake --build build -j$(nproc)
 ```
 
 ### 1.3 Run Demo
 
 ```bash
-./cdsl_demo
+./build/cdsl_demo
 ```
 
-6 demo scenarios:
-1. **Supplier Qualification Audit** — AI-generated DSL, blacklist (critical) + capital + experience scoring
-2. **Document Format Audit** — AI-generated DSL, format (critical) + signature + size scoring
-3. **Content Safety Audit** — AI-generated DSL, sensitive words + PII + spam scoring
-4. **JSON Context** — Variables loaded from JSON string
-5. **Simple Rules** — Independent pass/fail checks (blacklist, capital floor, format)
-6. **RuleSet Batch** — Priority-ordered multi-rule execution with aggregate report
+The demo executes 6 scenarios demonstrating all major features:
+
+| # | Scenario               | Highlights                                |
+|---|------------------------|-------------------------------------------|
+| 1 | Supplier Qualification | AI-generated DSL, critical blacklist, scoring |
+| 2 | Document Format Audit  | AI-generated DSL, format + signature + size |
+| 3 | Content Safety Audit   | AI-generated DSL, multi-metric content checks |
+| 4 | JSON Context           | Variable bindings from JSON string        |
+| 5 | Simple Rules           | Independent pass/fail checks              |
+| 6 | RuleSet Batch          | Priority-ordered multi-rule execution     |
 
 ### 1.4 Run Tests
 
 ```bash
-ctest
-# or directly:
-./test_ast
-./test_execution
+ctest --test-dir build --output-on-failure
 ```
 
 ### 1.5 Generate Documentation
 
 ```bash
-make doc
-# → docs/html/index.html
-```
-
-### 1.6 Integration
-
-**Method 1: add_subdirectory**
-
-```cmake
-add_subdirectory(path/to/cdsl)
-target_link_libraries(your_app PRIVATE cdsl)
-```
-
-**Method 2: Installed find_package**
-
-```bash
-cd build && cmake --install . --prefix /usr/local
-```
-
-```cmake
-find_package(cdsl REQUIRED)
-target_link_libraries(your_app PRIVATE cdsl::cdsl_static)
-```
-
-**Method 3: pkg-config**
-
-```bash
-pkg-config --cflags --libs cdsl
+cmake --build build --target doc
+# → build/docs/html/index.html
 ```
 
 ---
@@ -81,30 +79,31 @@ pkg-config --cflags --libs cdsl
 
 ### 2.1 Define Schema
 
-Schema is the contract between rules and the host program — registers all available variables and actions.
+The schema defines the contract between rules and the host program. It declares all available variables and actions.
 
 ```c
 #include "abstract.h"
 
 cdsl_schema_t* schema = cdsl_schema_create();
 
-// Register variables
+// Register typed variables
 cdsl_schema_register_var(schema, "user.age", CDSL_TYPE_INT);
 cdsl_schema_register_var(schema, "user.name", CDSL_TYPE_STRING);
 cdsl_schema_register_var(schema, "user.is_active", CDSL_TYPE_BOOL);
 
-// Register actions
+// Register actions with their signatures
 cdsl_schema_register_action(schema, "block", CDSL_TYPE_VOID, 1, CDSL_TYPE_STRING);
 cdsl_schema_register_action(schema, "score", CDSL_TYPE_VOID, 1, CDSL_TYPE_INT);
-cdsl_schema_register_action(schema, "fail_metric", CDSL_TYPE_VOID, 2, CDSL_TYPE_INT, CDSL_TYPE_STRING);
+cdsl_schema_register_action(schema, "fail_metric", CDSL_TYPE_VOID, 2,
+                             CDSL_TYPE_INT, CDSL_TYPE_STRING);
 ```
 
-### 2.2 Parse Rule
+### 2.2 Parse a Rule
 
 ```c
 #include "ast.h"
 
-const char* dsl = 
+const char* dsl =
     "RULE check_age {"
     "  META { description = \"Age check\" }"
     "  WHEN user.age >= 18"
@@ -118,18 +117,16 @@ if (!rule) {
 }
 ```
 
-### 2.3 Verify Rule
+### 2.3 Verify the Rule
 
 ```c
-#include "abstract.h"
-
-// Simple verification
+// Quick verification (fail-fast)
 char err[512] = {0};
 if (!cdsl_verify_rule(rule, schema, err, sizeof(err))) {
     fprintf(stderr, "Verification failed: %s\n", err);
 }
 
-// Detailed verification (collect all errors)
+// Detailed verification (all errors)
 cdsl_error_list_t* errors = cdsl_verify_rule_detailed(rule, schema);
 if (errors->count > 0) {
     cdsl_error_list_print(errors);
@@ -164,7 +161,8 @@ cdsl_context_set_string(ctx, "user.name", "Alice");
 cdsl_context_set_bool(ctx, "user.is_active", 1);
 
 // Method 2: JSON loading
-cdsl_context_load_json(ctx, "{\"user\":{\"age\":25,\"name\":\"Alice\",\"is_active\":true}}");
+cdsl_context_load_json(ctx,
+    "{\"user\":{\"age\":25,\"name\":\"Alice\",\"is_active\":true}}");
 
 // Execute
 cdsl_rule_report_t* rpt = cdsl_vm_execute(vm, rule, ctx);
@@ -189,26 +187,29 @@ cdsl_schema_free(schema);
 
 ## 3. Scoring Rules
 
-### 3.1 Define Scoring Rule
+### 3.1 Define a Scoring Rule
 
 ```c
 const char* dsl =
     "RULE scoring {"
-    "  META { description = \"Test\" pass_threshold = \"80\" partial_threshold = \"50\" }"
+    "  META { description = \"Scoring test\""
+    "         pass_threshold = \"80\""
+    "         partial_threshold = \"50\" }"
     "  METRIC m1 {"
     "    META { description = \"Metric 1\" weight = \"60\" }"
     "    CASE user.age >= 18 THEN score(60)"
     "    DEFAULT score(0)"
     "  }"
     "  METRIC m2 {"
-    "    META { description = \"Metric 2\" weight = \"40\" is_critical = \"true\" }"
+    "    META { description = \"Metric 2\" weight = \"40\""
+    "           is_critical = \"true\" }"
     "    CASE user.is_active == true THEN score(40)"
     "    DEFAULT fail_metric(0, \"inactive\")"
     "  }"
     "}";
 ```
 
-### 3.2 Tri-State Results
+### 3.2 Interpret Tri-State Results
 
 ```c
 cdsl_rule_report_t* rpt = cdsl_vm_execute(vm, rule, ctx);
@@ -217,15 +218,19 @@ switch (rpt->status) {
     case CDSL_STATUS_PASSED:
         printf("Passed: %d/%d\n", rpt->total_obtained_score, rpt->total_max_score);
         break;
+
     case CDSL_STATUS_PARTIALLY_PASSED:
-        printf("Partially passed: %d/%d\n", rpt->total_obtained_score, rpt->total_max_score);
+        printf("Partially passed: %d/%d\n",
+               rpt->total_obtained_score, rpt->total_max_score);
         break;
+
     case CDSL_STATUS_FAILED:
         printf("Failed: %d/%d\n", rpt->total_obtained_score, rpt->total_max_score);
         for (int i = 0; i < rpt->metric_count; i++) {
             if (!rpt->metrics[i].is_passed && rpt->metrics[i].violation_reason) {
                 printf("  Failed item: %s - %s\n",
-                       rpt->metrics[i].metric_name, rpt->metrics[i].violation_reason);
+                       rpt->metrics[i].metric_name,
+                       rpt->metrics[i].violation_reason);
             }
         }
         break;
@@ -241,16 +246,15 @@ switch (rpt->status) {
 ```c
 cdsl_ruleset_t* set = cdsl_ruleset_create();
 
-// Add rules (lower priority = executes first)
+// Add rules with priorities (lower value = earlier execution)
 cdsl_ruleset_add(set, rule_high_priority, 1);
 cdsl_ruleset_add(set, rule_medium_priority, 5);
 cdsl_ruleset_add(set, rule_low_priority, 10);
 
-// Execute
+// Execute all
 cdsl_ruleset_report_t* batch = cdsl_vm_execute_ruleset(vm, set, ctx);
 cdsl_ruleset_report_print(batch);
 
-// View aggregate
 printf("Passed: %d, Partial: %d, Failed: %d\n",
        batch->total_passed, batch->total_partially, batch->total_failed);
 printf("Total: %d/%d\n", batch->aggregate_score, batch->aggregate_max);
@@ -268,44 +272,53 @@ cdsl_ruleset_load_file(set, "rules.dsl", 1, schema, err_buf, sizeof(err_buf));
 // Remove a rule by name
 cdsl_ruleset_remove(set, "check_blacklist");
 
-// Reload (re-parse and replace in-place)
-cdsl_ruleset_reload_file(set, "check_blacklist", "rules.dsl", schema, err_buf, sizeof(err_buf));
+// Reload (re-parses and replaces in-place)
+cdsl_ruleset_reload_file(set, "check_blacklist", "rules.dsl",
+                         schema, err_buf, sizeof(err_buf));
 ```
 
 ### 4.3 Parallel Execution
 
 ```c
-// Thread count = 0 uses hardware concurrency
-cdsl_ruleset_report_t* batch = cdsl_vm_execute_ruleset_parallel(vm, set, ctx, 0);
+// thread_count = 0 uses default (4 threads)
+cdsl_ruleset_report_t* batch =
+    cdsl_vm_execute_ruleset_parallel(vm, set, ctx, 0);
 ```
 
 ### 4.4 Dependency Ordering
 
 ```c
 // Define dependencies in META:
-// RULE r1 { META { depends_on = "r2,r3" } ... }
+//   RULE r1 { META { depends_on = "r2,r3" } ... }
 
 // Validate and topologically sort
-cdsl_ruleset_validate_deps(set, err_buf, sizeof(err_buf));
-cdsl_ruleset_topo_sort(set);
+if (cdsl_ruleset_validate_deps(set, err_buf, sizeof(err_buf))) {
+    cdsl_ruleset_topo_sort(set);
+}
 ```
 
 ---
 
 ## 5. Debug Trace Mode
 
-Enable trace output to stderr for expression evaluation debugging:
+Enable trace output to stderr for step-by-step expression evaluation:
 
 ```c
 cdsl_vm_t* vm = cdsl_vm_create(schema);
 cdsl_vm_set_debug(vm, 1);  // Enable trace
 
 cdsl_rule_report_t* rpt = cdsl_vm_execute(vm, rule, ctx);
+```
 
-// Sample trace output:
-// [eval] expr: binary(>=) left: id(user.age) right: int(18)
-// [eval]   result: bool(1)
-// [action] block("adult") triggered
+Sample trace output:
+
+```
+[TRACE] Evaluating simple rule 'check_age'
+[TRACE]   literal int: 18
+[TRACE]   lookup: user.age = 25
+[TRACE]   binary: 25 >= 18 = 1
+[TRACE] WHEN result: true
+[TRACE]   calling action: block
 ```
 
 ---
@@ -313,16 +326,15 @@ cdsl_rule_report_t* rpt = cdsl_vm_execute(vm, rule, ctx);
 ## 6. Performance Monitoring
 
 ```c
-// After execution(s):
+// After one or more executions:
 cdsl_stats_t* stats = cdsl_vm_get_stats(vm);
 printf("Total executions: %ld\n", stats->total_executions);
 printf("Total rules:      %ld\n", stats->total_rules_executed);
 printf("Total metrics:    %ld\n", stats->total_metrics_evaluated);
-printf("Total actions:    %ld\n", stats->total_actions_triggered);
 printf("Total time:       %.0f us\n", stats->total_time_us);
 printf("Avg time/rule:    %.2f us\n", stats->avg_time_us);
 
-// Reset for a new measurement period
+// Reset counters for a new measurement period
 cdsl_vm_reset_stats(vm);
 ```
 
@@ -336,7 +348,8 @@ Avoid re-parsing and re-verifying the same DSL string:
 cdsl_compile_cache_t* cache = cdsl_compile_cache_create(64);
 
 // First call: parse + verify + cache
-cdsl_compiled_rule_t* cr = cdsl_compile(cache, dsl_string, schema, err_buf, sizeof(err_buf));
+cdsl_compiled_rule_t* cr = cdsl_compile(cache, dsl_string, schema,
+                                         err_buf, sizeof(err_buf));
 if (!cr) {
     fprintf(stderr, "Compile failed: %s\n", err_buf);
     return;
@@ -345,7 +358,7 @@ if (!cr) {
 // Execute from cache (no re-parse)
 cdsl_rule_report_t* rpt = cdsl_vm_execute_compiled(vm, cr, ctx);
 
-// Subsequent calls with same DSL string hit the cache
+// Subsequent calls with the same DSL string hit the cache
 
 cdsl_compile_cache_free(cache);
 ```
@@ -379,7 +392,8 @@ cdsl_vm_register_function(vm, "strlen", my_strlen);
 cdsl_vm_register_function(vm, "abs", my_abs);
 ```
 
-Usage in DSL:
+DSL usage:
+
 ```dsl
 RULE check_name {
     META { description = "Name validation" }
@@ -390,7 +404,7 @@ RULE check_name {
 
 ---
 
-## 9. Template & Inheritance
+## 9. Templates & Inheritance
 
 Define reusable metric blocks with `TEMPLATE` and inherit with `EXTENDS`:
 
@@ -417,7 +431,7 @@ RULE full_audit EXTENDS base_audit {
 }
 ```
 
-Template metrics are copied into the extending rule before custom metrics.
+Template metrics are deep-copied into the extending rule during parsing. Custom metrics defined in the rule body are appended after inherited ones.
 
 ---
 
@@ -451,6 +465,7 @@ cdsl_ruleset_to_dot_file(ruleset, "ruleset.dot");
 ```
 
 Render with Graphviz:
+
 ```bash
 dot -Tpng rule.dot -o rule.png
 dot -Tpng ruleset.dot -o ruleset.png
@@ -460,30 +475,33 @@ dot -Tpng ruleset.dot -o ruleset.png
 
 ## 12. AI Integration
 
-### 12.1 Offline Mode (Demo)
+### 12.1 Offline Mode (Mock)
 
 ```c
 #include "ai_bridge.h"
 
-cdsl_ai_config_t cfg = cdsl_ai_config_default();  // use_mock = 1
+// Default config uses mock mode (use_mock = 1)
+cdsl_ai_config_t cfg = cdsl_ai_config_default();
 
-// Natural language to DSL — generates schema-aware rules
+// Translate natural language to DSL
 char* dsl = cdsl_ai_translate("supplier qualification audit", schema, &cfg);
 printf("Generated DSL:\n%s\n", dsl);
 
-// Optional business context to guide generation
-cfg.business_context = "Evaluate supplier capital, blacklist status, and experience";
+// Optional business context guides generation
+cfg.business_context =
+    "Evaluate supplier capital, blacklist status, and experience";
 char* dsl2 = cdsl_ai_translate("supplier audit", schema, &cfg);
 
 // Rule safety review
 cdsl_ai_review_t* review = cdsl_ai_review(dsl, schema, &cfg);
-printf("Approved: %s, Risk: %d/100\n", review->approved ? "YES" : "NO", review->risk_score);
+printf("Approved: %s, Risk: %d/100\n",
+       review->approved ? "YES" : "NO", review->risk_score);
 
 cdsl_ai_review_free(review);
 free(dsl);
 ```
 
-The offline mode generates DSL using the registered schema variables — one metric per variable — with appropriate CASE conditions based on each variable's type.
+The offline mode generates one metric per registered schema variable with type-appropriate CASE conditions.
 
 ### 12.2 API Mode (Real LLM)
 
@@ -496,7 +514,8 @@ cdsl_ai_config_t cfg = {
     .business_context = "Financial compliance audit with 3-tier scoring"
 };
 
-char* dsl = cdsl_ai_translate("check if transaction amount exceeds limit", schema, &cfg);
+char* dsl = cdsl_ai_translate(
+    "check if transaction amount exceeds limit", schema, &cfg);
 ```
 
 ### 12.3 Streaming (SSE Callback)
@@ -508,10 +527,13 @@ void on_chunk(const char* chunk, void* ud) {
 }
 
 // Streaming translation
-char* full = cdsl_ai_translate_stream("supplier audit", schema, &cfg, on_chunk, NULL);
+char* full = cdsl_ai_translate_stream(
+    "supplier audit", schema, &cfg, on_chunk, NULL);
 
 // Streaming review
-char* review = cdsl_ai_review_stream(dsl, schema, &cfg, on_chunk, NULL);
+char* review = cdsl_ai_review_stream(
+    dsl, schema, &cfg, on_chunk, NULL);
+
 free(full);
 free(review);
 ```
@@ -535,6 +557,7 @@ cdsl_vm_register_action(vm, "send_alert", alert_handler);
 ```
 
 DSL usage:
+
 ```dsl
 RULE alert_rule {
     META { description = "Alert on high value transaction" }
@@ -552,7 +575,7 @@ RULE alert_rule {
 ```c
 cdsl_rule_t* rule = cdsl_parse_string("INVALID DSL CODE");
 if (!rule) {
-    // Bison prints error to stderr automatically
+    // Bison prints error information to stderr automatically
 }
 ```
 
@@ -565,7 +588,9 @@ for (int i = 0; i < errors->count; i++) {
     fprintf(stderr, "[%s] line %d: %s\n",
             e->kind == CDSL_ERR_TYPE ? "TYPE" : "SEMANTIC",
             e->line, e->message);
-    if (e->hint) fprintf(stderr, "  hint: %s\n", e->hint);
+    if (e->hint) {
+        fprintf(stderr, "  hint: %s\n", e->hint);
+    }
 }
 cdsl_error_list_free(errors);
 ```
@@ -574,13 +599,13 @@ cdsl_error_list_free(errors);
 
 ## 15. Thread Safety Notes
 
-| Operation | Thread Safe |
-|-----------|-------------|
-| `cdsl_parse_string()` | ❌ Unsafe (Flex global state) |
-| `cdsl_vm_execute()` | ✅ Safe (per-thread VM) |
-| `cdsl_context_*()` | ✅ Safe (per-thread Context) |
-| `cdsl_compile_cache_t` | ❌ Unsafe (protect with mutex) |
-| Schema (read-only) | ✅ Safe |
-| Rule (read-only) | ✅ Safe |
+| Operation                     | Thread Safe | Guidance                          |
+|-------------------------------|-------------|-----------------------------------|
+| `cdsl_parse_string()`         | ❌          | Use mutex or single-threaded      |
+| `cdsl_vm_execute()`           | ✅          | One VM per thread                 |
+| `cdsl_context_*()`            | ✅          | One Context per thread            |
+| Schema (read-only)            | ✅          | Shared across threads             |
+| Rule (read-only)              | ✅          | Shared after parsing              |
+| `cdsl_compile_cache_t`        | ❌          | Protect with external mutex       |
 
-**Recommendation**: Create independent VM and Context per thread. Schema and Rule can be shared read-only across threads.
+**Recommendation**: Create independent VM and Context instances per thread. Schema and Rule objects can be shared read-only across threads.

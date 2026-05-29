@@ -1,27 +1,35 @@
-# C-DSL Architecture Document
+# Architecture Document
+
+**Revision**: 1.0 &nbsp;·&nbsp; **Audience**: Architects & Contributors
+
+---
 
 ## 1. Overview
 
-C-DSL is a C-based DSL rule engine framework for business rule validation. Supports natural language rule descriptions → DSL translation, AI safety review, multi-metric scoring, and tri-state audit results.
+C-DSL is a three-layer rule engine framework built in C99. It transforms natural language business rules into executable DSL, validates them against a formal schema, and produces structured audit reports.
 
 ### 1.1 Design Goals
 
-| Goal | Description |
-|---|---|
-| **Zero external dependencies** | Core library has no third-party deps; JSON parser is custom |
-| **Three-layer architecture** | Syntax → Abstract → Execution, clear separation of concerns |
-| **AI driven** | Natural language to DSL translation, AI rule safety review |
-| **Multi-metric scoring** | Weighted scoring, critical-rule veto, tri-state output |
-| **Easy integration** | CMake integration, static/shared library, pkg-config |
-| **Extensible** | Custom action callbacks, custom function registration, rule templates |
+| Goal                  | Description                                                        |
+|-----------------------|--------------------------------------------------------------------|
+| Zero dependencies     | Core library has no third-party dependencies; JSON parser is custom |
+| Three-layer isolation | Syntax → Abstract → Execution: each layer has a single responsibility |
+| AI-driven             | Natural language to DSL translation with optional LLM integration  |
+| Multi-metric scoring  | Weighted scoring, critical-rule veto, tri-state output             |
+| Easy integration      | CMake subdirectory, installable package, pkg-config                |
+| Extensible            | Custom action callbacks, custom function registration, templates   |
 
-### 1.2 Tech Stack
+### 1.2 Technology Stack
 
-- **Language**: C99
-- **Build**: CMake 3.14+
-- **Parsing**: Flex 2.6+ / Bison 3.8+
-- **Documentation**: Doxygen
-- **Testing**: Custom lightweight test framework
+| Component       | Technology                  |
+|-----------------|-----------------------------|
+| Language        | C99                         |
+| Build system    | CMake 3.14+                 |
+| Lexer           | Flex 2.6+                   |
+| Parser          | Bison 3.8+                  |
+| Documentation   | Doxygen + Markdown          |
+| Testing         | Custom lightweight framework |
+| CI              | GitHub Actions              |
 
 ---
 
@@ -29,108 +37,125 @@ C-DSL is a C-based DSL rule engine framework for business rule validation. Suppo
 
 ```
 ┌──────────────────────────────────────────────────────────────┐
-│                     AI Bridge Layer                           │
-│         Natural Language → DSL Translation                    │
-│         (schema-aware offline generation / LLM API / stream)  │
-│         Rule Safety Review (structural analysis / LLM)        │
-└────────────────────────────┬─────────────────────────────────┘
-                             │ DSL String
-                             ▼
+│                    AI Bridge Layer                             │
+│                                                                │
+│  • Natural Language → DSL translation                          │
+│    - Schema-aware offline generation                          │
+│    - OpenAI-compatible LLM API                                │
+│    - SSE streaming callbacks                                  │
+│  • Rule Safety Review                                         │
+│    - Structural analysis (mock mode)                          │
+│    - LLM-based analysis (API mode)                            │
+└──────────────────────────┬───────────────────────────────────┘
+                           │ DSL String
+                           ▼
 ┌──────────────────────────────────────────────────────────────┐
-│  1. Syntax Layer (Syntax Layer)                               │
-│     Flex (Lexer) ──► Token Stream ──► Bison (Parser)         │
-│                                            │                  │
-│                                            ▼                  │
-│                                      AST (Syntax Tree)        │
-│     Grammar: simple WHEN/THEN, METRIC/CASE/DEFAULT,           │
-│              TEMPLATE/EXTENDS inheritance                     │
-└──────────────────────────────┬───────────────────────────────┘
-                               │ Raw AST
-                               ▼
+│  1. Syntax Layer                                              │
+│                                                                │
+│     Flex (Lexer) ──► Token Stream ──► Bison (Parser)          │
+│                                            │                   │
+│                                            ▼                   │
+│                                      AST (Syntax Tree)         │
+│                                                                │
+│  Grammar constructs:                                           │
+│  • RULE / META / WHEN / THEN — simple rules                   │
+│  • METRIC / CASE / DEFAULT — scoring rules                    │
+│  • TEMPLATE / EXTENDS — inheritance                            │
+│  • AND / OR / NOT — logical operators                          │
+│  • Function calls in expressions                               │
+└──────────────────────────┬───────────────────────────────────┘
+                           │ Raw AST (cdsl_rule_t)
+                           ▼
 ┌──────────────────────────────────────────────────────────────┐
-│  2. Abstract Layer (Abstract Layer)                           │
-│     Schema Registration                                       │
-│     ├─ Variable type checking                                 │
-│     ├─ Action signature validation                            │
-│     └─ Expression type compatibility                          │
-│     (Guarantees variable existence, type safety,              │
-│      prevents runtime out-of-bounds)                          │
-└──────────────────────────────┬───────────────────────────────┘
-                               │ Verified AST
-                               ▼
+│  2. Abstract Layer                                            │
+│                                                                │
+│  Schema registration and static verification:                  │
+│  • Variable type checking (existence + type match)            │
+│  • Action signature validation (name + arg count + types)     │
+│  • Expression type compatibility (INT vs STRING, etc.)        │
+│  • All errors collected (not fail-fast)                       │
+│                                                                │
+│  Output: Verified AST or error list                           │
+└──────────────────────────┬───────────────────────────────────┘
+                           │ Verified AST
+                           ▼
 ┌──────────────────────────────────────────────────────────────┐
-│  3. Execution Layer (Execution Layer)                          │
-│     VM Engine                                                 │
-│     ├─ Context binding (API or JSON)                          │
-│     ├─ AST interpretation (eval_expr)                         │
-│     ├─ Simple rules: WHEN/THEN pass-fail                      │
-│     ├─ Scoring rules: METRIC/CASE matching, aggregation       │
-│     ├─ RuleSet: priority ordering, batch execution            │
-│     ├─ Hot reload: load/remove/reload rules at runtime        │
-│     ├─ Parallel: multi-threaded RuleSet execution             │
-│     ├─ Debug trace: step-by-step expression evaluation        │
-│     ├─ Compile cache: parse+verify caching by DSL hash        │
-│     ├─ Performance stats: execution counts and timing         │
-│     ├─ Code generation: DSL to C code                         │
-│     └─ Visualization: Graphviz DOT output                     │
+│  3. Execution Layer                                           │
+│                                                                │
+│  VM Engine:                                                   │
+│  • Context binding (API or JSON)                              │
+│  • AST interpretation (eval_expr)                             │
+│  • Simple rules: WHEN/THEN pass-fail                          │
+│  • Scoring rules: METRIC/CASE matching, aggregation           │
+│  • RuleSet: priority ordering, batch execution                │
+│  • Hot reload: load/remove/reload at runtime                  │
+│  • Parallel: multi-threaded execution via pthreads            │
+│  • Debug trace: step-by-step expression evaluation            │
+│  • Compile cache: parse+verify caching by DSL hash            │
+│  • Performance stats: execution counts and timing             │
+│  • Code generation: DSL to C code                             │
+│  • Visualization: Graphviz DOT output                         │
 └──────────────────────────────────────────────────────────────┘
 ```
 
 ### 2.1 Syntax Layer
 
-**Responsibility**: Parse DSL source text into an abstract syntax tree (AST).
+**Files**: `parser/lexer.l`, `parser/parser.y`, `src/ast.c`
 
-**Components**:
-- `parser/lexer.l` — Flex lexer, tokenizes source into token stream
-- `parser/parser.y` — Bison parser, builds AST from token stream
-- `src/ast.c` — AST node construction and memory management
+The Syntax Layer is responsible for lexical analysis and parsing of DSL source text. Flex tokenizes the input into a stream of tokens; Bison consumes the token stream and constructs an abstract syntax tree (AST) using the node constructors in `ast.c`.
 
-**Grammar keywords**:
-- `RULE` / `META` / `WHEN` / `THEN` — simple rules
-- `METRIC` / `CASE` / `DEFAULT` — scoring rules
-- `TEMPLATE` / `EXTENDS` — template inheritance
-- `AND` / `OR` / `NOT` — logical operators
+**Key responsibilities**:
+- Tokenization of DSL keywords, identifiers, literals, and operators
+- Grammar validation (syntax errors reported by Bison)
+- AST construction with proper parent-child relationships
+- Memory ownership: the parser allocates all AST nodes; the caller owns the returned `cdsl_rule_t`
 
 ### 2.2 Abstract Layer
 
-**Responsibility**: Static analysis of AST — type safety and semantic correctness.
+**Files**: `src/abstract.c`, `include/cdsl_error.h`
 
-**Components**:
-- `src/abstract.c` — Type checker and semantic validator
-- `include/cdsl_error.h` — Structured error reporting
+The Abstract Layer performs static analysis on the raw AST before execution. It verifies that the rule is semantically correct with respect to a registered schema.
 
-**Checks performed**:
-- Variable existence (lookup in Schema)
-- Operand type compatibility (e.g., INT vs STRING comparison)
-- Action argument count and types
-- All errors collected (not fail-fast)
+**Verification checks**:
+1. **Variable existence** — every identifier used in expressions must be registered in the schema
+2. **Type compatibility** — binary operands must have compatible types (INT ↔ FLOAT allowed)
+3. **Action signature** — action name must be registered, argument count must match, argument types must be compatible
+4. **Comparison validity** — string comparison only allowed with `==` and `!=`
+
+Two verification functions are provided:
+- `cdsl_verify_rule()` — fast fail, returns first error as a string
+- `cdsl_verify_rule_detailed()` — collects all errors into a structured `cdsl_error_list_t`
 
 ### 2.3 Execution Layer
 
-**Responsibility**: Interpret the AST, bind runtime context, generate evaluation reports.
+**Files**: `src/execution.c`, `src/cdsl_json.c`
 
-**Components**:
-- `src/execution.c` — AST interpreter, context management, report generation, RuleSet, compilation cache, code generation, visualization
-- `src/cdsl_json.c` — JSON context loader
+The Execution Layer interprets the verified AST against a runtime context. It is the largest and most feature-rich layer.
 
 **Execution flow**:
+
 ```
-1. Bind context variables (cdsl_context_t)
-2. Walk AST nodes and evaluate (eval_expr)
-3. For METRIC rules: match CASE per metric, accumulate score
-4. For simple rules: evaluate WHEN, trigger THEN on true
-5. Score vs thresholds → tri-state result
+1. Bind context variables via API or JSON loading
+2. Walk AST nodes and evaluate expressions (eval_expr)
+3. For METRIC rules:
+   a. For each metric, evaluate CASE conditions in order
+   b. First matching CASE determines the score and triggers its action
+   c. If no CASE matches, execute DEFAULT
+   d. Check is_critical → veto if failed
+   e. Accumulate score
+4. For simple rules:
+   a. Evaluate WHEN expression
+   b. If true → trigger THEN action → FAILED
+   c. If false → PASSED
+5. Compare total score against thresholds → tri-state status
 6. Generate structured report (cdsl_rule_report_t)
 ```
 
-**Additional capabilities**:
-- **Debug trace**: When `cdsl_vm_set_debug(vm, 1)` is called, each expression evaluation prints its type and value to stderr
-- **Hot reload**: Rules can be loaded from files, removed by name, and reloaded without restart
-- **Parallel**: `cdsl_vm_execute_ruleset_parallel()` distributes rules across threads
-- **Compile cache**: `cdsl_compile()` returns a cached parsed+verified rule; `cdsl_vm_execute_compiled()` executes it
-- **Stats**: `cdsl_vm_get_stats()` returns execution count and timing data
-- **Code generation**: `cdsl_codegen_rule_to_c()` outputs C source code equivalent to a rule
-- **Visualization**: `cdsl_rule_to_dot()` / `cdsl_ruleset_to_dot()` generate Graphviz DOT format
+**Additional subsystems**:
+- **Compilation cache**: caches parsed+verified rules indexed by DSL source hash to avoid redundant parsing
+- **Code generation**: translates DSL rules to equivalent C source code via `cdsl_codegen_rule_to_c()`
+- **Visualization**: generates Graphviz DOT graphs for single rules and complete rulesets
+- **Performance monitoring**: tracks execution count, metric evaluations, and timing via `cdsl_stats_t`
 
 ---
 
@@ -139,13 +164,12 @@ C-DSL is a C-based DSL rule engine framework for business rule validation. Suppo
 ### 3.1 Simple Rule
 
 ```
-Input: "RULE check { WHEN user.age > 18 THEN block(\"adult\") }"
-                          │
-                          ▼
+Input: RULE check { WHEN user.age > 18 THEN block("adult") }
+
                     ┌─────────────┐
                     │   Parser    │
                     └──────┬──────┘
-                           │ cdsl_rule_t
+                           │ cdsl_rule_t (metrics == NULL)
                            ▼
                     ┌─────────────┐
                     │  Verifier   │ ← Schema
@@ -165,9 +189,8 @@ Input: "RULE check { WHEN user.age > 18 THEN block(\"adult\") }"
 ### 3.2 Scoring Rule
 
 ```
-Input: RULE scoring { METRIC m1 { CASE ... THEN score(40) } METRIC m2 { ... } }
-                          │
-                          ▼
+Input: RULE scoring { METRIC m1 { CASE x > 10 THEN score(40) } ... }
+
                     ┌─────────────┐
                     │   Parser    │
                     └──────┬──────┘
@@ -186,16 +209,16 @@ Input: RULE scoring { METRIC m1 { CASE ... THEN score(40) } METRIC m2 { ... } }
          ┌────────┐  ┌────────┐  ┌────────┐
          │ METRIC │  │ METRIC │  │ METRIC │
          │  m1    │  │  m2    │  │  m3    │
-         │ 40/40  │  │ 20/30  │  │ 0/30 * │ ← is_critical
+         │ 40/40  │  │ 20/30  │  │  0/30* │ ← is_critical
          └────────┘  └────────┘  └────────┘
               │            │            │
               └────────────┼────────────┘
                            ▼
-                    ┌─────────────┐
-                    │ Aggregator  │ → Score: 60/100
-                    │ + Threshold │ → Status: PARTIALLY PASSED
-                    │ + Critical  │
-                    └──────┬──────┘
+                    ┌──────────────────┐
+                    │   Aggregator     │
+                    │   + Thresholds   │ → Score: 60/100
+                    │   + Critical     │ → Status: PARTIALLY PASSED
+                    └──────┬───────────┘
                            ▼
                     ┌─────────────┐
                     │   Report    │
@@ -206,33 +229,77 @@ Input: RULE scoring { METRIC m1 { CASE ... THEN score(40) } METRIC m2 { ... } }
 
 ## 4. Thread Safety
 
-| Operation | Thread Safe | Notes |
-|-----------|-------------|-------|
-| `cdsl_parse_string()` | ❌ | Flex/Bison use global state; serialize or use in single thread |
-| `cdsl_vm_execute()` | ✅ | Each thread needs its own VM instance |
-| `cdsl_context_*()` | ✅ | Each thread needs its own Context |
-| `cdsl_schema_t` (read-only) | ✅ | Schema can be shared across threads |
-| `cdsl_rule_t` (read-only) | ✅ | Parsed rules can be shared across threads |
-| `cdsl_ruleset_t` (read-only) | ✅ | RuleSet can be shared after construction |
-| `cdsl_vm_execute_ruleset_parallel()` | ✅ | Creates internal per-thread VMs |
-| `cdsl_compile_cache_t` | ❌ | Cache not thread-safe; protect with mutex |
+| Operation                             | Safe | Notes                                    |
+|---------------------------------------|------|------------------------------------------|
+| `cdsl_parse_string()`                 | ❌   | Flex/Bison use global state; serialize   |
+| `cdsl_vm_execute()`                   | ✅   | Each thread needs its own VM instance    |
+| `cdsl_context_*()`                    | ✅   | Each thread needs its own Context        |
+| Schema (read-only)                    | ✅   | Can be shared across threads             |
+| Rule (read-only)                      | ✅   | Parsed rules are immutable               |
+| RuleSet (read-only)                   | ✅   | Safe after construction                  |
+| `cdsl_vm_execute_ruleset_parallel()`  | ✅   | Creates per-thread VMs internally        |
+| `cdsl_compile_cache_t`                | ❌   | Not safe; protect with external mutex    |
 
 ---
 
 ## 5. Memory Management
 
-| Object | Allocation | Free |
-|--------|-----------|------|
-| `cdsl_rule_t` | `malloc` | `cdsl_free_rule()` |
-| `cdsl_context_t` | `malloc` | `cdsl_context_free()` |
-| `cdsl_vm_t` | `malloc` | `cdsl_vm_free()` |
-| `cdsl_report_t` | `malloc` | `cdsl_report_free()` |
-| `cdsl_ruleset_t` | `malloc` | `cdsl_ruleset_free()` |
-| `cdsl_schema_t` | `malloc` | `cdsl_schema_free()` |
-| `cdsl_arena_t` | `malloc` | `cdsl_arena_free()` (bulk release) |
-| `cdsl_compile_cache_t` | `malloc` | `cdsl_compile_cache_free()` |
-| `cdsl_ai_review_t` | `malloc` | `cdsl_ai_review_free()` |
-| DOT/C codegen output | `malloc` (via `open_memstream`) | `free()` |
-| `cdsl_ruleset_report_t` | `malloc` | `cdsl_ruleset_report_free()` |
+| Object                     | Allocation | Free                          |
+|----------------------------|------------|-------------------------------|
+| `cdsl_rule_t`              | `malloc`   | `cdsl_free_rule()`            |
+| `cdsl_context_t`           | `malloc`   | `cdsl_context_free()`         |
+| `cdsl_vm_t`                | `malloc`   | `cdsl_vm_free()`              |
+| `cdsl_rule_report_t`       | `malloc`   | `cdsl_report_free()`          |
+| `cdsl_ruleset_t`           | `malloc`   | `cdsl_ruleset_free()`         |
+| `cdsl_schema_t`            | `malloc`   | `cdsl_schema_free()`          |
+| `cdsl_arena_t`             | `malloc`   | `cdsl_arena_free()` (bulk)    |
+| `cdsl_compile_cache_t`     | `malloc`   | `cdsl_compile_cache_free()`   |
+| `cdsl_ai_review_t`         | `malloc`   | `cdsl_ai_review_free()`       |
+| DOT / C codegen output     | heap       | `free()`                      |
+| `cdsl_ruleset_report_t`    | `malloc`   | `cdsl_ruleset_report_free()`  |
 
-**Note**: Internal strings in `cdsl_rule_t` from `cdsl_parse_string()` are copied by the parser; free with `cdsl_free_rule()`.
+> **Note**: Internal strings in `cdsl_rule_t` are allocated by the parser and freed by `cdsl_free_rule()`. Every public `_create` function has a corresponding `_free`.
+
+---
+
+## 6. Error Handling Strategy
+
+Errors are handled at two levels:
+
+1. **String-based** (`cdsl_verify_rule`) — simple fail-fast with a human-readable message buffer. Suitable for quick validation.
+
+2. **Structured** (`cdsl_verify_rule_detailed`) — collects all errors into a `cdsl_error_list_t` with kind, location, message, and optional hint. Suitable for IDE integration or batch reporting.
+
+Error kinds:
+
+| Kind                 | Meaning                          |
+|----------------------|----------------------------------|
+| `CDSL_ERR_SYNTAX`    | Parse error (from Bison)         |
+| `CDSL_ERR_TYPE`      | Type mismatch in expression      |
+| `CDSL_ERR_SEMANTIC`  | Unknown variable or action       |
+| `CDSL_ERR_RUNTIME`   | Execution-time error             |
+
+---
+
+## 7. Build System
+
+The project uses CMake with the following options:
+
+| Option                     | Default | Description                           |
+|----------------------------|---------|---------------------------------------|
+| `CDSL_FORMAT_ON_BUILD`     | OFF     | Auto-format source before each build  |
+| `CDSL_GENERATE_DOCS`       | ON      | Generate Doxygen docs on every build  |
+| `BUILD_SHARED_LIBS`        | —       | Build shared library (default: both)  |
+
+CMake targets:
+
+| Target              | Description                             |
+|---------------------|-----------------------------------------|
+| `cdsl_static`       | Static library (default)                |
+| `cdsl_shared`       | Shared library                          |
+| `cdsl_demo`         | Demo executable                         |
+| `test_ast`          | AST unit tests                          |
+| `test_execution`    | Execution unit tests                    |
+| `doc`               | Doxygen documentation                   |
+| `format`            | Format all sources with clang-format    |
+| `check-format`      | Check formatting (CI use)               |

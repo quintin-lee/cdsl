@@ -1,87 +1,107 @@
 # DSL Syntax Reference
 
-## 1. Lexical Rules
-
-### 1.1 Keywords
-
-| Keyword | Description |
-|---------|-------------|
-| `RULE` | Rule definition start |
-| `META` | Metadata block start |
-| `WHEN` | Condition expression (simple rules) |
-| `THEN` | Action declaration (simple rules) |
-| `METRIC` | Metric block start (scoring rules) |
-| `CASE` | Condition branch (scoring rules) |
-| `DEFAULT` | Default branch (scoring rules) |
-| `TEMPLATE` | Template rule definition (inheritance) |
-| `EXTENDS` | Rule inheritance from template |
-| `AND` / `&&` | Logical AND |
-| `OR` / `\|\|` | Logical OR |
-| `NOT` / `!` | Logical NOT |
-| `true` / `false` | Boolean literals |
-
-### 1.2 Operators
-
-| Operator | Description | Return Type |
-|----------|-------------|-------------|
-| `==` | Equal | BOOL |
-| `!=` | Not equal | BOOL |
-| `<` | Less than | BOOL |
-| `>` | Greater than | BOOL |
-| `<=` | Less or equal | BOOL |
-| `>=` | Greater or equal | BOOL |
-| `AND` / `&&` | Logical AND (short-circuit) | BOOL |
-| `OR` / `\|\|` | Logical OR (short-circuit) | BOOL |
-| `NOT` / `!` | Logical NOT | BOOL |
-
-### 1.3 Literals
-
-| Type | Examples | Notes |
-|------|----------|-------|
-| Integer | `42`, `0`, `-1` | 32-bit signed integer |
-| Float | `3.14`, `0.5`, `-1.0` | 64-bit double precision |
-| Boolean | `true`, `false` | Boolean literals |
-| String | `"hello"`, `"reason"` | Double-quoted, no escape support |
-
-### 1.4 Identifiers
-
-- Start with letter or underscore
-- Letters, digits, underscores, and dots allowed
-- Examples: `user.age`, `transaction.amount`, `is_active`, `strlen`
-
-### 1.5 Functions
-
-Function calls in expressions use `func_name(arg1, arg2, ...)` syntax:
-```
-strlen(user.name)
-abs(transaction.amount)
-```
-
-Functions are registered via `cdsl_vm_register_function()` in the host program.
-
-### 1.6 Comments
-
-Comments are not supported in the current grammar.
+**Revision**: 1.0 &nbsp;·&nbsp; **Audience**: Rule Authors
 
 ---
 
-## 2. Grammar Rules
+## 1. Lexical Conventions
 
-### 2.1 Simple Rule (WHEN/THEN)
+### 1.1 Keywords
 
-For binary pass/fail scenarios (format validation, blacklist checks).
+| Keyword          | Description                              |
+|------------------|------------------------------------------|
+| `RULE`           | Begins a rule definition                 |
+| `META`           | Begins a metadata block                  |
+| `WHEN`           | Condition expression (simple rules)      |
+| `THEN`           | Action declaration (simple rules)        |
+| `METRIC`         | Begins a metric block (scoring rules)    |
+| `CASE`           | Condition branch (scoring rules)         |
+| `DEFAULT`        | Default branch (scoring rules)           |
+| `TEMPLATE`       | Defines a reusable metric template       |
+| `EXTENDS`        | Inherits metrics from a template         |
+| `AND` / `&&`     | Logical AND                              |
+| `OR` / `\|\|`   | Logical OR                               |
+| `NOT` / `!`      | Logical NOT                              |
+| `true` / `false` | Boolean literals                         |
+
+### 1.2 Operators
+
+| Operator         | Description              | Return Type |
+|------------------|--------------------------|-------------|
+| `==`             | Equal                    | BOOL        |
+| `!=`             | Not equal                | BOOL        |
+| `<`              | Less than                | BOOL        |
+| `>`              | Greater than             | BOOL        |
+| `<=`             | Less than or equal       | BOOL        |
+| `>=`             | Greater than or equal    | BOOL        |
+| `AND` / `&&`     | Logical AND (short-circuit) | BOOL      |
+| `OR` / `\|\|`   | Logical OR (short-circuit)  | BOOL      |
+| `NOT` / `!`      | Logical NOT              | BOOL        |
+
+### 1.3 Literals
+
+| Type    | Examples                 | Notes                              |
+|---------|--------------------------|------------------------------------|
+| Integer | `42`, `0`, `-1`          | 32-bit signed integer              |
+| Float   | `3.14`, `0.5`, `-1.0`    | 64-bit double precision            |
+| Boolean | `true`, `false`          | Case-sensitive                     |
+| String  | `"hello"`, `"reason"`    | Double-quoted; escape not supported|
+
+### 1.4 Identifiers
+
+Identifiers name variables, metrics, rules, and actions.
+
+- Must begin with a letter (`a-z`, `A-Z`) or underscore (`_`)
+- May contain letters, digits, underscores, and dots (`.`)
+- Dots are used for nested variable access (e.g., `user.age`)
+
+**Valid**: `user.age`, `transaction.amount`, `is_active`, `_internal_id`
+
+**Invalid**: `2fast`, `user-name`, `user.age.`
+
+### 1.5 Function Calls
+
+Function calls use C-style syntax in expressions:
 
 ```dsl
+strlen(user.name)
+abs(transaction.amount)
+min(score1, score2)
+```
+
+Functions must be registered via `cdsl_vm_register_function()` in the host program.
+
+### 1.6 Comments
+
+> **Note**: Comments are not supported in the current grammar version.
+
+---
+
+## 2. Rule Definitions
+
+### 2.1 Simple Rule (WHEN / THEN)
+
+Used for binary pass/fail scenarios: format validation, blacklist checks, threshold enforcement.
+
+```
 RULE <name> {
     META {
         description = "<description>"
     }
     WHEN <condition>
-    THEN <action>("<arg>")
+    THEN <action>(<args>)
 }
 ```
 
+**Execution**:
+
+| WHEN result | Action  | Status |
+|-------------|---------|--------|
+| `true`      | THEN fires | FAILED |
+| `false`     | No action  | PASSED |
+
 **Example**:
+
 ```dsl
 RULE check_blacklist {
     META {
@@ -92,38 +112,52 @@ RULE check_blacklist {
 }
 ```
 
-**Execution logic**:
-- WHEN condition is **true** → trigger THEN action → status: **FAILED**
-- WHEN condition is **false** → no action → status: **PASSED**
+### 2.2 Scoring Rule (METRIC / CASE / DEFAULT)
 
-### 2.2 Scoring Rule (METRIC/CASE/DEFAULT)
+Used for multi-metric quantitative evaluation: qualification audits, content scoring, compliance checks.
 
-For multi-metric quantification scenarios (qualification audits, content scoring).
-
-```dsl
+```
 RULE <name> {
     META {
         description = "<description>"
-        pass_threshold = "<pass score>"
-        partial_threshold = "<partial score>"
+        pass_threshold = "<integer>"
+        partial_threshold = "<integer>"
     }
     METRIC <name> {
         META {
             description = "<description>"
-            weight = "<weight>"
-            is_critical = "<true/false>"
+            weight = "<integer>"
+            is_critical = "<true|false>"
         }
-        CASE <condition> THEN <action>("<arg>")
-        CASE <condition> THEN <action>("<arg>")
-        DEFAULT <action>("<arg>")
+        CASE <condition> THEN <action>(<args>)
+        CASE <condition> THEN <action>(<args>)
+        DEFAULT <action>(<args>)
     }
-    METRIC <name> {
-        ...
-    }
+    METRIC <name> { ... }
 }
 ```
 
+**Execution**:
+
+1. Process METRICs in declaration order
+2. Each METRIC evaluates CASE branches in order
+3. First matching CASE determines the score and triggers its action; remaining cases are skipped
+4. If no CASE matches, the DEFAULT branch executes
+5. Scores are accumulated across all metrics
+6. If any `is_critical` metric scores 0 → **FAILED** (veto)
+7. Otherwise, compare total against thresholds for final status
+
+**Threshold logic**:
+
+```
+if (any critical metric failed)   → FAILED
+else if (total >= pass_threshold) → PASSED
+else if (total >= partial_threshold) → PARTIALLY_PASSED
+else → FAILED
+```
+
 **Example**:
+
 ```dsl
 RULE supplier_audit {
     META {
@@ -149,27 +183,28 @@ RULE supplier_audit {
         CASE supplier.capital >= 1000000 THEN score(20)
         DEFAULT score(0)
     }
+    METRIC experience_check {
+        META {
+            description = "Business experience"
+            weight = "30"
+        }
+        CASE supplier.years_in_business >= 5 THEN score(30)
+        CASE supplier.years_in_business >= 2 THEN score(15)
+        DEFAULT score(0)
+    }
 }
 ```
 
-**Execution logic**:
-1. Process METRICs in declaration order
-2. Each METRIC evaluates CASEs in order
-3. First matching CASE determines score; remaining CASEs skipped
-4. No CASE matched → execute DEFAULT
-5. Accumulate all metric scores
-6. Apply thresholds and critical-rule veto for final status
+### 2.3 Template Rules (TEMPLATE / EXTENDS)
 
-### 2.3 Template Rule (TEMPLATE/EXTENDS)
+Used for reusable metric definitions. Templates define metric blocks that can be inherited by multiple rules.
 
-For reusable rule definitions. Templates define metric blocks that can be inherited.
-
-```dsl
+```
 TEMPLATE <name> {
     METRIC <name> {
-        META { weight = "<weight>" ... }
-        CASE <condition> THEN <action>("<arg>")
-        DEFAULT <action>("<arg>")
+        META { ... }
+        CASE <condition> THEN <action>(<args>)
+        DEFAULT <action>(<args>)
     }
 }
 
@@ -180,7 +215,15 @@ RULE <name> EXTENDS <template_name> {
 }
 ```
 
+**Resolution**:
+
+1. Templates are registered globally when parsed
+2. `EXTENDS` copies all metrics from the named template into the extending rule
+3. Metrics defined in the extending rule body are appended after inherited ones
+4. Template names are scoped to the parsing session (within the same DSL string or registration sequence)
+
 **Example**:
+
 ```dsl
 TEMPLATE base_audit {
     METRIC blacklist {
@@ -206,101 +249,50 @@ RULE supplier_audit EXTENDS base_audit {
 }
 ```
 
-**Resolution**:
-- Templates are registered globally via `cdsl_register_template()` during parsing
-- `EXTENDS` copies the template's metrics into the extending rule
-- Custom metrics are appended after inherited ones
-- Template names are local to `parser.y` and defined within the same DSL string
-
 ---
 
 ## 3. META Block
 
-META blocks store key=value string pairs as metadata for rules or metrics.
+META blocks store key-value string pairs as metadata for rules and metrics. All values are strings; numeric and boolean values must be quoted.
 
 ### 3.1 Rule-level META
 
-| Key | Type | Description |
-|-----|------|-------------|
-| `description` | string | Rule description |
-| `category` | string | Rule category |
-| `pass_threshold` | string(int) | Pass threshold (e.g. "80") |
-| `partial_threshold` | string(int) | Partial pass threshold (e.g. "60") |
-| `depends_on` | string | Comma-separated rule dependencies for RuleSet ordering |
+| Key                | Type   | Description                                    |
+|--------------------|--------|------------------------------------------------|
+| `description`      | string | Human-readable rule description                |
+| `category`         | string | Rule category for organization                 |
+| `pass_threshold`   | string | Minimum score to pass (e.g., `"80"`)           |
+| `partial_threshold`| string | Minimum score for partial pass (e.g., `"60"`)  |
+| `depends_on`       | string | Comma-separated rule names for ordering        |
 
 ### 3.2 Metric-level META
 
-| Key | Type | Description |
-|-----|------|-------------|
-| `description` | string | Metric description |
-| `weight` | string(int) | Max score weight (e.g. "40") |
-| `is_critical` | string(bool) | Critical/veto metric ("true"/"false") |
-
-**Note**: All META values are strings. Numeric and boolean values must be quoted.
+| Key           | Type   | Description                                     |
+|---------------|--------|-------------------------------------------------|
+| `description` | string | Human-readable metric description               |
+| `weight`      | string | Maximum score for this metric (e.g., `"40"`)    |
+| `is_critical` | string | `"true"` = veto if metric scores 0              |
 
 ---
 
 ## 4. Built-in Actions
 
-| Action | Args | Description |
-|--------|------|-------------|
-| `score(N)` | int | Score N points for current metric |
-| `fail_metric(0, "reason")` | int, string | Fail metric with 0 score and reason |
-| `reject_supplier("reason")` | string | Reject supplier with reason |
-| `reject_document("reason")` | string | Reject document with reason |
-| `block_content("reason")` | string | Block content with reason |
-| `record_warning("reason")` | string | Record warning with reason |
+| Action                                    | Description                          |
+|-------------------------------------------|--------------------------------------|
+| `score(N)`                                | Score N points for the current metric|
+| `fail_metric(0, "reason")`                | Fail metric with reason              |
+| `reject_supplier("reason")`               | Reject supplier with explanation     |
+| `reject_document("reason")`               | Reject document with explanation     |
+| `block_content("reason")`                 | Block content with explanation       |
+| `record_warning("reason")`                | Record a warning                     |
 
-**Extension**: Host programs can register custom actions via `cdsl_vm_register_action()`.
-
----
-
-## 5. Tri-state Decision
-
-### 5.1 Simple Rule
-
-| WHEN Result | Status | Score |
-|-------------|--------|-------|
-| false | PASSED | 100/100 |
-| true | FAILED | 0/100 |
-
-### 5.2 Scoring Rule
-
-```
-if (any is_critical="true" metric scores 0):
-    status = FAILED (veto)
-else if (total >= pass_threshold):
-    status = PASSED
-else if (total >= partial_threshold):
-    status = PARTIALLY_PASSED
-else:
-    status = FAILED
-```
-
-### 5.3 Report Output Example
-
-```
-========================================
-  AUDIT REPORT: supplier_audit
-  Supplier onboarding audit
-========================================
-  [PASS] credit_check (weight: 30, score: 30/30) *
-  [PASS] capital_check (weight: 40, score: 20/40)
-  [FAIL] experience_check (weight: 30, score: 0/30)
-         Reason: short_experience
-----------------------------------------
-  Status:   PARTIALLY PASSED
-  Score:    50 / 100
-  Summary:  PARTIALLY PASSED (score: 50/100, needs improvement)
-========================================
-  (*) critical metric
-```
+> **Note**: Host programs can register custom actions via `cdsl_vm_register_action()`. The actions listed above are examples used in the demo.
 
 ---
 
-## 6. JSON Context
+## 5. JSON Context
 
-Variables can be loaded from JSON via `cdsl_context_load_json()`:
+Variables can be loaded from JSON strings via `cdsl_context_load_json()`:
 
 ```json
 {
@@ -317,18 +309,23 @@ Variables can be loaded from JSON via `cdsl_context_load_json()`:
 }
 ```
 
-**Auto-conversion rules**:
-- JSON number (no decimal) → `CDSL_TYPE_INT`
-- JSON number (with decimal) → `CDSL_TYPE_FLOAT`
-- JSON boolean → `CDSL_TYPE_BOOL`
-- JSON string → `CDSL_TYPE_STRING`
-- JSON object → recursively flattened, keys joined with `.`
+**Type conversion rules**:
+
+| JSON type          | Target type       | Notes                         |
+|--------------------|-------------------|-------------------------------|
+| Number (integer)   | `CDSL_TYPE_INT`   | No decimal point              |
+| Number (float)     | `CDSL_TYPE_FLOAT` | Has decimal point             |
+| Boolean            | `CDSL_TYPE_BOOL`  | `true` / `false`              |
+| String             | `CDSL_TYPE_STRING`| Copied internally             |
+| Object             | —                 | Recursively flattened (dot notation) |
+
+After loading, variables are accessible in DSL expressions by their dot-separated path (e.g., `supplier.registered_capital`).
 
 ---
 
-## 7. Complete Examples
+## 6. Complete Examples
 
-### 7.1 Supplier Qualification Audit
+### 6.1 Supplier Qualification Audit
 
 ```dsl
 RULE supplier_qualification {
@@ -368,7 +365,7 @@ RULE supplier_qualification {
 }
 ```
 
-### 7.2 Document Format Audit
+### 6.2 Document Format Audit
 
 ```dsl
 RULE document_format_audit {
@@ -406,7 +403,7 @@ RULE document_format_audit {
 }
 ```
 
-### 7.3 Simple Blacklist Check
+### 6.3 Simple Blacklist Check
 
 ```dsl
 RULE check_blacklist {
@@ -418,7 +415,7 @@ RULE check_blacklist {
 }
 ```
 
-### 7.4 Template Inheritance
+### 6.4 Template Inheritance
 
 ```dsl
 TEMPLATE base_compliance {
@@ -443,7 +440,7 @@ RULE full_audit EXTENDS base_compliance {
 }
 ```
 
-### 7.5 Custom Function Call
+### 6.5 Custom Function Call
 
 ```dsl
 RULE check_name_length {
@@ -453,4 +450,4 @@ RULE check_name_length {
 }
 ```
 
-Functions like `strlen` must be registered via `cdsl_vm_register_function()` in the host program.
+> **Note**: Functions like `strlen` must be registered via `cdsl_vm_register_function()` in the host program before rule execution.
