@@ -1,0 +1,49 @@
+# Doxyfile for C-DSL Rule Engine
+
+PROJECT_NAME           = "C-DSL Rule Engine"
+PROJECT_NUMBER         = "1.0.0"
+PROJECT_BRIEF          = "AI-Powered DSL Rule Engine with Three-Layer Architecture"
+
+OUTPUT_DIRECTORY       = docs
+CREATE_SUBDIRS         = YES
+
+# Input
+INPUT                  = include src demo
+FILE_PATTERNS          = *.h *.c
+RECURSIVE              = YES
+EXCLUDE_PATTERNS       = */build/* */.git/*
+
+# Language
+OPTIMIZE_OUTPUT_FOR_C  = YES
+TYPEDEF_HIDES_STRUCT   = YES
+
+# Extraction
+EXTRACT_ALL            = YES
+EXTRACT_PRIVATE        = NO
+EXTRACT_STATIC         = YES
+EXTRACT_LOCAL_CLASSES  = YES
+
+# Documentation blocks
+JAVADOC_AUTOBRIEF      = YES
+JAVADOC_BANNER         = YES
+MARKDOWN_SUPPORT       = YES
+
+# Warnings
+WARN_IF_UNDOCUMENTED   = YES
+WARN_IF_DOC_ERROR      = YES
+WARN_NO_PARAMDOC       = YES
+
+# Output formats
+GENERATE_HTML          = YES
+HTML_OUTPUT            = html
+HTML_COLORSTYLE_HUE    = 220
+GENERATE_TREEVIEW      = YES
+DISABLE_INDEX          = NO
+FULL_SIDEBAR           = NO
+SEARCHENGINE           = YES
+
+GENERATE_LATEX         = NO
+
+# Graphs (optional, disable if graphviz not installed)
+HAVE_DOT               = NO
+CLASS_DIAGRAMS         = NO
