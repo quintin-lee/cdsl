@@ -2192,7 +2192,8 @@ cdsl_vm_execute_ruleset_parallel(cdsl_vm_t* vm,
 	rpt->rule_reports = calloc(set->count, sizeof(cdsl_rule_report_t*));
 
 	int idx = 0;
-	for (cdsl_ruleset_entry_t* e = set->entries; e; e = e->next) {
+	cdsl_ruleset_entry_t* e = set->entries;
+	while (e) {
 		int batch = (thread_count < set->count - idx) ? thread_count : set->count - idx;
 		if (batch > thread_count) {
 			batch = thread_count;
@@ -2217,7 +2218,7 @@ cdsl_vm_execute_ruleset_parallel(cdsl_vm_t* vm,
 
 		free(threads);
 		free(args);
-		e = cur ? cur : e;
+		e = cur;
 	}
 
 	int agg_score = 0, agg_max = 0;
