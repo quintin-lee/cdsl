@@ -307,5 +307,13 @@ int cdsl_ruleset_validate_deps(const cdsl_ruleset_t* set, char* err_buf, int err
 int cdsl_ruleset_topo_sort(cdsl_ruleset_t* set);
 /** @} */
 
+/** @name Visualization */
+/** @{ */
+char* cdsl_rule_to_dot(const cdsl_rule_t* rule);
+int cdsl_rule_to_dot_file(const cdsl_rule_t* rule, const char* filepath);
+char* cdsl_ruleset_to_dot(const cdsl_ruleset_t* set);
+int cdsl_ruleset_to_dot_file(const cdsl_ruleset_t* set, const char* filepath);
+/** @} */
+
 #endif
 /** @} */
