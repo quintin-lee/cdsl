@@ -32,5 +32,5 @@ target_include_directories(cdsl PUBLIC
 )
 
 # 5. CLI Demo 可执行程序
-add_executable(cdsl_demo main.c)
+add_executable(cdsl_demo demo/main.c)
 target_link_libraries(cdsl_demo PRIVATE cdsl)
