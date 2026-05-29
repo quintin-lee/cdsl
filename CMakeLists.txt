@@ -164,11 +164,14 @@ if(CLANG_FORMAT)
         include/ast.h include/abstract.h include/execution.h
         include/ai_bridge.h include/cdsl_json.h include/cdsl_error.h
         include/cdsl_arena.h include/cdsl_hashmap.h
-        src/ast.c src/abstract.c src/execution.c
+        src/ast.c src/abstract.c
+        src/vm_eval.c src/vm_context.c src/vm_cache.c
+        src/vm_ruleset.c src/vm_codegen.c src/vm_visualize.c
         src/cdsl_json.c src/cdsl_error.c src/cdsl_arena.c src/cdsl_hashmap.c
-        src/ai_bridge.c
+        src/ai_bridge.c src/execution_internal.h
         demo/main.c
         tests/test.h tests/test_ast.c tests/test_execution.c
+        tests/test_parallel_cache.c tests/test_parallel_parse.c
     )
 
     add_custom_target(format
