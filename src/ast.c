@@ -688,6 +688,7 @@ cdsl_create_extends_rule(char* name, char* template_name, cdsl_meta_item_t* meta
 	if (!tpl) {
 		fprintf(stderr, "Template '%s' not found\n", template_name);
 		free(name);
+		free(template_name);
 		cdsl_free_meta(meta);
 		return NULL;
 	}
@@ -695,5 +696,6 @@ cdsl_create_extends_rule(char* name, char* template_name, cdsl_meta_item_t* meta
 	rule->name = name;
 	rule->meta_list = meta;
 	rule->metrics = copy_metric_list(tpl->metrics);
+	free(template_name);
 	return rule;
 }
