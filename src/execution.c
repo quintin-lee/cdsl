@@ -657,3 +657,77 @@ void cdsl_ruleset_report_print(const cdsl_ruleset_report_t* report) {
     printf("  Summary:  %s\n", report->summary);
     printf("========================================\n\n");
 }
+
+int cdsl_ruleset_remove(cdsl_ruleset_t* set, const char* rule_name) {
+    if (!set || !rule_name) return 0;
+    cdsl_ruleset_entry_t** pp = &set->entries;
+    while (*pp) {
+        if ((*pp)->rule && (*pp)->rule->name && strcmp((*pp)->rule->name, rule_name) == 0) {
+            cdsl_ruleset_entry_t* del = *pp;
+            *pp = del->next;
+            cdsl_free_rule(del->rule);
+            free(del);
+            set->count--;
+            return 1;
+        }
+        pp = &(*pp)->next;
+    }
+    return 0;
+}
+
+static char* read_file(const char* path) {
+    FILE* f = fopen(path, "r");
+    if (!f) return NULL;
+    fseek(f, 0, SEEK_END);
+    long sz = ftell(f);
+    fseek(f, 0, SEEK_SET);
+    char* buf = malloc(sz + 1);
+    if (buf) {
+        fread(buf, 1, sz, f);
+        buf[sz] = '\0';
+    }
+    fclose(f);
+    return buf;
+}
+
+int cdsl_ruleset_load_string(cdsl_ruleset_t* set, const char* dsl_code, int priority,
+                              const cdsl_schema_t* schema, char* err_buf, int err_buf_sz) {
+    if (!set || !dsl_code) {
+        if (err_buf) snprintf(err_buf, err_buf_sz, "NULL set or dsl_code");
+        return 0;
+    }
+    cdsl_rule_t* rule = cdsl_parse_string(dsl_code);
+    if (!rule) {
+        if (err_buf) snprintf(err_buf, err_buf_sz, "Parse error");
+        return 0;
+    }
+    if (schema) {
+        char verr[512] = {0};
+        if (!cdsl_verify_rule(rule, schema, verr, sizeof(verr))) {
+            if (err_buf) snprintf(err_buf, err_buf_sz, "Verify failed: %s", verr);
+            cdsl_free_rule(rule);
+            return 0;
+        }
+    }
+    cdsl_ruleset_add(set, rule, priority);
+    return 1;
+}
+
+int cdsl_ruleset_load_file(cdsl_ruleset_t* set, const char* filepath, int priority,
+                            const cdsl_schema_t* schema, char* err_buf, int err_buf_sz) {
+    char* content = read_file(filepath);
+    if (!content) {
+        if (err_buf) snprintf(err_buf, err_buf_sz, "Cannot read file: %s", filepath);
+        return 0;
+    }
+    int ok = cdsl_ruleset_load_string(set, content, priority, schema, err_buf, err_buf_sz);
+    free(content);
+    return ok;
+}
+
+int cdsl_ruleset_reload_file(cdsl_ruleset_t* set, const char* rule_name,
+                              const char* filepath, const cdsl_schema_t* schema,
+                              char* err_buf, int err_buf_sz) {
+    cdsl_ruleset_remove(set, rule_name);
+    return cdsl_ruleset_load_file(set, filepath, 0, schema, err_buf, err_buf_sz);
+}
