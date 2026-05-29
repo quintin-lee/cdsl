@@ -63,6 +63,14 @@ cdsl_expr_node_t* cdsl_create_expr_unary(cdsl_op_t op, cdsl_expr_node_t* expr) {
     return n;
 }
 
+cdsl_expr_node_t* cdsl_create_expr_call(char* func_name, cdsl_arg_node_t* args) {
+    cdsl_expr_node_t* n = calloc(1, sizeof(*n));
+    n->type = CDSL_EXPR_CALL;
+    n->data.call.func_name = func_name;
+    n->data.call.args = args;
+    return n;
+}
+
 cdsl_arg_node_t* cdsl_create_arg(cdsl_expr_node_t* expr) {
     cdsl_arg_node_t* a = calloc(1, sizeof(*a));
     a->expr = expr;
@@ -172,6 +180,10 @@ void cdsl_free_expr(cdsl_expr_node_t* expr) {
             break;
         case CDSL_EXPR_UNARY:
             cdsl_free_expr(expr->data.unary.expr);
+            break;
+        case CDSL_EXPR_CALL:
+            free(expr->data.call.func_name);
+            cdsl_free_arg(expr->data.call.args);
             break;
         default: break;
     }

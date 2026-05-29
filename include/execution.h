@@ -79,20 +79,41 @@ typedef struct cdsl_action_cb_entry {
 } cdsl_action_cb_entry_t;
 
 /**
+ * @brief Custom function callback type.
+ *
+ * @param func_name Name of the function
+ * @param args Linked list of argument expressions
+ * @param user_data User-provided data pointer
+ * @return Result value (caller owns the memory for string values)
+ */
+typedef cdsl_value_t (*cdsl_func_cb_t)(const char* func_name, cdsl_arg_node_t* args, void* user_data);
+
+/**
+ * @brief Registered function entry.
+ */
+typedef struct cdsl_func_entry {
+    char* func_name;         /**< Function name */
+    cdsl_func_cb_t cb;       /**< Callback function */
+    struct cdsl_func_entry* next; /**< Next entry */
+} cdsl_func_entry_t;
+
+/**
  * @brief Virtual Machine for DSL rule execution.
  *
- * The VM holds registered action callbacks and a reference to the schema.
- * Create one VM per execution thread. Register all actions before execution.
+ * The VM holds registered action and function callbacks, and a reference
+ * to the schema. Create one VM per execution thread.
  *
  * @code
  * cdsl_vm_t* vm = cdsl_vm_create(schema);
  * cdsl_vm_register_action(vm, "block", my_block_handler);
+ * cdsl_vm_register_function(vm, "strlen", my_strlen);
  * cdsl_rule_report_t* rpt = cdsl_vm_execute(vm, rule, ctx);
  * @endcode
  */
 typedef struct cdsl_vm {
     const cdsl_schema_t* schema;       /**< Schema reference */
     cdsl_action_cb_entry_t* callbacks; /**< Registered action callbacks */
+    cdsl_func_entry_t* functions;      /**< Registered function callbacks */
     void* user_data;                   /**< User data passed to callbacks */
     int debug_enabled;                 /**< 1 to enable trace output */
 } cdsl_vm_t;
@@ -174,6 +195,7 @@ int cdsl_context_load_json(cdsl_context_t* ctx, const char* json_str);
 cdsl_vm_t* cdsl_vm_create(const cdsl_schema_t* schema);
 void cdsl_vm_free(cdsl_vm_t* vm);
 void cdsl_vm_register_action(cdsl_vm_t* vm, const char* action_name, cdsl_action_cb_t cb);
+void cdsl_vm_register_function(cdsl_vm_t* vm, const char* func_name, cdsl_func_cb_t cb);
 void cdsl_vm_set_debug(cdsl_vm_t* vm, int enabled);
 /** @} */
 

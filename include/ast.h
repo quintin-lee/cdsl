@@ -66,7 +66,8 @@ typedef enum {
     CDSL_EXPR_BOOL,   /**< Boolean literal (true/false) */
     CDSL_EXPR_STRING, /**< String literal ("...") */
     CDSL_EXPR_BINARY, /**< Binary operation (e.g. a + b, x == y) */
-    CDSL_EXPR_UNARY   /**< Unary operation (e.g. !expr) */
+    CDSL_EXPR_UNARY,  /**< Unary operation (e.g. !expr) */
+    CDSL_EXPR_CALL    /**< Function call (e.g. strlen("hello")) */
 } cdsl_expr_type_t;
 
 /**
@@ -97,6 +98,10 @@ typedef struct cdsl_expr_node {
             cdsl_op_t op;                   /**< Operator (typically CDSL_OP_NOT) */
             struct cdsl_expr_node* expr;    /**< Operand */
         } unary; /**< Unary expression data (CDSL_EXPR_UNARY) */
+        struct {
+            char* func_name;                /**< Function name */
+            struct cdsl_arg_node* args;     /**< Argument list */
+        } call; /**< Function call data (CDSL_EXPR_CALL) */
     } data;
 } cdsl_expr_node_t;
 
@@ -191,6 +196,7 @@ cdsl_expr_node_t* cdsl_create_expr_bool(int val);
 cdsl_expr_node_t* cdsl_create_expr_string(char* val);
 cdsl_expr_node_t* cdsl_create_expr_binary(cdsl_op_t op, cdsl_expr_node_t* left, cdsl_expr_node_t* right);
 cdsl_expr_node_t* cdsl_create_expr_unary(cdsl_op_t op, cdsl_expr_node_t* expr);
+cdsl_expr_node_t* cdsl_create_expr_call(char* func_name, cdsl_arg_node_t* args);
 /** @} */
 
 /** @name Argument List Functions */

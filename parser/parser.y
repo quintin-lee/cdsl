@@ -104,6 +104,7 @@ expression:
     | FLOAT_LIT                         { $$ = cdsl_create_expr_float($1); }
     | BOOL_LIT                          { $$ = cdsl_create_expr_bool($1); }
     | STRING_LIT                        { $$ = cdsl_create_expr_string($1); }
+    | IDENTIFIER '(' argument_list ')'  { $$ = cdsl_create_expr_call($1, $3); }
     | expression EQ expression          { $$ = cdsl_create_expr_binary(CDSL_OP_EQ, $1, $3); }
     | expression NE expression          { $$ = cdsl_create_expr_binary(CDSL_OP_NE, $1, $3); }
     | expression LT expression          { $$ = cdsl_create_expr_binary(CDSL_OP_LT, $1, $3); }

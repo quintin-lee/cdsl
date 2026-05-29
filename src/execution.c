@@ -168,6 +168,13 @@ void cdsl_vm_free(cdsl_vm_t* vm) {
         free(cb);
         cb = next;
     }
+    cdsl_func_entry_t* fn = vm->functions;
+    while (fn) {
+        cdsl_func_entry_t* next = fn->next;
+        free(fn->func_name);
+        free(fn);
+        fn = next;
+    }
     free(vm);
 }
 
@@ -179,7 +186,16 @@ void cdsl_vm_register_action(cdsl_vm_t* vm, const char* action_name, cdsl_action
     vm->callbacks = e;
 }
 
-static cdsl_value_t eval_expr(cdsl_expr_node_t* expr, cdsl_context_t* ctx, int debug) {
+void cdsl_vm_register_function(cdsl_vm_t* vm, const char* func_name, cdsl_func_cb_t cb) {
+    if (!vm || !func_name || !cb) return;
+    cdsl_func_entry_t* e = calloc(1, sizeof(*e));
+    e->func_name = strdup(func_name);
+    e->cb = cb;
+    e->next = vm->functions;
+    vm->functions = e;
+}
+
+static cdsl_value_t eval_expr(cdsl_expr_node_t* expr, cdsl_context_t* ctx, cdsl_vm_t* vm, int debug) {
     cdsl_value_t result = { .type = CDSL_TYPE_VOID };
     if (!expr) return result;
 
@@ -223,7 +239,7 @@ static cdsl_value_t eval_expr(cdsl_expr_node_t* expr, cdsl_context_t* ctx, int d
             break;
         }
         case CDSL_EXPR_UNARY: {
-            cdsl_value_t v = eval_expr(expr->data.unary.expr, ctx, debug);
+            cdsl_value_t v = eval_expr(expr->data.unary.expr, ctx, vm, debug);
             if (expr->data.unary.op == CDSL_OP_NOT) {
                 result.type = CDSL_TYPE_BOOL;
                 result.data.bool_val = !v.data.bool_val;
@@ -236,14 +252,14 @@ static cdsl_value_t eval_expr(cdsl_expr_node_t* expr, cdsl_context_t* ctx, int d
         case CDSL_EXPR_BINARY: {
             cdsl_op_t op = expr->data.binary.op;
             if (op == CDSL_OP_AND) {
-                cdsl_value_t l = eval_expr(expr->data.binary.left, ctx, debug);
+                cdsl_value_t l = eval_expr(expr->data.binary.left, ctx, vm, debug);
                 if (!l.data.bool_val) {
                     result.type = CDSL_TYPE_BOOL;
                     result.data.bool_val = 0;
                     if (debug) fprintf(stderr, "[TRACE]   AND short-circuit: false\n");
                     break;
                 }
-                cdsl_value_t r = eval_expr(expr->data.binary.right, ctx, debug);
+                cdsl_value_t r = eval_expr(expr->data.binary.right, ctx, vm, debug);
                 result.type = CDSL_TYPE_BOOL;
                 result.data.bool_val = r.data.bool_val;
                 if (debug) fprintf(stderr, "[TRACE]   AND: true AND %s = %s\n",
@@ -252,14 +268,14 @@ static cdsl_value_t eval_expr(cdsl_expr_node_t* expr, cdsl_context_t* ctx, int d
                 break;
             }
             if (op == CDSL_OP_OR) {
-                cdsl_value_t l = eval_expr(expr->data.binary.left, ctx, debug);
+                cdsl_value_t l = eval_expr(expr->data.binary.left, ctx, vm, debug);
                 if (l.data.bool_val) {
                     result.type = CDSL_TYPE_BOOL;
                     result.data.bool_val = 1;
                     if (debug) fprintf(stderr, "[TRACE]   OR short-circuit: true\n");
                     break;
                 }
-                cdsl_value_t r = eval_expr(expr->data.binary.right, ctx, debug);
+                cdsl_value_t r = eval_expr(expr->data.binary.right, ctx, vm, debug);
                 result.type = CDSL_TYPE_BOOL;
                 result.data.bool_val = r.data.bool_val;
                 if (debug) fprintf(stderr, "[TRACE]   OR: false OR %s = %s\n",
@@ -267,8 +283,8 @@ static cdsl_value_t eval_expr(cdsl_expr_node_t* expr, cdsl_context_t* ctx, int d
                     result.data.bool_val ? "true" : "false");
                 break;
             }
-            cdsl_value_t l = eval_expr(expr->data.binary.left, ctx, debug);
-            cdsl_value_t r = eval_expr(expr->data.binary.right, ctx, debug);
+            cdsl_value_t l = eval_expr(expr->data.binary.left, ctx, vm, debug);
+            cdsl_value_t r = eval_expr(expr->data.binary.right, ctx, vm, debug);
 
             if (l.type == CDSL_TYPE_STRING && r.type == CDSL_TYPE_STRING &&
                 (op == CDSL_OP_EQ || op == CDSL_OP_NE)) {
@@ -299,6 +315,27 @@ static cdsl_value_t eval_expr(cdsl_expr_node_t* expr, cdsl_context_t* ctx, int d
                 case CDSL_OP_LE: result.data.bool_val = lv <= rv; break;
                 case CDSL_OP_GE: result.data.bool_val = lv >= rv; break;
                 default: break;
+            }
+            break;
+        }
+        case CDSL_EXPR_CALL: {
+            if (!vm) break;
+            for (cdsl_func_entry_t* fn = vm->functions; fn; fn = fn->next) {
+                if (strcmp(fn->func_name, expr->data.call.func_name) == 0) {
+                    if (debug) fprintf(stderr, "[TRACE]   calling function: %s()\n", expr->data.call.func_name);
+                    result = fn->cb(expr->data.call.func_name, expr->data.call.args, vm->user_data);
+                    if (debug) {
+                        fprintf(stderr, "[TRACE]   function result: ");
+                        switch (result.type) {
+                            case CDSL_TYPE_INT:    fprintf(stderr, "%d\n", result.data.int_val); break;
+                            case CDSL_TYPE_FLOAT:  fprintf(stderr, "%.2f\n", result.data.float_val); break;
+                            case CDSL_TYPE_BOOL:   fprintf(stderr, "%s\n", result.data.bool_val ? "true" : "false"); break;
+                            case CDSL_TYPE_STRING: fprintf(stderr, "\"%s\"\n", result.data.string_val); break;
+                            default: fprintf(stderr, "void\n"); break;
+                        }
+                    }
+                    break;
+                }
             }
             break;
         }
@@ -349,12 +386,12 @@ static cdsl_rule_report_t* execute_metric_rule(cdsl_vm_t* vm, const cdsl_rule_t*
         int matched = 0;
         for (cdsl_case_node_t* c = m->case_list; c; c = c->next) {
             if (vm->debug_enabled) fprintf(stderr, "[TRACE] eval CASE condition for metric '%s'\n", m->name);
-            cdsl_value_t cond = eval_expr(c->condition, ctx, vm->debug_enabled);
+            cdsl_value_t cond = eval_expr(c->condition, ctx, vm, vm->debug_enabled);
             if (cond.type == CDSL_TYPE_BOOL && cond.data.bool_val) {
                 if (vm->debug_enabled) fprintf(stderr, "[TRACE]   CASE matched\n");
                 trigger_action(vm, c->action);
                 if (c->action && strcmp(c->action->action_name, "score") == 0 && c->action->args) {
-                    cdsl_value_t sv = eval_expr(c->action->args->expr, ctx, vm->debug_enabled);
+                    cdsl_value_t sv = eval_expr(c->action->args->expr, ctx, vm, vm->debug_enabled);
                     mr->score_obtained = (sv.type == CDSL_TYPE_INT) ? sv.data.int_val : 0;
                 } else {
                     mr->score_obtained = mr->max_weight;
@@ -370,12 +407,12 @@ static cdsl_rule_report_t* execute_metric_rule(cdsl_vm_t* vm, const cdsl_rule_t*
             if (vm->debug_enabled) fprintf(stderr, "[TRACE]   no CASE matched, executing DEFAULT\n");
             trigger_action(vm, m->default_action);
             if (m->default_action && strcmp(m->default_action->action_name, "score") == 0 && m->default_action->args) {
-                cdsl_value_t sv = eval_expr(m->default_action->args->expr, ctx, vm->debug_enabled);
+                cdsl_value_t sv = eval_expr(m->default_action->args->expr, ctx, vm, vm->debug_enabled);
                 mr->score_obtained = (sv.type == CDSL_TYPE_INT) ? sv.data.int_val : 0;
             } else if (m->default_action && strcmp(m->default_action->action_name, "fail_metric") == 0) {
                 mr->score_obtained = 0;
                 if (m->default_action->args && m->default_action->args->next) {
-                    cdsl_value_t rv = eval_expr(m->default_action->args->next->expr, ctx, vm->debug_enabled);
+                    cdsl_value_t rv = eval_expr(m->default_action->args->next->expr, ctx, vm, vm->debug_enabled);
                     if (rv.type == CDSL_TYPE_STRING) mr->violation_reason = strdup(rv.data.string_val);
                 }
             } else {
@@ -445,7 +482,7 @@ static cdsl_rule_report_t* execute_simple_rule(cdsl_vm_t* vm, const cdsl_rule_t*
     report->metrics[0].description = strdup(report->description);
 
     if (vm->debug_enabled) fprintf(stderr, "[TRACE] Evaluating simple rule '%s'\n", rule->name);
-    cdsl_value_t cond = eval_expr(rule->when_expr, ctx, vm->debug_enabled);
+    cdsl_value_t cond = eval_expr(rule->when_expr, ctx, vm, vm->debug_enabled);
     int triggered = (cond.type == CDSL_TYPE_BOOL) ? cond.data.bool_val : 0;
     if (vm->debug_enabled) fprintf(stderr, "[TRACE] WHEN result: %s\n", triggered ? "true" : "false");
 
