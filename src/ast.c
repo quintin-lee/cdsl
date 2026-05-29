@@ -469,6 +469,8 @@ cdsl_free_rule(cdsl_rule_t* rule)
 }
 
 extern cdsl_rule_t* final_parsed_rule;
+extern int yyget_error_count(void);
+extern void yyreset_error_count(void);
 extern void* yy_scan_string(const char*);
 extern void yy_delete_buffer(void*);
 extern int yyparse(void);
@@ -490,6 +492,7 @@ cdsl_parse_string(const char* dsl_code)
 		return NULL;
 	}
 	final_parsed_rule = NULL;
+	yyreset_error_count();
 	void* buf = yy_scan_string(dsl_code);
 	yyparse();
 	yy_delete_buffer(buf);

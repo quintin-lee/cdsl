@@ -10,6 +10,7 @@ extern int yylineno;
 extern int yylex();
 
 cdsl_rule_t* final_parsed_rule = NULL;
+int yy_error_count = 0;
 %}
 
 %union {
@@ -52,6 +53,21 @@ cdsl_rule_t* final_parsed_rule = NULL;
 program:
     rule_declaration { final_parsed_rule = $1; }
     | template_declaration { final_parsed_rule = $1; }
+    | program rule_declaration { final_parsed_rule = $2; }
+    | program template_declaration { final_parsed_rule = $2; }
+    ;
+
+rule_declaration:
+    RULE IDENTIFIER '{' meta_block WHEN expression THEN action_statement '}' {
+        $$ = cdsl_create_simple_rule($2, $4, $6, $8);
+    }
+    | RULE IDENTIFIER '{' meta_block metric_list '}' {
+        $$ = cdsl_create_metric_rule($2, $4, $5);
+    }
+    | RULE IDENTIFIER EXTENDS IDENTIFIER '{' meta_block '}' {
+        $$ = cdsl_create_extends_rule($2, $4, $6);
+    }
+    | error '}' { yy_error_count++; yyerrok; $$ = NULL; }
     ;
 
 template_declaration:
@@ -62,6 +78,7 @@ template_declaration:
             $$->meta_list = cdsl_append_meta($$->meta_list, m);
         }
     }
+    | error '}' { yy_error_count++; yyerrok; $$ = NULL; }
     ;
 
 rule_declaration:
@@ -152,5 +169,14 @@ argument_list_nonempty:
 %%
 
 void yyerror(const char *s) {
-    fprintf(stderr, "Syntax Error: %s at line %d\n", s, yylineno);
+    fprintf(stderr, "Syntax error at line %d: %s\n", yylineno, s);
+    yy_error_count++;
+}
+
+int yyget_error_count(void) {
+    return yy_error_count;
+}
+
+void yyreset_error_count(void) {
+    yy_error_count = 0;
 }
