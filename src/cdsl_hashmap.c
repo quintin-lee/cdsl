@@ -2,6 +2,15 @@
 #include <stdlib.h>
 #include <string.h>
 
+/**
+ * @brief Compute a hash for a string key (internal).
+ *
+ * Uses the djb2 hash algorithm.
+ *
+ * @param key          NUL-terminated string
+ * @param bucket_count Number of buckets in the map
+ * @return Bucket index in [0, bucket_count)
+ */
 static unsigned int
 hash_string(const char* key, int bucket_count)
 {
@@ -12,6 +21,12 @@ hash_string(const char* key, int bucket_count)
 	return h % bucket_count;
 }
 
+/**
+ * @brief Create a new hash map.
+ *
+ * @param bucket_count Number of buckets (0 = default 64)
+ * @return New map, or NULL on allocation failure
+ */
 cdsl_hashmap_t*
 cdsl_hashmap_create(int bucket_count)
 {
@@ -21,6 +36,12 @@ cdsl_hashmap_create(int bucket_count)
 	return m;
 }
 
+/**
+ * @brief Free a hash map and all its entries.
+ *
+ * @param map     Map to destroy (NULL-safe)
+ * @param free_fn Optional destructor for values (can be NULL)
+ */
 void
 cdsl_hashmap_free(cdsl_hashmap_t* map, cdsl_hashmap_free_fn free_fn)
 {
@@ -43,6 +64,16 @@ cdsl_hashmap_free(cdsl_hashmap_t* map, cdsl_hashmap_free_fn free_fn)
 	free(map);
 }
 
+/**
+ * @brief Insert or update a key-value pair.
+ *
+ * If the key already exists, its value is replaced.
+ *
+ * @param map   Target map
+ * @param key   Key string (copied internally)
+ * @param value Value pointer (not copied)
+ * @return 1 on success, 0 on error
+ */
 int
 cdsl_hashmap_put(cdsl_hashmap_t* map, const char* key, void* value)
 {
@@ -67,6 +98,13 @@ cdsl_hashmap_put(cdsl_hashmap_t* map, const char* key, void* value)
 	return 1;
 }
 
+/**
+ * @brief Look up a value by key.
+ *
+ * @param map Target map
+ * @param key Key to look up
+ * @return Value pointer, or NULL if not found
+ */
 void*
 cdsl_hashmap_get(cdsl_hashmap_t* map, const char* key)
 {
@@ -84,6 +122,14 @@ cdsl_hashmap_get(cdsl_hashmap_t* map, const char* key)
 	return NULL;
 }
 
+/**
+ * @brief Remove an entry by key.
+ *
+ * @param map     Target map
+ * @param key     Key to remove
+ * @param free_fn Optional destructor for the removed value
+ * @return 1 if the entry was found and removed, 0 otherwise
+ */
 int
 cdsl_hashmap_remove(cdsl_hashmap_t* map, const char* key, cdsl_hashmap_free_fn free_fn)
 {

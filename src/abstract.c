@@ -4,6 +4,14 @@
 #include <stdio.h>
 #include <stdarg.h>
 
+/**
+ * @brief Create a new empty schema.
+ *
+ * The schema holds type information for variables and actions
+ * used during rule verification.
+ *
+ * @return New schema (must be freed with cdsl_schema_free)
+ */
 cdsl_schema_t*
 cdsl_schema_create(void)
 {
@@ -11,6 +19,11 @@ cdsl_schema_create(void)
 	return s;
 }
 
+/**
+ * @brief Free a schema and all its registered variables and actions.
+ *
+ * @param schema Schema to free (NULL-safe)
+ */
 void
 cdsl_schema_free(cdsl_schema_t* schema)
 {
@@ -35,6 +48,15 @@ cdsl_schema_free(cdsl_schema_t* schema)
 	free(schema);
 }
 
+/**
+ * @brief Register a typed variable in the schema.
+ *
+ * Variable names must be unique within a schema.
+ *
+ * @param schema Target schema
+ * @param name   Variable name (copied internally)
+ * @param type   Variable type
+ */
 void
 cdsl_schema_register_var(cdsl_schema_t* schema, const char* name, cdsl_type_t type)
 {
@@ -45,6 +67,15 @@ cdsl_schema_register_var(cdsl_schema_t* schema, const char* name, cdsl_type_t ty
 	schema->vars = v;
 }
 
+/**
+ * @brief Register an action function in the schema.
+ *
+ * @param schema   Target schema
+ * @param name     Action name (copied internally)
+ * @param ret_type Return type
+ * @param arg_count Number of arguments
+ * @param ...      Argument types (cdsl_type_t values)
+ */
 void
 cdsl_schema_register_action(
     cdsl_schema_t* schema, const char* name, cdsl_type_t ret_type, int arg_count, ...)
@@ -66,6 +97,13 @@ cdsl_schema_register_action(
 	schema->actions = a;
 }
 
+/**
+ * @brief Find a variable by name in the schema (internal).
+ *
+ * @param schema Schema to search
+ * @param name   Variable name
+ * @return Variable schema entry, or NULL if not found
+ */
 static cdsl_var_schema_t*
 find_var(const cdsl_schema_t* schema, const char* name)
 {
@@ -77,6 +115,13 @@ find_var(const cdsl_schema_t* schema, const char* name)
 	return NULL;
 }
 
+/**
+ * @brief Find an action by name in the schema (internal).
+ *
+ * @param schema Schema to search
+ * @param name   Action name
+ * @return Action schema entry, or NULL if not found
+ */
 static cdsl_action_schema_t*
 find_action(const cdsl_schema_t* schema, const char* name)
 {
@@ -88,6 +133,18 @@ find_action(const cdsl_schema_t* schema, const char* name)
 	return NULL;
 }
 
+/**
+ * @brief Resolve the type of an expression against the schema (internal).
+ *
+ * Validates types recursively. On error, writes a description into
+ * the provided error buffer.
+ *
+ * @param expr   Expression to resolve
+ * @param schema Schema for variable/action lookups
+ * @param err    Error output buffer
+ * @param errsz  Size of error buffer
+ * @return The resolved type, or CDSL_TYPE_VOID on error
+ */
 static cdsl_type_t
 resolve_expr_type(cdsl_expr_node_t* expr, const cdsl_schema_t* schema, char* err, int errsz)
 {
@@ -146,6 +203,11 @@ resolve_expr_type(cdsl_expr_node_t* expr, const cdsl_schema_t* schema, char* err
 	}
 }
 
+/**
+ * @brief Count the number of arguments in a linked list (internal).
+ * @param args Head of argument list
+ * @return Argument count
+ */
 static int
 count_args(cdsl_arg_node_t* args)
 {
@@ -156,6 +218,19 @@ count_args(cdsl_arg_node_t* args)
 	return c;
 }
 
+/**
+ * @brief Verify an action node against the schema (internal).
+ *
+ * Checks that the action is registered, argument count matches, and
+ * argument types are compatible.
+ *
+ * @param action  Action node to verify
+ * @param schema  Schema to validate against
+ * @param context Context string for error messages
+ * @param err     Error output buffer
+ * @param errsz   Size of error buffer
+ * @return 1 if valid, 0 on error
+ */
 static int
 verify_action(cdsl_action_node_t* action,
 	      const cdsl_schema_t* schema,
@@ -203,6 +278,18 @@ verify_action(cdsl_action_node_t* action,
 	return 1;
 }
 
+/**
+ * @brief Verify a complete rule against a schema (simple string-based).
+ *
+ * Validates expression types, variable references, and action
+ * signatures for both WHEN/THEN and metric-style rules.
+ *
+ * @param rule      Rule to verify
+ * @param schema    Schema to validate against
+ * @param err_buf   Error output buffer
+ * @param err_buf_sz Size of error buffer
+ * @return 1 if valid, 0 on error (error message written to err_buf)
+ */
 int
 cdsl_verify_rule(const cdsl_rule_t* rule,
 		 const cdsl_schema_t* schema,
@@ -257,6 +344,15 @@ cdsl_verify_rule(const cdsl_rule_t* rule,
 	return 1;
 }
 
+/**
+ * @brief Collect type errors in an expression tree into an error list (internal).
+ *
+ * Recursively checks all sub-expressions for unknown variables.
+ *
+ * @param expr   Expression to check
+ * @param schema Schema for variable lookups
+ * @param errors Target error list
+ */
 static void
 resolve_expr_type_detailed(cdsl_expr_node_t* expr,
 			   const cdsl_schema_t* schema,
@@ -291,6 +387,17 @@ resolve_expr_type_detailed(cdsl_expr_node_t* expr,
 	}
 }
 
+/**
+ * @brief Collect errors for an action node into a list (internal).
+ *
+ * Checks that the action is registered and reports argument count
+ * and type issues as structured errors.
+ *
+ * @param action  Action to verify
+ * @param schema  Schema to validate against
+ * @param context Context label for error messages
+ * @param errors  Target error list
+ */
 static void
 verify_action_detailed(cdsl_action_node_t* action,
 		       const cdsl_schema_t* schema,
@@ -329,6 +436,17 @@ verify_action_detailed(cdsl_action_node_t* action,
 	}
 }
 
+/**
+ * @brief Verify a rule against a schema (detailed error list).
+ *
+ * Like cdsl_verify_rule() but returns a structured error list
+ * containing all problems found, rather than stopping at the
+ * first error with a string message.
+ *
+ * @param rule   Rule to verify
+ * @param schema Schema to validate against
+ * @return Error list (may be empty); caller must free with cdsl_error_list_free
+ */
 cdsl_error_list_t*
 cdsl_verify_rule_detailed(const cdsl_rule_t* rule, const cdsl_schema_t* schema)
 {

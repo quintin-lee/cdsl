@@ -4,11 +4,18 @@
 #include <ctype.h>
 #include <stdio.h>
 
+/**
+ * @brief Internal JSON parser state.
+ */
 typedef struct {
-	const char* src;
-	int pos;
+	const char* src; /**< Source string being parsed */
+	int pos;	 /**< Current parse position */
 } json_parser_t;
 
+/**
+ * @brief Skip whitespace characters (internal).
+ * @param p Parser state (modified in place)
+ */
 static void
 skip_ws(json_parser_t* p)
 {
@@ -17,6 +24,16 @@ skip_ws(json_parser_t* p)
 	}
 }
 
+/**
+ * @brief Parse a raw JSON string (internal).
+ *
+ * Expects the current position to be at the opening quote.
+ * Advances past the closing quote and returns the extracted content.
+ * Does NOT handle escape sequences (except positioning).
+ *
+ * @param p Parser state
+ * @return Allocated string content (caller frees), or NULL on error
+ */
 static char*
 parse_string_raw(json_parser_t* p)
 {
@@ -43,6 +60,15 @@ parse_string_raw(json_parser_t* p)
 
 static cdsl_json_value_t* parse_value(json_parser_t* p);
 
+/**
+ * @brief Parse a JSON object {...} (internal).
+ *
+ * Recursively parses key-value pairs into a linked list of
+ * cdsl_json_value_t nodes with JSON_OBJECT type.
+ *
+ * @param p Parser state
+ * @return Object value node, or NULL on parse failure
+ */
 static cdsl_json_value_t*
 parse_object(json_parser_t* p)
 {
@@ -95,6 +121,15 @@ parse_object(json_parser_t* p)
 	return obj;
 }
 
+/**
+ * @brief Parse a JSON array [...] (internal).
+ *
+ * Recursively parses elements into a linked list of
+ * cdsl_json_value_t nodes with JSON_ARRAY type.
+ *
+ * @param p Parser state
+ * @return Array value node, or NULL on parse failure
+ */
 static cdsl_json_value_t*
 parse_array(json_parser_t* p)
 {
@@ -134,6 +169,15 @@ parse_array(json_parser_t* p)
 	return arr;
 }
 
+/**
+ * @brief Parse any JSON value (internal).
+ *
+ * Dispatches to the appropriate sub-parser based on the
+ * first non-whitespace character.
+ *
+ * @param p Parser state
+ * @return Parsed value node, or NULL
+ */
 static cdsl_json_value_t*
 parse_value(json_parser_t* p)
 {
@@ -179,6 +223,15 @@ parse_value(json_parser_t* p)
 	return NULL;
 }
 
+/**
+ * @brief Parse a JSON string into a value tree.
+ *
+ * Supports objects, arrays, strings, numbers, booleans, and null.
+ * Strings are not de-escaped.
+ *
+ * @param json NUL-terminated JSON string
+ * @return Root value node (caller must free with cdsl_json_free), or NULL on error
+ */
 cdsl_json_value_t*
 cdsl_json_parse(const char* json)
 {
@@ -189,6 +242,13 @@ cdsl_json_parse(const char* json)
 	return parse_value(&p);
 }
 
+/**
+ * @brief Recursively free a JSON value tree.
+ *
+ * Frees the node, its key (if any), and all child nodes.
+ *
+ * @param val Root value to free (NULL-safe)
+ */
 void
 cdsl_json_free(cdsl_json_value_t* val)
 {

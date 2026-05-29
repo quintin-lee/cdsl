@@ -165,6 +165,8 @@ else()
 endif()
 
 # 11. Doxygen documentation
+option(CDSL_GENERATE_DOCS "Generate Doxygen API documentation during build" ON)
+
 find_package(Doxygen QUIET)
 if(DOXYGEN_FOUND)
     set(DOXYGEN_IN ${CMAKE_CURRENT_SOURCE_DIR}/Doxyfile)
@@ -178,6 +180,14 @@ if(DOXYGEN_FOUND)
         COMMENT "Generating API documentation with Doxygen"
         VERBATIM
     )
+
+    if(CDSL_GENERATE_DOCS)
+        add_dependencies(cdsl_static doc)
+        message(STATUS "Doxygen found - docs will be generated on every build (CDSL_GENERATE_DOCS=ON)")
+        message(STATUS "  Disable: cmake -DCDSL_GENERATE_DOCS=OFF ..")
+    else()
+        message(STATUS "Doxygen found - run 'make doc' to generate docs (CDSL_GENERATE_DOCS=OFF)")
+    endif()
 else()
     message(STATUS "Doxygen not found - 'doc' target will not be available")
 endif()

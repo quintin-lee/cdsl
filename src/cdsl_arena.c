@@ -4,6 +4,15 @@
 
 #define ARENA_DEFAULT_BLOCK_SIZE (64 * 1024)
 
+/**
+ * @brief Create a new arena allocator.
+ *
+ * Allocates the arena control structure. No backing memory is allocated
+ * until the first cdsl_arena_alloc() call.
+ *
+ * @param block_size  Size of each arena block (0 = default 64KB)
+ * @return New arena instance, or NULL on allocation failure
+ */
 cdsl_arena_t*
 cdsl_arena_create(size_t block_size)
 {
@@ -12,6 +21,17 @@ cdsl_arena_create(size_t block_size)
 	return a;
 }
 
+/**
+ * @brief Allocate a new arena block (internal).
+ *
+ * Creates a fresh memory block when the current one is exhausted.
+ * If min_size exceeds the default block size, the new block is
+ * sized to fit min_size.
+ *
+ * @param arena    Target arena
+ * @param min_size Minimum capacity required
+ * @return New block, or NULL on allocation failure
+ */
 static cdsl_arena_block_t*
 arena_new_block(cdsl_arena_t* arena, size_t min_size)
 {
@@ -28,6 +48,16 @@ arena_new_block(cdsl_arena_t* arena, size_t min_size)
 	return b;
 }
 
+/**
+ * @brief Allocate memory from an arena.
+ *
+ * Returns 8-byte aligned memory. If the current block lacks space,
+ * a new block is created automatically.
+ *
+ * @param arena Target arena
+ * @param size  Number of bytes to allocate
+ * @return Pointer to allocated memory, or NULL on error
+ */
 void*
 cdsl_arena_alloc(cdsl_arena_t* arena, size_t size)
 {
@@ -44,6 +74,13 @@ cdsl_arena_alloc(cdsl_arena_t* arena, size_t size)
 	return ptr;
 }
 
+/**
+ * @brief Duplicate a string using arena memory.
+ *
+ * @param arena Target arena
+ * @param s     String to duplicate
+ * @return Arena-allocated copy of s, or NULL on error
+ */
 char*
 cdsl_arena_strdup(cdsl_arena_t* arena, const char* s)
 {
@@ -56,6 +93,14 @@ cdsl_arena_strdup(cdsl_arena_t* arena, const char* s)
 	return d;
 }
 
+/**
+ * @brief Free all arena memory at once.
+ *
+ * Iterates through all blocks and frees them, then frees the arena itself.
+ * Individual allocations do not need to be freed separately.
+ *
+ * @param arena Arena to destroy (NULL-safe)
+ */
 void
 cdsl_arena_free(cdsl_arena_t* arena)
 {

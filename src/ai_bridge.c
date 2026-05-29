@@ -4,6 +4,16 @@
 #include <stdio.h>
 #include <ctype.h>
 
+/**
+ * @brief Send a prompt to a remote LLM API via cURL (internal).
+ *
+ * Constructs a JSON body and HTTP request using the config's api_base,
+ * api_key, and model. Parses the response to extract the content field.
+ *
+ * @param prompt The user prompt (escaped for JSON internally)
+ * @param config AI configuration (api_key, api_base, model required)
+ * @return Decoded response text, or NULL on failure
+ */
 static char*
 call_llm_api(const char* prompt, const cdsl_ai_config_t* config)
 {
@@ -101,6 +111,13 @@ call_llm_api(const char* prompt, const cdsl_ai_config_t* config)
 	return decoded;
 }
 
+/**
+ * @brief Return a default AI config that uses mock generation.
+ *
+ * The mock flag is set; api_key, api_base, and model are all NULL.
+ *
+ * @return Default config structure
+ */
 cdsl_ai_config_t
 cdsl_ai_config_default(void)
 {
@@ -113,6 +130,11 @@ cdsl_ai_config_default(void)
 	return cfg;
 }
 
+/**
+ * @brief Convert a type enum to a printable name (internal).
+ * @param t Type value
+ * @return Static string label
+ */
 static const char*
 type_to_str(cdsl_type_t t)
 {
@@ -130,6 +152,11 @@ type_to_str(cdsl_type_t t)
 	}
 }
 
+/**
+ * @brief Count schema variables (internal).
+ * @param schema Schema (may be NULL)
+ * @return Variable count
+ */
 static int
 count_schema_vars(const cdsl_schema_t* schema)
 {
@@ -140,6 +167,12 @@ count_schema_vars(const cdsl_schema_t* schema)
 	return n;
 }
 
+/**
+ * @brief Append schema variable and action info to a prompt buffer (internal).
+ * @param buf    Target buffer
+ * @param sz     Buffer size
+ * @param schema Schema to describe
+ */
 static void
 build_schema_prompt(char* buf, size_t sz, const cdsl_schema_t* schema)
 {
@@ -167,6 +200,15 @@ build_schema_prompt(char* buf, size_t sz, const cdsl_schema_t* schema)
 	}
 }
 
+/**
+ * @brief Check if a word appears as a keyword in text (internal).
+ *
+ * Uses word-boundary detection (space, tab, newline, comma, paren).
+ *
+ * @param text Text to search
+ * @param word Keyword to find
+ * @return 1 if found as a standalone word, 0 otherwise
+ */
 static int
 has_keyword(const char* text, const char* word)
 {
@@ -189,6 +231,17 @@ has_keyword(const char* text, const char* word)
 	return 0;
 }
 
+/**
+ * @brief Generate a mock DSL rule from natural language (internal).
+ *
+ * Produces a generic scoring rule or simple WHEN/THEN rule depending
+ * on the presence of conditional keywords and available schema variables.
+ *
+ * @param natural_language Input text
+ * @param schema           Schema (may be NULL)
+ * @param business_context Optional business context (may be NULL)
+ * @return Allocated DSL string (caller frees)
+ */
 static char*
 mock_translate_generic(const char* natural_language,
 		       const cdsl_schema_t* schema,
@@ -346,6 +399,20 @@ mock_translate_generic(const char* natural_language,
 	return strdup(buf);
 }
 
+/**
+ * @brief Translate natural language to a DSL rule (blocking).
+ *
+ * If config->use_mock is set, uses mock_translate_generic().
+ * Otherwise, calls the configured LLM API and extracts the DSL
+ * from a ```dsl code block.
+ *
+ * Falls back to mock generation if the API call fails.
+ *
+ * @param natural_language User description of the desired rule
+ * @param schema           Schema for context
+ * @param config           AI configuration
+ * @return Allocated DSL string (caller frees), or NULL on error
+ */
 char*
 cdsl_ai_translate(const char* natural_language,
 		  const cdsl_schema_t* schema,
@@ -424,6 +491,21 @@ cdsl_ai_translate(const char* natural_language,
 	    natural_language, schema, config ? config->business_context : NULL);
 }
 
+/**
+ * @brief Review a DSL rule for safety and quality (blocking).
+ *
+ * In mock mode, performs static analysis on the raw DSL text
+ * checking for META, METRIC, CASE, DEFAULT, WHEN, score(), and
+ * is_critical patterns. Assigns a score and risk level.
+ *
+ * In API mode, sends the DSL code to the LLM for review and
+ * parses the JSON response.
+ *
+ * @param dsl_code DSL rule text to review
+ * @param schema   Schema (used in mock mode for context)
+ * @param config   AI configuration
+ * @return Review result (caller must free with cdsl_ai_review_free)
+ */
 cdsl_ai_review_t*
 cdsl_ai_review(const char* dsl_code, const cdsl_schema_t* schema, const cdsl_ai_config_t* config)
 {
@@ -550,6 +632,11 @@ cdsl_ai_review(const char* dsl_code, const cdsl_schema_t* schema, const cdsl_ai_
 	return rev;
 }
 
+/**
+ * @brief Free an AI review result.
+ *
+ * @param review Review to free (NULL-safe)
+ */
 void
 cdsl_ai_review_free(cdsl_ai_review_t* review)
 {
@@ -561,6 +648,19 @@ cdsl_ai_review_free(cdsl_ai_review_t* review)
 	free(review);
 }
 
+/**
+ * @brief Send a streaming prompt to a remote LLM API via cURL (internal).
+ *
+ * Uses SSE (server-sent events) parsing. Each content chunk is
+ * delivered to the callback as it arrives. The full response is also
+ * accumulated and returned.
+ *
+ * @param prompt    The user prompt
+ * @param config    AI configuration
+ * @param callback  Per-chunk callback (may be NULL)
+ * @param user_data Opaque pointer forwarded to callback
+ * @return Accumulated full response, or NULL on failure
+ */
 static char*
 call_llm_api_stream(const char* prompt,
 		    const cdsl_ai_config_t* config,
@@ -676,6 +776,19 @@ call_llm_api_stream(const char* prompt,
 	return result;
 }
 
+/**
+ * @brief Translate natural language to DSL via streaming LLM call.
+ *
+ * In mock mode, calls mock_translate_generic() and delivers the
+ * full result in one callback invocation.
+ *
+ * @param natural_language User description
+ * @param schema           Schema for context
+ * @param config           AI configuration
+ * @param callback         Per-chunk callback (may be NULL)
+ * @param user_data        Opaque pointer for callback
+ * @return Accumulated full DSL result, or NULL on error
+ */
 char*
 cdsl_ai_translate_stream(const char* natural_language,
 			 const cdsl_schema_t* schema,
@@ -728,6 +841,19 @@ cdsl_ai_translate_stream(const char* natural_language,
 	return call_llm_api_stream(prompt, config, callback, user_data);
 }
 
+/**
+ * @brief Review a DSL rule via streaming LLM call.
+ *
+ * In mock mode, constructs the JSON review response directly and
+ * delivers it in one callback invocation.
+ *
+ * @param dsl_code DSL code to review
+ * @param schema   Schema (unused in streaming LLM path)
+ * @param config   AI configuration
+ * @param callback Per-chunk callback (may be NULL)
+ * @param user_data Opaque pointer for callback
+ * @return Accumulated full JSON review, or NULL on error
+ */
 char*
 cdsl_ai_review_stream(const char* dsl_code,
 		      const cdsl_schema_t* schema,
