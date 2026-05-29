@@ -1,0 +1,116 @@
+name: CI
+
+on:
+  push:
+    branches: [master, main]
+  pull_request:
+    branches: [master, main]
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  ##########################################################################
+  # Build & Test
+  ##########################################################################
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install dependencies
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq \
+            cmake \
+            gcc \
+            flex \
+            bison \
+            libpthread-stubs0-dev
+
+      - name: Configure
+        run: cmake -B build -DCDSL_GENERATE_DOCS=OFF -DCMAKE_BUILD_TYPE=Debug
+
+      - name: Build
+        run: cmake --build build -j$(nproc)
+
+      - name: Test
+        run: ctest --test-dir build --output-on-failure -j$(nproc)
+
+      - name: Upload build artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: build
+          path: build/
+          retention-days: 1
+
+  ##########################################################################
+  # Code Format Check
+  ##########################################################################
+  format:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install clang-format
+        run: sudo apt-get update -qq && sudo apt-get install -y -qq clang-format
+
+      - name: Configure
+        run: cmake -B build -DCDSL_GENERATE_DOCS=OFF
+
+      - name: Check formatting
+        run: cmake --build build --target check-format
+
+  ##########################################################################
+  # Doxygen Documentation
+  ##########################################################################
+  docs:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install dependencies
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq \
+            cmake \
+            flex \
+            bison \
+            doxygen \
+            graphviz
+
+      - name: Configure
+        run: cmake -B build -DCDSL_GENERATE_DOCS=OFF
+
+      - name: Generate documentation
+        run: cmake --build build --target doc
+
+      - name: Upload documentation
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: build/docs/html
+
+  ##########################################################################
+  # Deploy Docs to GitHub Pages
+  ##########################################################################
+  deploy-docs:
+    if: github.ref == 'refs/heads/master' || github.ref == 'refs/heads/main'
+    needs: [docs]
+    runs-on: ubuntu-latest
+
+    permissions:
+      pages: write
+      id-token: write
+
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+
+    steps:
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4
