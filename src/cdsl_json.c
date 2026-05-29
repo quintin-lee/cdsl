@@ -25,11 +25,9 @@ skip_ws(json_parser_t* p)
 }
 
 /**
- * @brief Parse a raw JSON string (internal).
+ * @brief Parse a raw JSON string with full escape-sequence support (internal).
  *
- * Expects the current position to be at the opening quote.
- * Advances past the closing quote and returns the extracted content.
- * Does NOT handle escape sequences (except positioning).
+ * Handles: \\", \\\\, \\/, \\b, \\f, \\n, \\r, \\t, \\uXXXX.
  *
  * @param p Parser state
  * @return Allocated string content (caller frees), or NULL on error
@@ -41,19 +39,87 @@ parse_string_raw(json_parser_t* p)
 		return NULL;
 	}
 	p->pos++;
-	int start = p->pos;
+	size_t cap = 64;
+	size_t len = 0;
+	char* s = malloc(cap);
 	while (p->src[p->pos] && p->src[p->pos] != '"') {
 		if (p->src[p->pos] == '\\') {
 			p->pos++;
+			switch (p->src[p->pos]) {
+			case '"':
+				s[len++] = '"';
+				break;
+			case '\\':
+				s[len++] = '\\';
+				break;
+			case '/':
+				s[len++] = '/';
+				break;
+			case 'b':
+				s[len++] = '\b';
+				break;
+			case 'f':
+				s[len++] = '\f';
+				break;
+			case 'n':
+				s[len++] = '\n';
+				break;
+			case 'r':
+				s[len++] = '\r';
+				break;
+			case 't':
+				s[len++] = '\t';
+				break;
+			case 'u': {
+				int code = 0;
+				for (int i = 0; i < 4; i++) {
+					p->pos++;
+					char c = p->src[p->pos];
+					code *= 16;
+					if (c >= '0' && c <= '9') {
+						code += c - '0';
+					} else if (c >= 'a' && c <= 'f') {
+						code += c - 'a' + 10;
+					} else if (c >= 'A' && c <= 'F') {
+						code += c - 'A' + 10;
+					} else {
+						free(s);
+						return NULL;
+					}
+				}
+				if (code < 128) {
+					s[len++] = (char)code;
+				} else if (code < 0x800) {
+					s[len++] = 0xC0 | (code >> 6);
+					s[len++] = 0x80 | (code & 0x3F);
+				} else {
+					s[len++] = 0xE0 | (code >> 12);
+					s[len++] = 0x80 | ((code >> 6) & 0x3F);
+					s[len++] = 0x80 | (code & 0x3F);
+				}
+				break;
+			}
+			default:
+				s[len++] = p->src[p->pos];
+				break;
+			}
+			p->pos++;
+		} else {
+			if (len + 1 >= cap) {
+				cap *= 2;
+				char* ns = realloc(s, cap);
+				if (!ns) {
+					free(s);
+					return NULL;
+				}
+				s = ns;
+			}
+			s[len++] = p->src[p->pos++];
 		}
-		p->pos++;
 	}
-	int len = p->pos - start;
 	if (p->src[p->pos] == '"') {
 		p->pos++;
 	}
-	char* s = malloc(len + 1);
-	memcpy(s, p->src + start, len);
 	s[len] = '\0';
 	return s;
 }
@@ -209,8 +275,10 @@ parse_value(json_parser_t* p)
 		return v;
 	}
 	if (c == 'n') {
+		cdsl_json_value_t* v = calloc(1, sizeof(*v));
+		v->type = JSON_NULL;
 		p->pos += 4;
-		return NULL;
+		return v;
 	}
 	if (c == '-' || isdigit((unsigned char)c)) {
 		cdsl_json_value_t* v = calloc(1, sizeof(*v));
