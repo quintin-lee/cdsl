@@ -529,6 +529,19 @@ eval_expr(cdsl_expr_node_t* expr, cdsl_context_t* ctx, cdsl_vm_t* vm, int debug,
 					v.data.bool_val ? "true" : "false",
 					result.data.bool_val ? "true" : "false");
 			}
+		} else if (expr->data.unary.op == CDSL_OP_NEG) {
+			if (v.type == CDSL_TYPE_INT) {
+				result.type = CDSL_TYPE_INT;
+				result.data.int_val = -v.data.int_val;
+			} else if (v.type == CDSL_TYPE_FLOAT) {
+				result.type = CDSL_TYPE_FLOAT;
+				result.data.float_val = -v.data.float_val;
+			} else {
+				result.type = CDSL_TYPE_VOID;
+			}
+			if (debug) {
+				fprintf(stderr, "[TRACE]   NEG\n");
+			}
 		}
 		break;
 	}
@@ -636,6 +649,50 @@ eval_expr(cdsl_expr_node_t* expr, cdsl_context_t* ctx, cdsl_vm_t* vm, int debug,
 			break;
 		case CDSL_OP_GE:
 			result.data.bool_val = lv >= rv;
+			break;
+		case CDSL_OP_ADD:
+			result.type = (l.type == CDSL_TYPE_FLOAT || r.type == CDSL_TYPE_FLOAT)
+					  ? CDSL_TYPE_FLOAT
+					  : CDSL_TYPE_INT;
+			if (result.type == CDSL_TYPE_FLOAT) {
+				result.data.float_val = lv + rv;
+			} else {
+				result.data.int_val = (int)(lv + rv);
+			}
+			break;
+		case CDSL_OP_SUB:
+			result.type = (l.type == CDSL_TYPE_FLOAT || r.type == CDSL_TYPE_FLOAT)
+					  ? CDSL_TYPE_FLOAT
+					  : CDSL_TYPE_INT;
+			if (result.type == CDSL_TYPE_FLOAT) {
+				result.data.float_val = lv - rv;
+			} else {
+				result.data.int_val = (int)(lv - rv);
+			}
+			break;
+		case CDSL_OP_MUL:
+			result.type = (l.type == CDSL_TYPE_FLOAT || r.type == CDSL_TYPE_FLOAT)
+					  ? CDSL_TYPE_FLOAT
+					  : CDSL_TYPE_INT;
+			if (result.type == CDSL_TYPE_FLOAT) {
+				result.data.float_val = lv * rv;
+			} else {
+				result.data.int_val = (int)(lv * rv);
+			}
+			break;
+		case CDSL_OP_DIV:
+			if (rv == 0.0) {
+				result.type = CDSL_TYPE_VOID;
+				break;
+			}
+			result.type = (l.type == CDSL_TYPE_FLOAT || r.type == CDSL_TYPE_FLOAT)
+					  ? CDSL_TYPE_FLOAT
+					  : CDSL_TYPE_INT;
+			if (result.type == CDSL_TYPE_FLOAT) {
+				result.data.float_val = lv / rv;
+			} else {
+				result.data.int_val = (int)(lv / rv);
+			}
 			break;
 		default:
 			break;

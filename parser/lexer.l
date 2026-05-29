@@ -57,6 +57,11 @@
 "<"                     { return LT; }
 ">"                     { return GT; }
 
+"+"                     { return PLUS; }
+"-"                     { return MINUS; }
+"*"                     { return STAR; }
+"/"                     { return SLASH; }
+
 "{"                      { return LBRACE; }
 "}"                      { return RBRACE; }
 "("                      { return LPAREN; }

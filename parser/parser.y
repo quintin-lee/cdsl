@@ -30,6 +30,7 @@ int yy_error_count = 0;
 
 %token RULE META WHEN THEN METRIC CASE DEFAULT TEMPLATE EXTENDS
 %token LBRACE RBRACE LPAREN RPAREN ASSIGN COMMA
+%token PLUS MINUS STAR SLASH
 %token <id_val> IDENTIFIER
 %token <int_val> INT_LIT
 %token <float_val> FLOAT_LIT
@@ -38,7 +39,9 @@ int yy_error_count = 0;
 
 %left OR
 %left AND
-%right NOT
+%left PLUS MINUS
+%left STAR SLASH
+%right NOT UMINUS
 %nonassoc EQ NE LT GT LE GE
 
 %type <rule> program rule_declaration template_declaration
@@ -134,7 +137,12 @@ expression:
     | expression GE expression          { $$ = cdsl_create_expr_binary(CDSL_OP_GE, $1, $3); }
     | expression AND expression         { $$ = cdsl_create_expr_binary(CDSL_OP_AND, $1, $3); }
     | expression OR expression          { $$ = cdsl_create_expr_binary(CDSL_OP_OR, $1, $3); }
+    | expression PLUS expression        { $$ = cdsl_create_expr_binary(CDSL_OP_ADD, $1, $3); }
+    | expression MINUS expression       { $$ = cdsl_create_expr_binary(CDSL_OP_SUB, $1, $3); }
+    | expression STAR expression        { $$ = cdsl_create_expr_binary(CDSL_OP_MUL, $1, $3); }
+    | expression SLASH expression       { $$ = cdsl_create_expr_binary(CDSL_OP_DIV, $1, $3); }
     | NOT expression                    { $$ = cdsl_create_expr_unary(CDSL_OP_NOT, $2); }
+    | MINUS expression %prec UMINUS     { $$ = cdsl_create_expr_unary(CDSL_OP_NEG, $2); }
     | LPAREN expression RPAREN               { $$ = $2; }
     ;
 

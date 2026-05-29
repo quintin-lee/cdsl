@@ -50,7 +50,12 @@ typedef enum {
 	CDSL_OP_GE,  /**< Greater than or equal (>=) */
 	CDSL_OP_AND, /**< Logical AND (&&) - short-circuit */
 	CDSL_OP_OR,  /**< Logical OR (||) - short-circuit */
-	CDSL_OP_NOT  /**< Logical NOT (!) */
+	CDSL_OP_NOT, /**< Logical NOT (!) */
+	CDSL_OP_ADD, /**< Addition (+) */
+	CDSL_OP_SUB, /**< Subtraction (-) */
+	CDSL_OP_MUL, /**< Multiplication (*) */
+	CDSL_OP_DIV, /**< Division (/) */
+	CDSL_OP_NEG  /**< Unary negation (-expr) */
 } cdsl_op_t;
 
 /**
