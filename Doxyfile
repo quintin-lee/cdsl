@@ -8,8 +8,8 @@ OUTPUT_DIRECTORY       = docs
 CREATE_SUBDIRS         = YES
 
 # Input
-INPUT                  = include src demo
-FILE_PATTERNS          = *.h *.c
+INPUT                  = @CMAKE_CURRENT_SOURCE_DIR@/include @CMAKE_CURRENT_SOURCE_DIR@/src @CMAKE_CURRENT_SOURCE_DIR@/demo @CMAKE_CURRENT_SOURCE_DIR@/docs
+FILE_PATTERNS          = *.h *.c *.md
 RECURSIVE              = YES
 EXCLUDE_PATTERNS       = */build/* */.git/*
 
