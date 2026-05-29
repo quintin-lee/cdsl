@@ -299,12 +299,12 @@ See [API Reference](docs/api-reference.md) for the complete function documentati
 
 | Operation                          | Thread Safe | Notes                                    |
 |------------------------------------|-------------|------------------------------------------|
-| `cdsl_parse_string()`              | ❌          | Flex/Bison use global state              |
+| `cdsl_parse_string()`              | ✅          | Uses reentrant Flex/Bison scanner        |
 | `cdsl_vm_execute()`                | ✅          | Each thread needs its own VM instance    |
 | `cdsl_context_*()`                 | ✅          | Each thread needs its own Context        |
 | Schema (read-only)                 | ✅          | Can be shared across threads             |
 | Rule (read-only)                   | ✅          | Can be shared after parsing              |
-| `cdsl_compile_cache_t`             | ❌          | Not thread-safe; protect with mutex      |
+| `cdsl_compile_cache_t`             | ✅          | Internal RWLock protection               |
 
 ---
 

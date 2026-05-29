@@ -128,9 +128,16 @@ Two verification functions are provided:
 
 ### 2.3 Execution Layer
 
-**Files**: `src/execution.c`, `src/cdsl_json.c`
+**Files**: `src/vm_eval.c`, `src/vm_context.c`, `src/vm_cache.c`, `src/vm_ruleset.c`, `src/vm_codegen.c`, `src/vm_visualize.c`, `src/cdsl_json.c`
 
-The Execution Layer interprets the verified AST against a runtime context. It is the largest and most feature-rich layer.
+The Execution Layer interprets the verified AST against a runtime context. It has been modularized for better maintainability and thread-safety:
+
+- **vm_context.c**: Manages execution contexts, variable bindings, and VM lifecycle.
+- **vm_eval.c**: Core AST interpreter and rule execution logic (metric and simple rules).
+- **vm_cache.c**: Thread-safe compilation cache with robust collision handling.
+- **vm_ruleset.c**: Priority-based batch execution and parallel RuleSet evaluation.
+- **vm_codegen.c**: Translation of DSL rules into standalone C code.
+- **vm_visualize.c**: Generation of Graphviz DOT representations for rules and rulesets.
 
 **Execution flow**:
 
@@ -225,20 +232,18 @@ Input: RULE scoring { METRIC m1 { CASE x > 10 THEN score(40) } ... }
                     └─────────────┘
 ```
 
----
-
 ## 4. Thread Safety
 
 | Operation                             | Safe | Notes                                    |
 |---------------------------------------|------|------------------------------------------|
-| `cdsl_parse_string()`                 | ❌   | Flex/Bison use global state; serialize   |
+| `cdsl_parse_string()`                 | ✅   | Uses reentrant Flex/Bison scanner        |
 | `cdsl_vm_execute()`                   | ✅   | Each thread needs its own VM instance    |
 | `cdsl_context_*()`                    | ✅   | Each thread needs its own Context        |
 | Schema (read-only)                    | ✅   | Can be shared across threads             |
 | Rule (read-only)                      | ✅   | Parsed rules are immutable               |
 | RuleSet (read-only)                   | ✅   | Safe after construction                  |
 | `cdsl_vm_execute_ruleset_parallel()`  | ✅   | Creates per-thread VMs internally        |
-| `cdsl_compile_cache_t`                | ❌   | Not safe; protect with external mutex    |
+| `cdsl_compile_cache_t`                | ✅   | Internal RWLock protection               |
 
 ---
 
