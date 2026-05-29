@@ -115,7 +115,56 @@ install(FILES "${CMAKE_CURRENT_BINARY_DIR}/cdsl.pc"
     DESTINATION ${CMAKE_INSTALL_LIBDIR}/pkgconfig
 )
 
-# 10. Doxygen documentation
+# 10. Code formatting (clang-format)
+option(CDSL_FORMAT_ON_BUILD "Run clang-format before every build" OFF)
+
+find_program(CLANG_FORMAT clang-format)
+if(CLANG_FORMAT)
+    set(CDSL_FORMAT_FILES
+        include/ast.h include/abstract.h include/execution.h
+        include/ai_bridge.h include/cdsl_json.h include/cdsl_error.h
+        include/cdsl_arena.h include/cdsl_hashmap.h
+        src/ast.c src/abstract.c src/execution.c
+        src/cdsl_json.c src/cdsl_error.c src/cdsl_arena.c src/cdsl_hashmap.c
+        src/ai_bridge.c
+        demo/main.c
+        tests/test.h tests/test_ast.c tests/test_execution.c
+    )
+
+    add_custom_target(format
+        COMMAND ${CLANG_FORMAT} -i -style=file ${CDSL_FORMAT_FILES}
+        WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
+        COMMENT "Formatting all source files with clang-format"
+    )
+
+    add_custom_target(check-format
+        COMMAND ${CLANG_FORMAT} --dry-run --Werror -style=file ${CDSL_FORMAT_FILES}
+        WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
+        COMMENT "Checking code formatting (no changes made)"
+    )
+
+    add_custom_target(install-git-hooks
+        COMMAND ${CMAKE_COMMAND} -E copy
+            ${CMAKE_CURRENT_SOURCE_DIR}/cmake/pre-commit.hook
+            ${CMAKE_CURRENT_SOURCE_DIR}/.git/hooks/pre-commit
+        COMMAND chmod +x ${CMAKE_CURRENT_SOURCE_DIR}/.git/hooks/pre-commit
+        COMMENT "Installing git pre-commit hook for auto-formatting"
+    )
+
+    if(CDSL_FORMAT_ON_BUILD)
+        add_dependencies(cdsl_static format)
+        add_dependencies(cdsl_shared format)
+        add_dependencies(cdsl_demo format)
+        message(STATUS "clang-format found - formatting ON on every build (CDSL_FORMAT_ON_BUILD=ON)")
+    else()
+        message(STATUS "clang-format found - targets: format, check-format, install-git-hooks")
+        message(STATUS "  Enable build-time formatting: cmake -DCDSL_FORMAT_ON_BUILD=ON ..")
+    endif()
+else()
+    message(STATUS "clang-format not found - format targets disabled")
+endif()
+
+# 11. Doxygen documentation
 find_package(Doxygen QUIET)
 if(DOXYGEN_FOUND)
     set(DOXYGEN_IN ${CMAKE_CURRENT_SOURCE_DIR}/Doxyfile)

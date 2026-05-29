@@ -16,11 +16,11 @@
 
 /** @name Safety Limits */
 /** @{ */
-#define CDSL_MAX_EXPR_DEPTH    64   /**< Maximum nesting depth of expressions */
-#define CDSL_MAX_METRICS       32   /**< Maximum number of metrics per rule */
-#define CDSL_MAX_CASES         16   /**< Maximum number of CASE branches per metric */
-#define CDSL_MAX_RULES         128  /**< Maximum number of rules in a ruleset */
-#define CDSL_MAX_INPUT_LENGTH  65536 /**< Maximum DSL input string length in bytes */
+#define CDSL_MAX_EXPR_DEPTH 64	    /**< Maximum nesting depth of expressions */
+#define CDSL_MAX_METRICS 32	    /**< Maximum number of metrics per rule */
+#define CDSL_MAX_CASES 16	    /**< Maximum number of CASE branches per metric */
+#define CDSL_MAX_RULES 128	    /**< Maximum number of rules in a ruleset */
+#define CDSL_MAX_INPUT_LENGTH 65536 /**< Maximum DSL input string length in bytes */
 /** @} */
 
 /**
@@ -29,11 +29,11 @@
  * Used for schema registration, type checking, and runtime value representation.
  */
 typedef enum {
-    CDSL_TYPE_INT,    /**< 32-bit integer */
-    CDSL_TYPE_FLOAT,  /**< 64-bit floating point */
-    CDSL_TYPE_BOOL,   /**< Boolean (true/false) */
-    CDSL_TYPE_STRING, /**< Null-terminated string */
-    CDSL_TYPE_VOID    /**< Void / no value */
+	CDSL_TYPE_INT,	  /**< 32-bit integer */
+	CDSL_TYPE_FLOAT,  /**< 64-bit floating point */
+	CDSL_TYPE_BOOL,	  /**< Boolean (true/false) */
+	CDSL_TYPE_STRING, /**< Null-terminated string */
+	CDSL_TYPE_VOID	  /**< Void / no value */
 } cdsl_type_t;
 
 /**
@@ -42,15 +42,15 @@ typedef enum {
  * Comparison operators return BOOL. Logical operators support short-circuit evaluation.
  */
 typedef enum {
-    CDSL_OP_EQ,  /**< Equal to (==) */
-    CDSL_OP_NE,  /**< Not equal to (!=) */
-    CDSL_OP_LT,  /**< Less than (<) */
-    CDSL_OP_GT,  /**< Greater than (>) */
-    CDSL_OP_LE,  /**< Less than or equal (<=) */
-    CDSL_OP_GE,  /**< Greater than or equal (>=) */
-    CDSL_OP_AND, /**< Logical AND (&&) - short-circuit */
-    CDSL_OP_OR,  /**< Logical OR (||) - short-circuit */
-    CDSL_OP_NOT  /**< Logical NOT (!) */
+	CDSL_OP_EQ,  /**< Equal to (==) */
+	CDSL_OP_NE,  /**< Not equal to (!=) */
+	CDSL_OP_LT,  /**< Less than (<) */
+	CDSL_OP_GT,  /**< Greater than (>) */
+	CDSL_OP_LE,  /**< Less than or equal (<=) */
+	CDSL_OP_GE,  /**< Greater than or equal (>=) */
+	CDSL_OP_AND, /**< Logical AND (&&) - short-circuit */
+	CDSL_OP_OR,  /**< Logical OR (||) - short-circuit */
+	CDSL_OP_NOT  /**< Logical NOT (!) */
 } cdsl_op_t;
 
 /**
@@ -60,14 +60,14 @@ typedef enum {
  * corresponding union member of ::cdsl_expr_node_t.
  */
 typedef enum {
-    CDSL_EXPR_ID,     /**< Identifier (variable reference, e.g. "user.age") */
-    CDSL_EXPR_INT,    /**< Integer literal */
-    CDSL_EXPR_FLOAT,  /**< Float literal */
-    CDSL_EXPR_BOOL,   /**< Boolean literal (true/false) */
-    CDSL_EXPR_STRING, /**< String literal ("...") */
-    CDSL_EXPR_BINARY, /**< Binary operation (e.g. a + b, x == y) */
-    CDSL_EXPR_UNARY,  /**< Unary operation (e.g. !expr) */
-    CDSL_EXPR_CALL    /**< Function call (e.g. strlen("hello")) */
+	CDSL_EXPR_ID,	  /**< Identifier (variable reference, e.g. "user.age") */
+	CDSL_EXPR_INT,	  /**< Integer literal */
+	CDSL_EXPR_FLOAT,  /**< Float literal */
+	CDSL_EXPR_BOOL,	  /**< Boolean literal (true/false) */
+	CDSL_EXPR_STRING, /**< String literal ("...") */
+	CDSL_EXPR_BINARY, /**< Binary operation (e.g. a + b, x == y) */
+	CDSL_EXPR_UNARY,  /**< Unary operation (e.g. !expr) */
+	CDSL_EXPR_CALL	  /**< Function call (e.g. strlen("hello")) */
 } cdsl_expr_type_t;
 
 /**
@@ -82,35 +82,35 @@ typedef enum {
  * @endcode
  */
 typedef struct cdsl_expr_node {
-    cdsl_expr_type_t type; /**< Type discriminator */
-    union {
-        char* id_val;      /**< Variable name (CDSL_EXPR_ID) */
-        int int_val;       /**< Integer value (CDSL_EXPR_INT) */
-        double float_val;  /**< Float value (CDSL_EXPR_FLOAT) */
-        int bool_val;      /**< Boolean value (CDSL_EXPR_BOOL) */
-        char* string_val;  /**< String value (CDSL_EXPR_STRING) */
-        struct {
-            cdsl_op_t op;                   /**< Operator */
-            struct cdsl_expr_node* left;    /**< Left operand */
-            struct cdsl_expr_node* right;   /**< Right operand */
-        } binary; /**< Binary expression data (CDSL_EXPR_BINARY) */
-        struct {
-            cdsl_op_t op;                   /**< Operator (typically CDSL_OP_NOT) */
-            struct cdsl_expr_node* expr;    /**< Operand */
-        } unary; /**< Unary expression data (CDSL_EXPR_UNARY) */
-        struct {
-            char* func_name;                /**< Function name */
-            struct cdsl_arg_node* args;     /**< Argument list */
-        } call; /**< Function call data (CDSL_EXPR_CALL) */
-    } data;
+	cdsl_expr_type_t type; /**< Type discriminator */
+	union {
+		char* id_val;	  /**< Variable name (CDSL_EXPR_ID) */
+		int int_val;	  /**< Integer value (CDSL_EXPR_INT) */
+		double float_val; /**< Float value (CDSL_EXPR_FLOAT) */
+		int bool_val;	  /**< Boolean value (CDSL_EXPR_BOOL) */
+		char* string_val; /**< String value (CDSL_EXPR_STRING) */
+		struct {
+			cdsl_op_t op;		      /**< Operator */
+			struct cdsl_expr_node* left;  /**< Left operand */
+			struct cdsl_expr_node* right; /**< Right operand */
+		} binary; /**< Binary expression data (CDSL_EXPR_BINARY) */
+		struct {
+			cdsl_op_t op;		     /**< Operator (typically CDSL_OP_NOT) */
+			struct cdsl_expr_node* expr; /**< Operand */
+		} unary;			     /**< Unary expression data (CDSL_EXPR_UNARY) */
+		struct {
+			char* func_name;	    /**< Function name */
+			struct cdsl_arg_node* args; /**< Argument list */
+		} call;				    /**< Function call data (CDSL_EXPR_CALL) */
+	} data;
 } cdsl_expr_node_t;
 
 /**
  * @brief Linked list node for function/action arguments.
  */
 typedef struct cdsl_arg_node {
-    cdsl_expr_node_t* expr;    /**< Argument expression */
-    struct cdsl_arg_node* next; /**< Next argument in list */
+	cdsl_expr_node_t* expr;	    /**< Argument expression */
+	struct cdsl_arg_node* next; /**< Next argument in list */
 } cdsl_arg_node_t;
 
 /**
@@ -121,8 +121,8 @@ typedef struct cdsl_arg_node {
  * callbacks in the VM.
  */
 typedef struct cdsl_action_node {
-    char* action_name;     /**< Name of the action to invoke */
-    cdsl_arg_node_t* args; /**< Linked list of arguments */
+	char* action_name;     /**< Name of the action to invoke */
+	cdsl_arg_node_t* args; /**< Linked list of arguments */
 } cdsl_action_node_t;
 
 /**
@@ -132,9 +132,9 @@ typedef struct cdsl_action_node {
  * weight, risk_level, pass_threshold, etc.
  */
 typedef struct cdsl_meta_item {
-    char* key;             /**< Metadata key */
-    char* value;           /**< Metadata value (always stored as string) */
-    struct cdsl_meta_item* next; /**< Next item in list */
+	char* key;		     /**< Metadata key */
+	char* value;		     /**< Metadata value (always stored as string) */
+	struct cdsl_meta_item* next; /**< Next item in list */
 } cdsl_meta_item_t;
 
 /**
@@ -144,9 +144,9 @@ typedef struct cdsl_meta_item {
  * associated action and stops further CASE evaluation.
  */
 typedef struct cdsl_case_node {
-    cdsl_expr_node_t* condition;   /**< CASE condition expression */
-    cdsl_action_node_t* action;    /**< Action to execute when condition is true */
-    struct cdsl_case_node* next;   /**< Next CASE in the metric */
+	cdsl_expr_node_t* condition; /**< CASE condition expression */
+	cdsl_action_node_t* action;  /**< Action to execute when condition is true */
+	struct cdsl_case_node* next; /**< Next CASE in the metric */
 } cdsl_case_node_t;
 
 /**
@@ -165,11 +165,11 @@ typedef struct cdsl_case_node {
  * @endcode
  */
 typedef struct cdsl_metric_node {
-    char* name;                    /**< Metric identifier */
-    cdsl_meta_item_t* meta_list;  /**< Metadata (weight, is_critical, etc.) */
-    cdsl_case_node_t* case_list;  /**< Ordered list of CASE branches */
-    cdsl_action_node_t* default_action; /**< DEFAULT action if no CASE matches */
-    struct cdsl_metric_node* next; /**< Next metric in the rule */
+	char* name;			    /**< Metric identifier */
+	cdsl_meta_item_t* meta_list;	    /**< Metadata (weight, is_critical, etc.) */
+	cdsl_case_node_t* case_list;	    /**< Ordered list of CASE branches */
+	cdsl_action_node_t* default_action; /**< DEFAULT action if no CASE matches */
+	struct cdsl_metric_node* next;	    /**< Next metric in the rule */
 } cdsl_metric_node_t;
 
 /**
@@ -180,11 +180,11 @@ typedef struct cdsl_metric_node {
  * - **Metric rule**: Multiple METRIC blocks with weighted scoring
  */
 typedef struct cdsl_rule {
-    char* name;                      /**< Rule identifier */
-    cdsl_meta_item_t* meta_list;    /**< Rule metadata */
-    cdsl_expr_node_t* when_expr;    /**< WHEN expression (simple rules only) */
-    cdsl_action_node_t* then_action; /**< THEN action (simple rules only) */
-    cdsl_metric_node_t* metrics;    /**< METRIC list (metric rules only, NULL for simple) */
+	char* name;			 /**< Rule identifier */
+	cdsl_meta_item_t* meta_list;	 /**< Rule metadata */
+	cdsl_expr_node_t* when_expr;	 /**< WHEN expression (simple rules only) */
+	cdsl_action_node_t* then_action; /**< THEN action (simple rules only) */
+	cdsl_metric_node_t* metrics;	 /**< METRIC list (metric rules only, NULL for simple) */
 } cdsl_rule_t;
 
 /** @name Expression Constructors */
@@ -194,7 +194,8 @@ cdsl_expr_node_t* cdsl_create_expr_int(int val);
 cdsl_expr_node_t* cdsl_create_expr_float(double val);
 cdsl_expr_node_t* cdsl_create_expr_bool(int val);
 cdsl_expr_node_t* cdsl_create_expr_string(char* val);
-cdsl_expr_node_t* cdsl_create_expr_binary(cdsl_op_t op, cdsl_expr_node_t* left, cdsl_expr_node_t* right);
+cdsl_expr_node_t*
+cdsl_create_expr_binary(cdsl_op_t op, cdsl_expr_node_t* left, cdsl_expr_node_t* right);
 cdsl_expr_node_t* cdsl_create_expr_unary(cdsl_op_t op, cdsl_expr_node_t* expr);
 cdsl_expr_node_t* cdsl_create_expr_call(char* func_name, cdsl_arg_node_t* args);
 /** @} */
@@ -221,19 +222,22 @@ char* cdsl_meta_get(cdsl_meta_item_t* list, const char* key);
 /** @{ */
 cdsl_case_node_t* cdsl_create_case(cdsl_expr_node_t* cond, cdsl_action_node_t* action);
 cdsl_case_node_t* cdsl_append_case(cdsl_case_node_t* list, cdsl_case_node_t* item);
-cdsl_metric_node_t* cdsl_create_metric(char* name, cdsl_meta_item_t* meta,
-                                        cdsl_case_node_t* cases, cdsl_action_node_t* def_act);
+cdsl_metric_node_t* cdsl_create_metric(char* name,
+				       cdsl_meta_item_t* meta,
+				       cdsl_case_node_t* cases,
+				       cdsl_action_node_t* def_act);
 cdsl_metric_node_t* cdsl_append_metric(cdsl_metric_node_t* list, cdsl_metric_node_t* item);
 /** @} */
 
 /** @name Rule Constructors */
 /** @{ */
-cdsl_rule_t* cdsl_create_simple_rule(char* name, cdsl_meta_item_t* meta,
-                                      cdsl_expr_node_t* when, cdsl_action_node_t* then);
-cdsl_rule_t* cdsl_create_metric_rule(char* name, cdsl_meta_item_t* meta,
-                                      cdsl_metric_node_t* metrics);
-cdsl_rule_t* cdsl_create_extends_rule(char* name, char* template_name,
-                                       cdsl_meta_item_t* meta);
+cdsl_rule_t* cdsl_create_simple_rule(char* name,
+				     cdsl_meta_item_t* meta,
+				     cdsl_expr_node_t* when,
+				     cdsl_action_node_t* then);
+cdsl_rule_t*
+cdsl_create_metric_rule(char* name, cdsl_meta_item_t* meta, cdsl_metric_node_t* metrics);
+cdsl_rule_t* cdsl_create_extends_rule(char* name, char* template_name, cdsl_meta_item_t* meta);
 /** @} */
 
 /** @name Memory Management */

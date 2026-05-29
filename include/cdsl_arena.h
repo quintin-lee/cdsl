@@ -19,10 +19,10 @@
  * @brief Arena memory block (internal).
  */
 typedef struct cdsl_arena_block {
-    char* data;                  /**< Block data buffer */
-    size_t used;                 /**< Bytes used */
-    size_t capacity;             /**< Block capacity */
-    struct cdsl_arena_block* next; /**< Next block in chain */
+	char* data;		       /**< Block data buffer */
+	size_t used;		       /**< Bytes used */
+	size_t capacity;	       /**< Block capacity */
+	struct cdsl_arena_block* next; /**< Next block in chain */
 } cdsl_arena_block_t;
 
 /**
@@ -39,8 +39,8 @@ typedef struct cdsl_arena_block {
  * @endcode
  */
 typedef struct cdsl_arena {
-    cdsl_arena_block_t* blocks; /**< Linked list of memory blocks */
-    size_t block_size;          /**< Default block size */
+	cdsl_arena_block_t* blocks; /**< Linked list of memory blocks */
+	size_t block_size;	    /**< Default block size */
 } cdsl_arena_t;
 
 /**

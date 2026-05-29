@@ -1,0 +1,31 @@
+#!/bin/sh
+# Pre-commit hook: auto-format staged C source files with clang-format.
+# Falls back to the project-local .clang-format style.
+#
+# Installed via: cmake --build build --target install-git-hooks
+
+CLANG_FORMAT=$(which clang-format 2>/dev/null)
+if [ -z "$CLANG_FORMAT" ]; then
+    echo "pre-commit: clang-format not found, skipping formatting"
+    exit 0
+fi
+
+if [ ! -f ".clang-format" ]; then
+    echo "pre-commit: .clang-format not found, skipping formatting"
+    exit 0
+fi
+
+# Get staged .c/.h files and format them in-place (skip .l/.y — Bison/Flex syntax)
+STAGED=$(git diff --cached --name-only --diff-filter=ACMR | grep -E '\.(c|h)$')
+if [ -z "$STAGED" ]; then
+    exit 0
+fi
+
+echo "$STAGED" | while IFS= read -r f; do
+    if [ -f "$f" ]; then
+        "$CLANG_FORMAT" -i -style=file "$f"
+        git add "$f"
+    fi
+done
+
+echo "pre-commit: formatted staged sources with clang-format"

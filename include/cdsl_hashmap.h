@@ -15,9 +15,9 @@
  * @brief Hash map entry (internal).
  */
 typedef struct cdsl_hashmap_entry {
-    char* key;                    /**< Key string (owned) */
-    void* value;                  /**< Value pointer (not owned) */
-    struct cdsl_hashmap_entry* next; /**< Collision chain */
+	char* key;			 /**< Key string (owned) */
+	void* value;			 /**< Value pointer (not owned) */
+	struct cdsl_hashmap_entry* next; /**< Collision chain */
 } cdsl_hashmap_entry_t;
 
 /**
@@ -34,9 +34,9 @@ typedef struct cdsl_hashmap_entry {
  * @endcode
  */
 typedef struct cdsl_hashmap {
-    cdsl_hashmap_entry_t** buckets; /**< Bucket array */
-    int bucket_count;               /**< Number of buckets */
-    int size;                       /**< Number of entries */
+	cdsl_hashmap_entry_t** buckets; /**< Bucket array */
+	int bucket_count;		/**< Number of buckets */
+	int size;			/**< Number of entries */
 } cdsl_hashmap_t;
 
 /**

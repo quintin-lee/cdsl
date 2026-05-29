@@ -22,10 +22,10 @@
  * logical contradictions, missing elements, and security risks.
  */
 typedef struct {
-    int approved;      /**< 1 if rule passed review, 0 if rejected */
-    int risk_score;    /**< Risk score 0-100 (0 = no risk) */
-    char* reason;      /**< Human-readable explanation */
-    char* suggestions; /**< Improvement suggestions */
+	int approved;	   /**< 1 if rule passed review, 0 if rejected */
+	int risk_score;	   /**< Risk score 0-100 (0 = no risk) */
+	char* reason;	   /**< Human-readable explanation */
+	char* suggestions; /**< Improvement suggestions */
 } cdsl_ai_review_t;
 
 /**
@@ -44,11 +44,11 @@ typedef struct {
  * @endcode
  */
 typedef struct {
-    int use_mock;           /**< 1 = use offline mock translation, 0 = use LLM API */
-    char* api_key;          /**< API key for LLM service (e.g. OpenAI) */
-    char* api_base;         /**< API base URL (e.g. "https://api.openai.com/v1") */
-    char* model;            /**< Model name (e.g. "gpt-4o-mini") */
-    char* business_context; /**< Optional business context to guide DSL generation */
+	int use_mock;		/**< 1 = use offline mock translation, 0 = use LLM API */
+	char* api_key;		/**< API key for LLM service (e.g. OpenAI) */
+	char* api_base;		/**< API base URL (e.g. "https://api.openai.com/v1") */
+	char* model;		/**< Model name (e.g. "gpt-4o-mini") */
+	char* business_context; /**< Optional business context to guide DSL generation */
 } cdsl_ai_config_t;
 
 /**
@@ -69,8 +69,8 @@ cdsl_ai_config_t cdsl_ai_config_default(void);
  * @return Dynamically allocated DSL string (must be freed with free())
  */
 char* cdsl_ai_translate(const char* natural_language,
-                         const cdsl_schema_t* schema,
-                         const cdsl_ai_config_t* config);
+			const cdsl_schema_t* schema,
+			const cdsl_ai_config_t* config);
 
 /**
  * @brief Review a DSL rule for safety and correctness.
@@ -85,9 +85,8 @@ char* cdsl_ai_translate(const char* natural_language,
  * @param config AI configuration
  * @return Review result (must be freed with cdsl_ai_review_free)
  */
-cdsl_ai_review_t* cdsl_ai_review(const char* dsl_code,
-                                   const cdsl_schema_t* schema,
-                                   const cdsl_ai_config_t* config);
+cdsl_ai_review_t*
+cdsl_ai_review(const char* dsl_code, const cdsl_schema_t* schema, const cdsl_ai_config_t* config);
 
 /**
  * @brief Free an AI review result.
@@ -119,9 +118,10 @@ typedef void (*cdsl_ai_stream_cb_t)(const char* chunk, void* user_data);
  * @return Complete response string (must be freed with free()), or NULL on error
  */
 char* cdsl_ai_translate_stream(const char* natural_language,
-                                const cdsl_schema_t* schema,
-                                const cdsl_ai_config_t* config,
-                                cdsl_ai_stream_cb_t callback, void* user_data);
+			       const cdsl_schema_t* schema,
+			       const cdsl_ai_config_t* config,
+			       cdsl_ai_stream_cb_t callback,
+			       void* user_data);
 
 /**
  * @brief Stream review a DSL rule.
@@ -136,9 +136,10 @@ char* cdsl_ai_translate_stream(const char* natural_language,
  * @return Complete response string (must be freed with free()), or NULL on error
  */
 char* cdsl_ai_review_stream(const char* dsl_code,
-                             const cdsl_schema_t* schema,
-                             const cdsl_ai_config_t* config,
-                             cdsl_ai_stream_cb_t callback, void* user_data);
+			    const cdsl_schema_t* schema,
+			    const cdsl_ai_config_t* config,
+			    cdsl_ai_stream_cb_t callback,
+			    void* user_data);
 
 #endif
 /** @} */

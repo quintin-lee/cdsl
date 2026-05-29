@@ -21,29 +21,29 @@
  * @c next pointer.
  */
 typedef struct cdsl_json_value {
-    char* key;   /**< Key for object entries (NULL for array items) */
-    enum {
-        JSON_NULL,    /**< null literal */
-        JSON_BOOL,    /**< true/false */
-        JSON_NUMBER,  /**< numeric value */
-        JSON_STRING,  /**< string value */
-        JSON_OBJECT,  /**< object { ... } */
-        JSON_ARRAY    /**< array [ ... ] */
-    } type; /**< Value type discriminator */
-    union {
-        int bool_val;     /**< Boolean value */
-        double number_val; /**< Numeric value */
-        char* string_val; /**< String value */
-        struct {
-            struct cdsl_json_value* items; /**< First child item */
-            int count;                     /**< Number of items */
-        } object; /**< Object data */
-        struct {
-            struct cdsl_json_value* items; /**< First element */
-            int count;                     /**< Number of elements */
-        } array; /**< Array data */
-    } value;
-    struct cdsl_json_value* next; /**< Next sibling in parent object/array */
+	char* key; /**< Key for object entries (NULL for array items) */
+	enum {
+		JSON_NULL,   /**< null literal */
+		JSON_BOOL,   /**< true/false */
+		JSON_NUMBER, /**< numeric value */
+		JSON_STRING, /**< string value */
+		JSON_OBJECT, /**< object { ... } */
+		JSON_ARRAY   /**< array [ ... ] */
+	} type;		     /**< Value type discriminator */
+	union {
+		int bool_val;	   /**< Boolean value */
+		double number_val; /**< Numeric value */
+		char* string_val;  /**< String value */
+		struct {
+			struct cdsl_json_value* items; /**< First child item */
+			int count;		       /**< Number of items */
+		} object;			       /**< Object data */
+		struct {
+			struct cdsl_json_value* items; /**< First element */
+			int count;		       /**< Number of elements */
+		} array;			       /**< Array data */
+	} value;
+	struct cdsl_json_value* next; /**< Next sibling in parent object/array */
 } cdsl_json_value_t;
 
 /**

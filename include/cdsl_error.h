@@ -13,10 +13,10 @@
  * @brief Error category classification.
  */
 typedef enum {
-    CDSL_ERR_SYNTAX,   /**< Parse error (invalid syntax) */
-    CDSL_ERR_TYPE,     /**< Type mismatch error */
-    CDSL_ERR_SEMANTIC, /**< Semantic error (unknown variable/action) */
-    CDSL_ERR_RUNTIME   /**< Runtime evaluation error */
+	CDSL_ERR_SYNTAX,   /**< Parse error (invalid syntax) */
+	CDSL_ERR_TYPE,	   /**< Type mismatch error */
+	CDSL_ERR_SEMANTIC, /**< Semantic error (unknown variable/action) */
+	CDSL_ERR_RUNTIME   /**< Runtime evaluation error */
 } cdsl_error_kind_t;
 
 /**
@@ -26,11 +26,11 @@ typedef enum {
  * a human-readable message, and an optional fix hint.
  */
 typedef struct cdsl_error {
-    int line;                /**< Source line number (0 if unavailable) */
-    int column;              /**< Source column number (0 if unavailable) */
-    char* message;           /**< Error description */
-    char* hint;              /**< Optional fix suggestion (may be NULL) */
-    cdsl_error_kind_t kind;  /**< Error category */
+	int line;		/**< Source line number (0 if unavailable) */
+	int column;		/**< Source column number (0 if unavailable) */
+	char* message;		/**< Error description */
+	char* hint;		/**< Optional fix suggestion (may be NULL) */
+	cdsl_error_kind_t kind; /**< Error category */
 } cdsl_error_t;
 
 /**
@@ -42,8 +42,8 @@ typedef struct cdsl_error {
  * @param hint Optional hint (duplicated internally, may be NULL)
  * @return Newly allocated error (must be freed with cdsl_error_free)
  */
-cdsl_error_t* cdsl_error_create(cdsl_error_kind_t kind, int line, int column,
-                                  const char* message, const char* hint);
+cdsl_error_t* cdsl_error_create(
+    cdsl_error_kind_t kind, int line, int column, const char* message, const char* hint);
 
 /**
  * @brief Free an error instance.
@@ -64,9 +64,9 @@ void cdsl_error_print(const cdsl_error_t* err);
  * to collect all errors instead of stopping at the first one.
  */
 typedef struct cdsl_error_list {
-    cdsl_error_t** errors; /**< Array of error pointers */
-    int count;             /**< Number of errors */
-    int capacity;          /**< Allocated capacity */
+	cdsl_error_t** errors; /**< Array of error pointers */
+	int count;	       /**< Number of errors */
+	int capacity;	       /**< Allocated capacity */
 } cdsl_error_list_t;
 
 cdsl_error_list_t* cdsl_error_list_create(void);

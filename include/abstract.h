@@ -24,9 +24,9 @@
  * check that all variables referenced in rules exist and have compatible types.
  */
 typedef struct cdsl_var_schema {
-    char* name;           /**< Variable name (e.g. "user.age") */
-    cdsl_type_t type;     /**< Variable data type */
-    struct cdsl_var_schema* next; /**< Next variable in linked list */
+	char* name;		      /**< Variable name (e.g. "user.age") */
+	cdsl_type_t type;	      /**< Variable data type */
+	struct cdsl_var_schema* next; /**< Next variable in linked list */
 } cdsl_var_schema_t;
 
 /**
@@ -37,11 +37,11 @@ typedef struct cdsl_var_schema {
  * argument count and types at verification time.
  */
 typedef struct cdsl_action_schema {
-    char* name;              /**< Action name (e.g. "reject_supplier") */
-    cdsl_type_t return_type; /**< Return type (typically VOID) */
-    int arg_count;           /**< Expected number of arguments */
-    cdsl_type_t* arg_types;  /**< Array of expected argument types */
-    struct cdsl_action_schema* next; /**< Next action in linked list */
+	char* name;			 /**< Action name (e.g. "reject_supplier") */
+	cdsl_type_t return_type;	 /**< Return type (typically VOID) */
+	int arg_count;			 /**< Expected number of arguments */
+	cdsl_type_t* arg_types;		 /**< Array of expected argument types */
+	struct cdsl_action_schema* next; /**< Next action in linked list */
 } cdsl_action_schema_t;
 
 /**
@@ -57,8 +57,8 @@ typedef struct cdsl_action_schema {
  * @endcode
  */
 typedef struct cdsl_schema {
-    cdsl_var_schema_t* vars;       /**< Registered variables */
-    cdsl_action_schema_t* actions; /**< Registered actions */
+	cdsl_var_schema_t* vars;       /**< Registered variables */
+	cdsl_action_schema_t* actions; /**< Registered actions */
 } cdsl_schema_t;
 
 /**
@@ -91,8 +91,8 @@ void cdsl_schema_register_var(cdsl_schema_t* schema, const char* name, cdsl_type
  * @param arg_count Number of expected arguments
  * @param ... Variadic list of cdsl_type_t values for each argument type
  */
-void cdsl_schema_register_action(cdsl_schema_t* schema, const char* name,
-                                  cdsl_type_t ret_type, int arg_count, ...);
+void cdsl_schema_register_action(
+    cdsl_schema_t* schema, const char* name, cdsl_type_t ret_type, int arg_count, ...);
 
 /**
  * @brief Verify a rule against the schema (simple error string).
@@ -103,8 +103,10 @@ void cdsl_schema_register_action(cdsl_schema_t* schema, const char* name,
  * @param err_buf_sz Size of error buffer
  * @return 1 if valid, 0 if errors found
  */
-int cdsl_verify_rule(const cdsl_rule_t* rule, const cdsl_schema_t* schema,
-                      char* err_buf, int err_buf_sz);
+int cdsl_verify_rule(const cdsl_rule_t* rule,
+		     const cdsl_schema_t* schema,
+		     char* err_buf,
+		     int err_buf_sz);
 
 /**
  * @brief Verify a rule with detailed structured error reporting.
@@ -116,8 +118,7 @@ int cdsl_verify_rule(const cdsl_rule_t* rule, const cdsl_schema_t* schema,
  * @param schema Registered schema
  * @return Error list (must be freed with cdsl_error_list_free)
  */
-cdsl_error_list_t* cdsl_verify_rule_detailed(const cdsl_rule_t* rule,
-                                               const cdsl_schema_t* schema);
+cdsl_error_list_t* cdsl_verify_rule_detailed(const cdsl_rule_t* rule, const cdsl_schema_t* schema);
 
 #endif
 /** @} */
