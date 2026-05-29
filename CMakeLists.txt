@@ -25,7 +25,12 @@ add_flex_bison_dependency(MyLexer MyParser)
 set(CDSL_SOURCES
     src/ast.c
     src/abstract.c
-    src/execution.c
+    src/vm_context.c
+    src/vm_eval.c
+    src/vm_cache.c
+    src/vm_ruleset.c
+    src/vm_codegen.c
+    src/vm_visualize.c
     src/cdsl_json.c
     src/cdsl_error.c
     src/cdsl_arena.c
