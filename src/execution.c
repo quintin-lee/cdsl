@@ -1370,7 +1370,9 @@ cdsl_codegen_rule_to_c(const cdsl_rule_t* rule, const cdsl_schema_t* schema)
 	if (!rule) {
 		return NULL;
 	}
-	FILE* f = open_memstream(NULL, NULL);
+	char* buf = NULL;
+	size_t len = 0;
+	FILE* f = open_memstream(&buf, &len);
 	if (!f) {
 		return NULL;
 	}
@@ -1440,7 +1442,7 @@ cdsl_codegen_rule_to_c(const cdsl_rule_t* rule, const cdsl_schema_t* schema)
 
 	fflush(f);
 	fclose(f);
-	return NULL;
+	return buf;
 }
 
 /**
@@ -1591,7 +1593,9 @@ cdsl_rule_to_dot(const cdsl_rule_t* rule)
 	if (!rule) {
 		return NULL;
 	}
-	FILE* f = open_memstream(NULL, NULL);
+	char* buf = NULL;
+	size_t len = 0;
+	FILE* f = open_memstream(&buf, &len);
 	if (!f) {
 		return NULL;
 	}
@@ -1673,7 +1677,7 @@ cdsl_rule_to_dot(const cdsl_rule_t* rule)
 	fprintf(f, "}\n");
 	fflush(f);
 	fclose(f);
-	return NULL;
+	return buf;
 }
 
 /**
@@ -1718,7 +1722,9 @@ cdsl_ruleset_to_dot(const cdsl_ruleset_t* set)
 	if (!set) {
 		return NULL;
 	}
-	FILE* f = open_memstream(NULL, NULL);
+	char* buf = NULL;
+	size_t len = 0;
+	FILE* f = open_memstream(&buf, &len);
 	if (!f) {
 		return NULL;
 	}
@@ -1760,7 +1766,7 @@ cdsl_ruleset_to_dot(const cdsl_ruleset_t* set)
 	fprintf(f, "}\n");
 	fflush(f);
 	fclose(f);
-	return NULL;
+	return buf;
 }
 
 /**
