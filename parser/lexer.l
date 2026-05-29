@@ -57,7 +57,12 @@
 "<"                     { return LT; }
 ">"                     { return GT; }
 
-[{}()=,]                { return yytext[0]; }
+"{"                      { return LBRACE; }
+"}"                      { return RBRACE; }
+"("                      { return LPAREN; }
+")"                      { return RPAREN; }
+"="                      { return ASSIGN; }
+","                      { return COMMA; }
 
 [ \t\n\r]+              ;
 .                       { printf("Unknown token: %s\n", yytext); }

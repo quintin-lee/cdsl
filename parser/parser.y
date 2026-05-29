@@ -29,6 +29,7 @@ int yy_error_count = 0;
 }
 
 %token RULE META WHEN THEN METRIC CASE DEFAULT TEMPLATE EXTENDS
+%token LBRACE RBRACE LPAREN RPAREN ASSIGN COMMA
 %token <id_val> IDENTIFIER
 %token <int_val> INT_LIT
 %token <float_val> FLOAT_LIT
@@ -58,20 +59,20 @@ program:
     ;
 
 rule_declaration:
-    RULE IDENTIFIER '{' meta_block WHEN expression THEN action_statement '}' {
+    RULE IDENTIFIER LBRACE meta_block WHEN expression THEN action_statement RBRACE {
         $$ = cdsl_create_simple_rule($2, $4, $6, $8);
     }
-    | RULE IDENTIFIER '{' meta_block metric_list '}' {
+    | RULE IDENTIFIER LBRACE meta_block metric_list RBRACE {
         $$ = cdsl_create_metric_rule($2, $4, $5);
     }
-    | RULE IDENTIFIER EXTENDS IDENTIFIER '{' meta_block '}' {
+    | RULE IDENTIFIER EXTENDS IDENTIFIER LBRACE meta_block RBRACE {
         $$ = cdsl_create_extends_rule($2, $4, $6);
     }
     | error { yy_error_count++; yyerrok; yyclearin; $$ = NULL; }
     ;
 
 template_declaration:
-    TEMPLATE IDENTIFIER '{' meta_block metric_list '}' {
+    TEMPLATE IDENTIFIER LBRACE meta_block metric_list RBRACE {
         $$ = cdsl_create_metric_rule($2, $4, $5);
         if ($$) {
             cdsl_meta_item_t* m = cdsl_create_meta_item(strdup("__is_template"), strdup("true"));
@@ -81,7 +82,7 @@ template_declaration:
     ;
 
 meta_block:
-    META '{' meta_list '}' { $$ = $3; }
+    META LBRACE meta_list RBRACE { $$ = $3; }
     | /* empty */          { $$ = NULL; }
     ;
 
@@ -91,7 +92,7 @@ meta_list:
     ;
 
 meta_item:
-    IDENTIFIER '=' STRING_LIT {
+    IDENTIFIER ASSIGN STRING_LIT {
         $$ = cdsl_create_meta_item($1, $3);
     }
     ;
@@ -102,7 +103,7 @@ metric_list:
     ;
 
 metric_item:
-    METRIC IDENTIFIER '{' meta_block case_list DEFAULT action_statement '}' {
+    METRIC IDENTIFIER LBRACE meta_block case_list DEFAULT action_statement RBRACE {
         $$ = cdsl_create_metric($2, $4, $5, $7);
     }
     ;
@@ -124,7 +125,7 @@ expression:
     | FLOAT_LIT                         { $$ = cdsl_create_expr_float($1); }
     | BOOL_LIT                          { $$ = cdsl_create_expr_bool($1); }
     | STRING_LIT                        { $$ = cdsl_create_expr_string($1); }
-    | IDENTIFIER '(' argument_list ')'  { $$ = cdsl_create_expr_call($1, $3); }
+    | IDENTIFIER LPAREN argument_list RPAREN  { $$ = cdsl_create_expr_call($1, $3); }
     | expression EQ expression          { $$ = cdsl_create_expr_binary(CDSL_OP_EQ, $1, $3); }
     | expression NE expression          { $$ = cdsl_create_expr_binary(CDSL_OP_NE, $1, $3); }
     | expression LT expression          { $$ = cdsl_create_expr_binary(CDSL_OP_LT, $1, $3); }
@@ -134,11 +135,11 @@ expression:
     | expression AND expression         { $$ = cdsl_create_expr_binary(CDSL_OP_AND, $1, $3); }
     | expression OR expression          { $$ = cdsl_create_expr_binary(CDSL_OP_OR, $1, $3); }
     | NOT expression                    { $$ = cdsl_create_expr_unary(CDSL_OP_NOT, $2); }
-    | '(' expression ')'               { $$ = $2; }
+    | LPAREN expression RPAREN               { $$ = $2; }
     ;
 
 action_statement:
-    IDENTIFIER '(' argument_list ')' {
+    IDENTIFIER LPAREN argument_list RPAREN {
         $$ = cdsl_create_action($1, $3);
     }
     ;
@@ -150,7 +151,7 @@ argument_list:
 
 argument_list_nonempty:
     expression { $$ = cdsl_create_arg($1); }
-    | argument_list_nonempty ',' expression { $$ = cdsl_append_arg($1, $3); }
+    | argument_list_nonempty COMMA expression { $$ = cdsl_append_arg($1, $3); }
     ;
 
 %%
