@@ -1,8 +1,29 @@
 #include "ai_bridge.h"
+#include "cdsl_json.h"
 #include <stdlib.h>
 #include <string.h>
 #include <stdio.h>
 #include <ctype.h>
+
+/**
+ * @brief Find a child JSON value by key in a JSON object (internal).
+ * @param obj JSON object value
+ * @param key Key to find
+ * @return Child value node, or NULL if not found or not an object
+ */
+static cdsl_json_value_t*
+find_json_key(cdsl_json_value_t* obj, const char* key)
+{
+	if (!obj || obj->type != JSON_OBJECT || !key) {
+		return NULL;
+	}
+	for (cdsl_json_value_t* v = obj->value.object.items; v; v = v->next) {
+		if (v->key && strcmp(v->key, key) == 0) {
+			return v;
+		}
+	}
+	return NULL;
+}
 
 #ifdef CDSL_USE_CURL
 #include <curl/curl.h>
@@ -254,40 +275,29 @@ call_llm_api(const char* prompt, const cdsl_ai_config_t* config)
 	pclose(fp);
 #endif
 
-	char* content = strstr(result, "\"content\":\"");
-	if (!content) {
-		free(result);
+	cdsl_json_value_t* root = cdsl_json_parse(result);
+	free(result);
+	if (!root) {
 		return NULL;
 	}
-	content += 11;
-	char* end = strchr(content, '\"');
-	if (!end) {
-		free(result);
-		return NULL;
-	}
-	*end = '\0';
 
-	char* decoded = malloc(end - content + 1);
-	char* d = decoded;
-	for (char* s = content; *s; s++) {
-		if (*s == '\\' && s[1] == 'n') {
-			*d++ = '\n';
-			s++;
-		} else if (*s == '\\' && s[1] == 't') {
-			*d++ = '\t';
-			s++;
-		} else if (*s == '\\' && s[1] == '"') {
-			*d++ = '"';
-			s++;
-		} else if (*s == '\\' && s[1] == '\\') {
-			*d++ = '\\';
-			s++;
-		} else {
-			*d++ = *s;
+	char* decoded = NULL;
+	cdsl_json_value_t* choices = find_json_key(root, "choices");
+	if (choices && choices->type == JSON_ARRAY && choices->value.array.items) {
+		cdsl_json_value_t* first_choice = choices->value.array.items;
+		cdsl_json_value_t* message = find_json_key(first_choice, "message");
+		if (message) {
+			cdsl_json_value_t* content_val = find_json_key(message, "content");
+			if (content_val && content_val->type == JSON_STRING) {
+				decoded = strdup(content_val->value.string_val);
+			}
 		}
 	}
-	*d = '\0';
-	free(result);
+	cdsl_json_free(root);
+
+	if (!decoded) {
+		return NULL;
+	}
 
 	if (config->cache && config->cache->put) {
 		config->cache->put(config->cache->ctx, prompt, decoded);
@@ -776,29 +786,22 @@ cdsl_ai_review(const char* dsl_code, const cdsl_schema_t* schema, const cdsl_ai_
 		char* response = call_llm_api(review_prompt, config);
 		cdsl_ai_review_t* rev = calloc(1, sizeof(*rev));
 		if (response) {
-			char* ap = strstr(response, "\"approved\":");
-			if (ap) {
-				rev->approved = (strstr(ap, "true") != NULL);
-			}
-			char* rs = strstr(response, "\"risk_score\":");
-			if (rs) {
-				rev->risk_score = atoi(rs + 13);
-			}
-			char* rn = strstr(response, "\"reason\":\"");
-			if (rn) {
-				rn += 10;
-				char* re = strchr(rn, '\"');
-				if (re) {
-					rev->reason = strndup(rn, re - rn);
+			cdsl_json_value_t* root = cdsl_json_parse(response);
+			if (root) {
+				cdsl_json_value_t* v;
+				if ((v = find_json_key(root, "approved"))) {
+					rev->approved = (v->type == JSON_BOOL) ? v->value.bool_val : 0;
 				}
-			}
-			char* sg = strstr(response, "\"suggestions\":\"");
-			if (sg) {
-				sg += 15;
-				char* se = strchr(sg, '\"');
-				if (se) {
-					rev->suggestions = strndup(sg, se - sg);
+				if ((v = find_json_key(root, "risk_score"))) {
+					rev->risk_score = (v->type == JSON_NUMBER) ? (int)v->value.number_val : 0;
 				}
+				if ((v = find_json_key(root, "reason")) && v->type == JSON_STRING) {
+					rev->reason = strdup(v->value.string_val);
+				}
+				if ((v = find_json_key(root, "suggestions")) && v->type == JSON_STRING) {
+					rev->suggestions = strdup(v->value.string_val);
+				}
+				cdsl_json_free(root);
 			}
 			free(response);
 		}
@@ -953,49 +956,44 @@ call_llm_api_stream(const char* prompt,
 			break;
 		}
 
-		char* content = strstr(data, "\"content\":\"");
-		if (!content) {
-			continue;
-		}
-		content += 11;
-		char* end = strchr(content, '\"');
-		if (!end) {
+		cdsl_json_value_t* root = cdsl_json_parse(data);
+		if (!root) {
 			continue;
 		}
 
-		size_t len = end - content;
-		if (total + len + 1 > cap) {
-			cap = total + len + 64;
-			result = realloc(result, cap);
-		}
-		for (size_t i = 0; i < len; i++) {
-			if (content[i] == '\\' && i + 1 < len) {
-				if (content[i + 1] == 'n') {
-					result[total++] = '\n';
-					i++;
-				} else if (content[i + 1] == 't') {
-					result[total++] = '\t';
-					i++;
-				} else if (content[i + 1] == '"') {
-					result[total++] = '"';
-					i++;
-				} else if (content[i + 1] == '\\') {
-					result[total++] = '\\';
-					i++;
-				} else {
-					result[total++] = content[i];
+		char* chunk_content = NULL;
+		cdsl_json_value_t* choices = find_json_key(root, "choices");
+		if (choices && choices->type == JSON_ARRAY && choices->value.array.items) {
+			cdsl_json_value_t* first_choice = choices->value.array.items;
+			cdsl_json_value_t* delta = find_json_key(first_choice, "delta");
+			if (delta) {
+				cdsl_json_value_t* content_val = find_json_key(delta, "content");
+				if (content_val && content_val->type == JSON_STRING) {
+					chunk_content = content_val->value.string_val;
 				}
-			} else {
-				result[total++] = content[i];
 			}
 		}
-		result[total] = '\0';
 
-		if (callback) {
-			char* chunk = strndup(content, len);
-			callback(chunk, user_data);
-			free(chunk);
+		if (chunk_content) {
+			size_t len = strlen(chunk_content);
+			if (total + len + 1 > cap) {
+				cap = total + len + 64;
+				char* new_result = realloc(result, cap);
+				if (!new_result) {
+					cdsl_json_free(root);
+					break;
+				}
+				result = new_result;
+			}
+			memcpy(result + total, chunk_content, len);
+			total += len;
+			result[total] = '\0';
+
+			if (callback) {
+				callback(chunk_content, user_data);
+			}
 		}
+		cdsl_json_free(root);
 	}
 	pclose(fp);
 
