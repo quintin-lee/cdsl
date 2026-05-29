@@ -294,11 +294,19 @@ load_json_recursive(cdsl_context_t* ctx, cdsl_json_value_t* obj, const char* pre
 	}
 	cdsl_json_value_t* child = obj->value.object.items;
 	while (child) {
-		char key[256];
+		char* key;
 		if (prefix[0]) {
-			snprintf(key, sizeof(key), "%s.%s", prefix, child->key);
+			size_t klen = strlen(prefix) + strlen(child->key) + 2;
+			key = malloc(klen);
+			if (!key) {
+				return;
+			}
+			snprintf(key, klen, "%s.%s", prefix, child->key);
 		} else {
-			snprintf(key, sizeof(key), "%s", child->key);
+			key = strdup(child->key);
+			if (!key) {
+				return;
+			}
 		}
 
 		if (child->type == JSON_OBJECT) {
@@ -315,6 +323,7 @@ load_json_recursive(cdsl_context_t* ctx, cdsl_json_value_t* obj, const char* pre
 		} else if (child->type == JSON_STRING) {
 			cdsl_context_set_string(ctx, key, child->value.string_val);
 		}
+		free(key);
 		child = child->next;
 	}
 }
