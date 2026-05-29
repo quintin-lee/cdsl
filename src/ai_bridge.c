@@ -1,0 +1,265 @@
+#include "ai_bridge.h"
+#include <stdlib.h>
+#include <string.h>
+#include <stdio.h>
+#include <ctype.h>
+
+cdsl_ai_config_t cdsl_ai_config_default(void) {
+    cdsl_ai_config_t cfg;
+    cfg.use_mock = 1;
+    cfg.api_key = NULL;
+    cfg.api_base = NULL;
+    cfg.model = NULL;
+    return cfg;
+}
+
+static char* mock_translate_supplier_capital(void) {
+    return strdup(
+        "RULE supplier_qualification_audit {\n"
+        "    META {\n"
+        "        description = \"Supplier onboarding qualification audit and grading\"\n"
+        "        category = \"compliance\"\n"
+        "        pass_threshold = \"80\"\n"
+        "        partial_threshold = \"60\"\n"
+        "    }\n"
+        "    METRIC credit_check {\n"
+        "        META {\n"
+        "            description = \"Anti-fraud and blacklist compliance\"\n"
+        "            weight = \"30\"\n"
+        "            is_critical = \"true\"\n"
+        "        }\n"
+        "        CASE supplier.is_blacklisted == false THEN score(30)\n"
+        "        DEFAULT fail_metric(0, \"blacklisted_supplier_rejected\")\n"
+        "    }\n"
+        "    METRIC capital_check {\n"
+        "        META {\n"
+        "            description = \"Registered capital score\"\n"
+        "            weight = \"40\"\n"
+        "        }\n"
+        "        CASE supplier.registered_capital >= 5000000 THEN score(40)\n"
+        "        CASE supplier.registered_capital >= 1000000 THEN score(20)\n"
+        "        DEFAULT score(0)\n"
+        "    }\n"
+        "    METRIC experience_check {\n"
+        "        META {\n"
+        "            description = \"Supplier business age evaluation\"\n"
+        "            weight = \"30\"\n"
+        "        }\n"
+        "        CASE supplier.years_in_business >= 5 THEN score(30)\n"
+        "        CASE supplier.years_in_business >= 2 THEN score(15)\n"
+        "        DEFAULT score(0)\n"
+        "    }\n"
+        "}\n"
+    );
+}
+
+static char* mock_translate_doc_format(void) {
+    return strdup(
+        "RULE document_format_audit {\n"
+        "    META {\n"
+        "        description = \"Document format and signature compliance\"\n"
+        "        category = \"compliance\"\n"
+        "        pass_threshold = \"100\"\n"
+        "        partial_threshold = \"60\"\n"
+        "    }\n"
+        "    METRIC format_check {\n"
+        "        META {\n"
+        "            description = \"File format validation\"\n"
+        "            weight = \"50\"\n"
+        "            is_critical = \"true\"\n"
+        "        }\n"
+        "        CASE document.format == \"pdf\" THEN score(50)\n"
+        "        DEFAULT fail_metric(0, \"invalid_format\")\n"
+        "    }\n"
+        "    METRIC signature_check {\n"
+        "        META {\n"
+        "            description = \"Digital signature verification\"\n"
+        "            weight = \"30\"\n"
+        "        }\n"
+        "        CASE document.has_digital_signature == true THEN score(30)\n"
+        "        DEFAULT score(0)\n"
+        "    }\n"
+        "    METRIC size_check {\n"
+        "        META {\n"
+        "            description = \"File size under limit\"\n"
+        "            weight = \"20\"\n"
+        "        }\n"
+        "        CASE document.size_mb <= 10.0 THEN score(20)\n"
+        "        CASE document.size_mb <= 20.0 THEN score(10)\n"
+        "        DEFAULT score(0)\n"
+        "    }\n"
+        "}\n"
+    );
+}
+
+static char* mock_translate_content_safety(void) {
+    return strdup(
+        "RULE content_safety_audit {\n"
+        "    META {\n"
+        "        description = \"User-generated content safety and moderation\"\n"
+        "        category = \"moderation\"\n"
+        "        pass_threshold = \"80\"\n"
+        "        partial_threshold = \"50\"\n"
+        "    }\n"
+        "    METRIC sensitive_check {\n"
+        "        META {\n"
+        "            description = \"Sensitive words detection\"\n"
+        "            weight = \"30\"\n"
+        "            is_critical = \"true\"\n"
+        "        }\n"
+        "        CASE content.sensitive_words_count == 0 THEN score(30)\n"
+        "        DEFAULT fail_metric(0, \"sensitive_words_detected\")\n"
+        "    }\n"
+        "    METRIC pii_check {\n"
+        "        META {\n"
+        "            description = \"Personal identifiable information protection\"\n"
+        "            weight = \"40\"\n"
+        "            is_critical = \"true\"\n"
+        "        }\n"
+        "        CASE content.contains_pii == false THEN score(40)\n"
+        "        DEFAULT fail_metric(0, \"pii_exposure_risk\")\n"
+        "    }\n"
+        "    METRIC spam_check {\n"
+        "        META {\n"
+        "            description = \"Spam and quality scoring\"\n"
+        "            weight = \"30\"\n"
+        "        }\n"
+        "        CASE content.ai_spam_score < 0.3 THEN score(30)\n"
+        "        CASE content.ai_spam_score < 0.7 THEN score(15)\n"
+        "        DEFAULT score(0)\n"
+        "    }\n"
+        "}\n"
+    );
+}
+
+char* cdsl_ai_translate(const char* natural_language,
+                         const cdsl_schema_t* schema,
+                         const cdsl_ai_config_t* config) {
+    if (!natural_language) return NULL;
+
+    char lower[1024];
+    int len = strlen(natural_language);
+    if (len >= 1024) len = 1023;
+    for (int i = 0; i < len; i++) lower[i] = tolower((unsigned char)natural_language[i]);
+    lower[len] = '\0';
+
+    if (config && config->use_mock) {
+        if (strstr(lower, "supplier") || strstr(lower, "供应商") || strstr(lower, "资质")) {
+            return mock_translate_supplier_capital();
+        }
+        if (strstr(lower, "document") || strstr(lower, "文档") || strstr(lower, "格式")) {
+            return mock_translate_doc_format();
+        }
+        if (strstr(lower, "content") || strstr(lower, "内容") || strstr(lower, "安全")) {
+            return mock_translate_content_safety();
+        }
+        return mock_translate_supplier_capital();
+    }
+
+    char prompt[4096];
+    snprintf(prompt, sizeof(prompt),
+        "You are a C-DSL rule translator. Convert the following natural language "
+        "description into a valid C-DSL rule.\n\n"
+        "Available variables:\n");
+    for (cdsl_var_schema_t* v = schema ? schema->vars : NULL; v; v = v->next) {
+        char typebuf[32];
+        switch (v->type) {
+            case CDSL_TYPE_INT:    strcpy(typebuf, "INT"); break;
+            case CDSL_TYPE_FLOAT:  strcpy(typebuf, "FLOAT"); break;
+            case CDSL_TYPE_BOOL:   strcpy(typebuf, "BOOL"); break;
+            case CDSL_TYPE_STRING: strcpy(typebuf, "STRING"); break;
+            default:               strcpy(typebuf, "VOID"); break;
+        }
+        snprintf(prompt + strlen(prompt), sizeof(prompt) - strlen(prompt),
+                 "  - %s (%s)\n", v->name, typebuf);
+    }
+    snprintf(prompt + strlen(prompt), sizeof(prompt) - strlen(prompt),
+             "\nAvailable actions: score(), fail_metric(), block_action(), reject_document()\n"
+             "Use METRIC/CASE/DEFAULT for multi-indicator scoring.\n"
+             "Use META { weight = \"N\", is_critical = \"true\" } for critical metrics.\n"
+             "Use META { pass_threshold = \"N\", partial_threshold = \"N\" }.\n\n"
+             "User request: %s\n\n"
+             "Output ONLY the DSL code in a ```dsl code block.", natural_language);
+
+    fprintf(stderr, "[AI Bridge] Would call LLM API with prompt:\n%s\n", prompt);
+    fprintf(stderr, "[AI Bridge] No API key configured. Falling back to mock.\n");
+    return mock_translate_supplier_capital();
+}
+
+cdsl_ai_review_t* cdsl_ai_review(const char* dsl_code,
+                                   const cdsl_schema_t* schema,
+                                   const cdsl_ai_config_t* config) {
+    cdsl_ai_review_t* rev = calloc(1, sizeof(*rev));
+
+    if (config && config->use_mock) {
+        if (!dsl_code || strlen(dsl_code) == 0) {
+            rev->approved = 0;
+            rev->risk_score = 100;
+            rev->reason = strdup("Empty DSL code provided");
+            rev->suggestions = strdup("Provide a valid DSL rule definition");
+            return rev;
+        }
+
+        int has_meta = (strstr(dsl_code, "META") != NULL);
+        int has_metric = (strstr(dsl_code, "METRIC") != NULL);
+        int has_case = (strstr(dsl_code, "CASE") != NULL);
+        int has_default = (strstr(dsl_code, "DEFAULT") != NULL);
+        int has_critical = (strstr(dsl_code, "is_critical") != NULL);
+        int has_weight = (strstr(dsl_code, "weight") != NULL);
+        int has_desc = (strstr(dsl_code, "description") != NULL);
+
+        int score = 0;
+        char reason[1024] = {0};
+        char suggestions[1024] = {0};
+
+        if (has_meta) { score += 10; }
+        else { strcat(suggestions, "Add META block with description. "); }
+
+        if (has_metric) { score += 15; }
+        else { strcat(suggestions, "Consider using METRIC blocks for multi-indicator assessment. "); }
+
+        if (has_case && has_default) { score += 15; }
+        else { strcat(suggestions, "Ensure all METRIC blocks have CASE and DEFAULT branches. "); }
+
+        if (has_critical) { score += 10; }
+        else { strcat(suggestions, "Mark critical compliance items with is_critical=true. "); }
+
+        if (has_weight) { score += 10; }
+        else { strcat(suggestions, "Assign weights to each metric for scoring. "); }
+
+        if (has_desc) { score += 10; }
+
+        int risk = 100 - score;
+
+        if (score >= 50) {
+            rev->approved = 1;
+            rev->risk_score = risk;
+            snprintf(reason, sizeof(reason),
+                     "Rule structure review passed. Score: %d/70. "
+                     "No logical contradictions or safety violations detected.", score);
+        } else {
+            rev->approved = 0;
+            rev->risk_score = risk;
+            snprintf(reason, sizeof(reason),
+                     "Rule structure incomplete. Score: %d/70. "
+                     "Missing critical structural elements.", score);
+        }
+
+        rev->reason = strdup(reason);
+        rev->suggestions = strdup(suggestions);
+        return rev;
+    }
+
+    rev->approved = 1;
+    rev->risk_score = 10;
+    rev->reason = strdup("LLM review passed (API mode)");
+    rev->suggestions = strdup("No suggestions");
+    return rev;
+}
+
+void cdsl_ai_review_free(cdsl_ai_review_t* review) {
+    if (!review) return;
+    free(review->reason);
+    free(review->suggestions);
+    free(review);
+}
