@@ -55,6 +55,7 @@ cdsl_curl_write_callback(void* contents, size_t size, size_t nmemb, void* userp)
 }
 #endif
 
+#ifndef CDSL_USE_CURL
 /* Escapes single quotes in s for use inside a single-quoted shell argument.
  * Replaces each ' with '"'"' (close-quote, double-quote single-quote, re-open).
  * Returns allocated string caller must free. */
@@ -81,6 +82,53 @@ escape_sq(const char* s)
 		}
 	}
 	*d = '\0';
+	return out;
+}
+#endif
+
+/**
+ * @brief Escape a string for use in a JSON value (internal).
+ *
+ * Handles quotes, backslashes, and control characters.
+ *
+ * @param s Source string
+ * @return Allocated escaped string (caller frees), or NULL on error
+ */
+static char*
+escape_json_string(const char* s)
+{
+	if (!s) {
+		return NULL;
+	}
+	size_t len = strlen(s);
+	char* out = malloc(len * 4 + 1);
+	if (!out) {
+		return NULL;
+	}
+	char* dst = out;
+	for (const char* p = s; *p; p++) {
+		if (*p == '"') {
+			*dst++ = '\\';
+			*dst++ = '"';
+		} else if (*p == '\\') {
+			*dst++ = '\\';
+			*dst++ = '\\';
+		} else if (*p == '\n') {
+			*dst++ = '\\';
+			*dst++ = 'n';
+		} else if (*p == '\r') {
+			*dst++ = '\\';
+			*dst++ = 'r';
+		} else if (*p == '\t') {
+			*dst++ = '\\';
+			*dst++ = 't';
+		} else if ((unsigned char)*p < 32) {
+			/* Skip other control chars for simplicity */
+		} else {
+			*dst++ = *p;
+		}
+	}
+	*dst = '\0';
 	return out;
 }
 
@@ -124,30 +172,12 @@ call_llm_api(const char* prompt, const cdsl_ai_config_t* config)
 	headers = curl_slist_append(headers, auth_header);
 
 	/* Escape prompt for JSON */
-	size_t p_len = strlen(prompt);
-	char* escaped_prompt = malloc(p_len * 4 + 1);
-	char* dst = escaped_prompt;
-	for (const char* s = prompt; *s; s++) {
-		if (*s == '"') {
-			*dst++ = '\\';
-			*dst++ = '"';
-		} else if (*s == '\\') {
-			*dst++ = '\\';
-			*dst++ = '\\';
-		} else if (*s == '\n') {
-			*dst++ = '\\';
-			*dst++ = 'n';
-		} else if (*s == '\r') {
-			*dst++ = '\\';
-			*dst++ = 'r';
-		} else if (*s == '\t') {
-			*dst++ = '\\';
-			*dst++ = 't';
-		} else {
-			*dst++ = *s;
-		}
+	char* escaped_prompt = escape_json_string(prompt);
+	if (!escaped_prompt) {
+		curl_slist_free_all(headers);
+		curl_easy_cleanup(curl);
+		return NULL;
 	}
-	*dst = '\0';
 
 	char* body = malloc(strlen(config->model) + strlen(escaped_prompt) + 128);
 	sprintf(body,
@@ -184,29 +214,10 @@ call_llm_api(const char* prompt, const cdsl_ai_config_t* config)
 		return NULL;
 	}
 #else
-	char* escaped_prompt = malloc(strlen(prompt) * 4 + 1);
-	char* dst = escaped_prompt;
-	for (const char* s = prompt; *s; s++) {
-		if (*s == '"') {
-			*dst++ = '\\';
-			*dst++ = '"';
-		} else if (*s == '\\') {
-			*dst++ = '\\';
-			*dst++ = '\\';
-		} else if (*s == '\n') {
-			*dst++ = '\\';
-			*dst++ = 'n';
-		} else if (*s == '\r') {
-			*dst++ = '\\';
-			*dst++ = 'r';
-		} else if (*s == '\t') {
-			*dst++ = '\\';
-			*dst++ = 't';
-		} else {
-			*dst++ = *s;
-		}
+	char* escaped_prompt = escape_json_string(prompt);
+	if (!escaped_prompt) {
+		return NULL;
 	}
-	*dst = '\0';
 
 	char* s_url = escape_sq(config->api_base);
 	char* s_key = escape_sq(config->api_key);
@@ -305,6 +316,116 @@ call_llm_api(const char* prompt, const cdsl_ai_config_t* config)
 
 	return decoded;
 }
+
+/**
+ * @brief Process a single SSE "data: " chunk from LLM (internal).
+ *
+ * Parses JSON, extracts delta content, appends to result, and triggers callback.
+ *
+ * @param data        The JSON string after "data: "
+ * @param result_ptr  Pointer to accumulated result string
+ * @param total_ptr   Pointer to current total length
+ * @param cap_ptr     Pointer to current capacity
+ * @param callback    User stream callback
+ * @param user_data   User opaque pointer
+ */
+static void
+process_sse_data(const char* data,
+		 char** result_ptr,
+		 size_t* total_ptr,
+		 size_t* cap_ptr,
+		 cdsl_ai_stream_cb_t callback,
+		 void* user_data)
+{
+	if (strncmp(data, "[DONE]", 6) == 0) {
+		return;
+	}
+
+	cdsl_json_value_t* root = cdsl_json_parse(data);
+	if (!root) {
+		return;
+	}
+
+	char* chunk_content = NULL;
+	cdsl_json_value_t* choices = find_json_key(root, "choices");
+	if (choices && choices->type == JSON_ARRAY && choices->value.array.items) {
+		cdsl_json_value_t* first_choice = choices->value.array.items;
+		cdsl_json_value_t* delta = find_json_key(first_choice, "delta");
+		if (delta) {
+			cdsl_json_value_t* content_val = find_json_key(delta, "content");
+			if (content_val && content_val->type == JSON_STRING) {
+				chunk_content = content_val->value.string_val;
+			}
+		}
+	}
+
+	if (chunk_content) {
+		size_t len = strlen(chunk_content);
+		if (*total_ptr + len + 1 > *cap_ptr) {
+			*cap_ptr = *total_ptr + len + 1024;
+			char* new_result = realloc(*result_ptr, *cap_ptr);
+			if (!new_result) {
+				cdsl_json_free(root);
+				return;
+			}
+			*result_ptr = new_result;
+		}
+		memcpy(*result_ptr + *total_ptr, chunk_content, len);
+		*total_ptr += len;
+		(*result_ptr)[*total_ptr] = '\0';
+
+		if (callback) {
+			callback(chunk_content, user_data);
+		}
+	}
+	cdsl_json_free(root);
+}
+
+#ifdef CDSL_USE_CURL
+/**
+ * @brief Context for CURL streaming (internal).
+ */
+struct curl_stream_ctx {
+	cdsl_ai_stream_cb_t callback; /**< User callback */
+	void* user_data;	      /**< User opaque data */
+	char** result_ptr;	      /**< Pointer to accumulated result */
+	size_t* total_ptr;	      /**< Pointer to total length */
+	size_t* cap_ptr;	      /**< Pointer to capacity */
+	char line_buf[16384];	      /**< Internal line buffer for SSE */
+	size_t line_len;	      /**< Current line buffer length */
+};
+
+/**
+ * @brief CURL callback for streaming responses.
+ *
+ * Buffers partial lines and processes them as SSE "data: " chunks.
+ */
+static size_t
+cdsl_curl_stream_callback(void* contents, size_t size, size_t nmemb, void* userp)
+{
+	size_t realsize = size * nmemb;
+	struct curl_stream_ctx* ctx = (struct curl_stream_ctx*)userp;
+	const char* p = (const char*)contents;
+
+	for (size_t i = 0; i < realsize; i++) {
+		if (p[i] == '\n') {
+			ctx->line_buf[ctx->line_len] = '\0';
+			if (strncmp(ctx->line_buf, "data: ", 6) == 0) {
+				process_sse_data(ctx->line_buf + 6,
+						 ctx->result_ptr,
+						 ctx->total_ptr,
+						 ctx->cap_ptr,
+						 ctx->callback,
+						 ctx->user_data);
+			}
+			ctx->line_len = 0;
+		} else if (ctx->line_len < sizeof(ctx->line_buf) - 1) {
+			ctx->line_buf[ctx->line_len++] = p[i];
+		}
+	}
+	return realsize;
+}
+#endif
 
 /**
  * @brief Return a default AI config that uses mock generation.
@@ -871,30 +992,66 @@ call_llm_api_stream(const char* prompt,
 		}
 	}
 
-	char* escaped_prompt = malloc(strlen(prompt) * 4 + 1);
-	char* dst = escaped_prompt;
-	for (const char* s = prompt; *s; s++) {
-		if (*s == '"') {
-			*dst++ = '\\';
-			*dst++ = '"';
-		} else if (*s == '\\') {
-			*dst++ = '\\';
-			*dst++ = '\\';
-		} else if (*s == '\n') {
-			*dst++ = '\\';
-			*dst++ = 'n';
-		} else if (*s == '\r') {
-			*dst++ = '\\';
-			*dst++ = 'r';
-		} else if (*s == '\t') {
-			*dst++ = '\\';
-			*dst++ = 't';
-		} else {
-			*dst++ = *s;
-		}
+	char* escaped_prompt = escape_json_string(prompt);
+	if (!escaped_prompt) {
+		return NULL;
 	}
-	*dst = '\0';
 
+	size_t cap = 8192;
+	char* result = malloc(cap);
+	size_t total = 0;
+	result[0] = '\0';
+
+#ifdef CDSL_USE_CURL
+	CURL* curl = curl_easy_init();
+	if (!curl) {
+		free(escaped_prompt);
+		free(result);
+		return NULL;
+	}
+
+	char url[512];
+	snprintf(url, sizeof(url), "%s/chat/completions", config->api_base);
+
+	struct curl_slist* headers = NULL;
+	headers = curl_slist_append(headers, "Content-Type: application/json");
+	char auth_header[512];
+	snprintf(auth_header, sizeof(auth_header), "Authorization: Bearer %s", config->api_key);
+	headers = curl_slist_append(headers, auth_header);
+
+	char* body = malloc(strlen(config->model) + strlen(escaped_prompt) + 128);
+	sprintf(body,
+		"{\"model\":\"%s\",\"messages\":[{\"role\":\"user\",\"content\":\"%s\"}],"
+		"\"temperature\":0.1,\"stream\":true}",
+		config->model,
+		escaped_prompt);
+	free(escaped_prompt);
+
+	struct curl_stream_ctx ctx;
+	ctx.callback = callback;
+	ctx.user_data = user_data;
+	ctx.result_ptr = &result;
+	ctx.total_ptr = &total;
+	ctx.cap_ptr = &cap;
+	ctx.line_len = 0;
+
+	curl_easy_setopt(curl, CURLOPT_URL, url);
+	curl_easy_setopt(curl, CURLOPT_HTTPHEADER, headers);
+	curl_easy_setopt(curl, CURLOPT_POSTFIELDS, body);
+	curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, cdsl_curl_stream_callback);
+	curl_easy_setopt(curl, CURLOPT_WRITEDATA, (void*)&ctx);
+	curl_easy_setopt(curl, CURLOPT_TIMEOUT, 60L);
+
+	CURLcode res = curl_easy_perform(curl);
+	if (res != CURLE_OK) {
+		free(result);
+		result = NULL;
+	}
+
+	curl_slist_free_all(headers);
+	free(body);
+	curl_easy_cleanup(curl);
+#else
 	char* s_url = escape_sq(config->api_base);
 	char* s_key = escape_sq(config->api_key);
 	char* s_model = escape_sq(config->model);
@@ -906,6 +1063,7 @@ call_llm_api_stream(const char* prompt,
 		free(s_key);
 		free(s_model);
 		free(s_prompt);
+		free(result);
 		return NULL;
 	}
 
@@ -916,6 +1074,7 @@ call_llm_api_stream(const char* prompt,
 		free(s_key);
 		free(s_model);
 		free(s_prompt);
+		free(result);
 		return NULL;
 	}
 	snprintf(cmd,
@@ -938,64 +1097,19 @@ call_llm_api_stream(const char* prompt,
 	FILE* fp = popen(cmd, "r");
 	free(cmd);
 	if (!fp) {
+		free(result);
 		return NULL;
 	}
 
-	size_t cap = 8192;
-	char* result = malloc(cap);
-	size_t total = 0;
-	result[0] = '\0';
 	char line[4096];
-
 	while (fgets(line, sizeof(line), fp)) {
-		if (strncmp(line, "data: ", 6) != 0) {
-			continue;
+		if (strncmp(line, "data: ", 6) == 0) {
+			process_sse_data(
+			    line + 6, &result, &total, &cap, callback, user_data);
 		}
-		char* data = line + 6;
-		if (strcmp(data, "[DONE]\n") == 0) {
-			break;
-		}
-
-		cdsl_json_value_t* root = cdsl_json_parse(data);
-		if (!root) {
-			continue;
-		}
-
-		char* chunk_content = NULL;
-		cdsl_json_value_t* choices = find_json_key(root, "choices");
-		if (choices && choices->type == JSON_ARRAY && choices->value.array.items) {
-			cdsl_json_value_t* first_choice = choices->value.array.items;
-			cdsl_json_value_t* delta = find_json_key(first_choice, "delta");
-			if (delta) {
-				cdsl_json_value_t* content_val = find_json_key(delta, "content");
-				if (content_val && content_val->type == JSON_STRING) {
-					chunk_content = content_val->value.string_val;
-				}
-			}
-		}
-
-		if (chunk_content) {
-			size_t len = strlen(chunk_content);
-			if (total + len + 1 > cap) {
-				cap = total + len + 64;
-				char* new_result = realloc(result, cap);
-				if (!new_result) {
-					cdsl_json_free(root);
-					break;
-				}
-				result = new_result;
-			}
-			memcpy(result + total, chunk_content, len);
-			total += len;
-			result[total] = '\0';
-
-			if (callback) {
-				callback(chunk_content, user_data);
-			}
-		}
-		cdsl_json_free(root);
 	}
 	pclose(fp);
+#endif
 
 	if (config->cache && config->cache->put && result) {
 		config->cache->put(config->cache->ctx, prompt, result);
