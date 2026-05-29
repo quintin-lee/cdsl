@@ -550,6 +550,13 @@ cdsl_parse_string(const char* dsl_code)
 	if (!dsl_code) {
 		return NULL;
 	}
+	if (strlen(dsl_code) >= CDSL_MAX_INPUT_LENGTH) {
+		fprintf(stderr,
+			"Error: DSL input length (%zu) exceeds maximum allowed (%d)\n",
+			strlen(dsl_code),
+			CDSL_MAX_INPUT_LENGTH);
+		return NULL;
+	}
 	final_parsed_rule = NULL;
 	yyreset_error_count();
 	void* buf = yy_scan_string(dsl_code);

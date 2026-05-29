@@ -83,6 +83,22 @@ test_ast_create_rule(void)
 	TEST_END();
 }
 
+void
+test_ast_parse_limit(void)
+{
+	TEST_BEGIN("parse string maximum length limit");
+	char* large_input = malloc(70000);
+	TEST_ASSERT_NOT_NULL(large_input, "malloc large_input");
+	if (large_input) {
+		memset(large_input, 'A', 69999);
+		large_input[69999] = '\0';
+		cdsl_rule_t* r = cdsl_parse_string(large_input);
+		TEST_ASSERT_NULL(r, "parse too large string returns NULL");
+		free(large_input);
+	}
+	TEST_END();
+}
+
 int
 main(void)
 {
@@ -96,6 +112,7 @@ main(void)
 	test_ast_create_action();
 	test_ast_create_meta();
 	test_ast_create_rule();
+	test_ast_parse_limit();
 
 	TEST_SUMMARY();
 	TEST_EXIT();
