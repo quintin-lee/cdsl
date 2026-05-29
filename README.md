@@ -1,5 +1,8 @@
 # C-DSL Rule Engine
 
+[![CI](https://github.com/quintin-lee/cdsl/actions/workflows/ci.yml/badge.svg)](https://github.com/quintin-lee/cdsl/actions/workflows/ci.yml)
+[![Docs](https://img.shields.io/badge/docs-github--pages-blue)](https://quintin-lee.github.io/cdsl/)
+
 An AI-powered DSL rule engine framework in C with three-layer architecture (Syntax → Abstract → Execution), natural language translation, multi-metric scoring, and tri-state audit results.
 
 ## Features
@@ -57,6 +60,7 @@ ctest
 # Generate Doxygen docs
 make doc
 # → docs/html/index.html
+# Or view online: https://quintin-lee.github.io/cdsl/
 ```
 
 ### Integration
