@@ -276,6 +276,61 @@ static void demo_json_context(void) {
     cdsl_schema_free(schema);
 }
 
+static void demo_simple_rules(cdsl_schema_t* schema) {
+    print_separator("=== DEMO 5: Simple Pass/Fail Rules (No Scoring) ===");
+
+    const char* dsl_rules[] = {
+        "RULE check_blacklist {"
+        "    META { description = \"Supplier must not be blacklisted\" }"
+        "    WHEN supplier.is_blacklisted == true"
+        "    THEN reject_supplier(\"blacklisted\")"
+        "}",
+
+        "RULE check_capital_floor {"
+        "    META { description = \"Capital must be at least 500k\" }"
+        "    WHEN supplier.registered_capital < 500000"
+        "    THEN reject_supplier(\"insufficient_capital\")"
+        "}",
+
+        "RULE check_format {"
+        "    META { description = \"Document must be PDF\" }"
+        "    WHEN document.format != \"pdf\""
+        "    THEN reject_document(\"not_pdf\")"
+        "}",
+    };
+    int nrules = 3;
+
+    for (int i = 0; i < nrules; i++) {
+        printf("\n[Rule] %s\n", dsl_rules[i]);
+        cdsl_rule_t* rule = cdsl_parse_string(dsl_rules[i]);
+        if (!rule) { printf("  Parse failed.\n"); continue; }
+
+        char err[512] = {0};
+        if (!cdsl_verify_rule(rule, schema, err, sizeof(err))) {
+            printf("  Verify failed: %s\n", err);
+            cdsl_free_rule(rule);
+            continue;
+        }
+
+        cdsl_vm_t* vm = cdsl_vm_create(schema);
+        cdsl_vm_register_action(vm, "reject_supplier", action_callback);
+        cdsl_vm_register_action(vm, "reject_document", action_callback);
+
+        cdsl_context_t* ctx = cdsl_context_create(schema);
+        cdsl_context_set_bool(ctx, "supplier.is_blacklisted", 0);
+        cdsl_context_set_int(ctx, "supplier.registered_capital", 200000);
+        cdsl_context_set_string(ctx, "document.format", "docx");
+
+        cdsl_rule_report_t* report = cdsl_vm_execute(vm, rule, ctx);
+        cdsl_report_print(report);
+
+        cdsl_report_free(report);
+        cdsl_context_free(ctx);
+        cdsl_vm_free(vm);
+        cdsl_free_rule(rule);
+    }
+}
+
 int main(void) {
     printf("========================================\n");
     printf("   C-DSL Framework Demo\n");
@@ -308,6 +363,7 @@ int main(void) {
     demo_doc_audit(schema, &ai_cfg);
     demo_content_audit(schema, &ai_cfg);
     demo_json_context();
+    demo_simple_rules(schema);
 
     cdsl_schema_free(schema);
     return 0;
