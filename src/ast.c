@@ -368,6 +368,80 @@ cdsl_free_arg(cdsl_arg_node_t* arg)
 	}
 }
 
+static cdsl_arg_node_t* cdsl_copy_arg_list(const cdsl_arg_node_t* list);
+
+static cdsl_expr_node_t*
+cdsl_copy_expr(const cdsl_expr_node_t* expr)
+{
+	if (!expr) {
+		return NULL;
+	}
+	cdsl_expr_node_t* c = calloc(1, sizeof(*c));
+	c->type = expr->type;
+	switch (expr->type) {
+	case CDSL_EXPR_INT:
+		c->data.int_val = expr->data.int_val;
+		break;
+	case CDSL_EXPR_FLOAT:
+		c->data.float_val = expr->data.float_val;
+		break;
+	case CDSL_EXPR_BOOL:
+		c->data.bool_val = expr->data.bool_val;
+		break;
+	case CDSL_EXPR_ID:
+		c->data.id_val = strdup(expr->data.id_val);
+		break;
+	case CDSL_EXPR_STRING:
+		c->data.string_val = strdup(expr->data.string_val);
+		break;
+	case CDSL_EXPR_UNARY:
+		c->data.unary.op = expr->data.unary.op;
+		c->data.unary.expr = cdsl_copy_expr(expr->data.unary.expr);
+		break;
+	case CDSL_EXPR_BINARY:
+		c->data.binary.op = expr->data.binary.op;
+		c->data.binary.left = cdsl_copy_expr(expr->data.binary.left);
+		c->data.binary.right = cdsl_copy_expr(expr->data.binary.right);
+		break;
+	case CDSL_EXPR_CALL:
+		c->data.call.func_name = strdup(expr->data.call.func_name);
+		c->data.call.args = cdsl_copy_arg_list(expr->data.call.args);
+		break;
+	}
+	return c;
+}
+
+static cdsl_arg_node_t*
+cdsl_copy_arg_list(const cdsl_arg_node_t* list)
+{
+	cdsl_arg_node_t* head = NULL;
+	cdsl_arg_node_t* tail = NULL;
+	for (const cdsl_arg_node_t* cur = list; cur; cur = cur->next) {
+		cdsl_arg_node_t* n = calloc(1, sizeof(*n));
+		n->expr = cdsl_copy_expr(cur->expr);
+		if (!head) {
+			head = n;
+			tail = n;
+		} else {
+			tail->next = n;
+			tail = n;
+		}
+	}
+	return head;
+}
+
+static cdsl_action_node_t*
+cdsl_copy_action(const cdsl_action_node_t* action)
+{
+	if (!action) {
+		return NULL;
+	}
+	cdsl_action_node_t* c = calloc(1, sizeof(*c));
+	c->action_name = strdup(action->action_name);
+	c->args = cdsl_copy_arg_list(action->args);
+	return c;
+}
+
 /**
  * @brief Free an action node.
  * @param action Action to free (NULL-safe)
@@ -578,10 +652,12 @@ copy_metric_list(cdsl_metric_node_t* src)
 		}
 		nm->case_list = NULL;
 		for (cdsl_case_node_t* c = m->case_list; c; c = c->next) {
-			nm->case_list = cdsl_append_case(nm->case_list,
-							 cdsl_create_case(c->condition, c->action));
+			nm->case_list =
+			    cdsl_append_case(nm->case_list,
+					     cdsl_create_case(cdsl_copy_expr(c->condition),
+							      cdsl_copy_action(c->action)));
 		}
-		nm->default_action = m->default_action;
+		nm->default_action = cdsl_copy_action(m->default_action);
 		nm->next = NULL;
 		if (!head) {
 			head = nm;
