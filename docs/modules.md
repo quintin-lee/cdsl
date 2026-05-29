@@ -1,163 +1,182 @@
-# 模块设计文档
+# Module Design Document
 
-## 模块总览
+## Module Overview
 
 ```
 cdsl/
-├── 核心模块
-│   ├── ast          - 抽象语法树定义与构建
-│   ├── abstract     - Schema 校验与类型检查
-│   ├── execution    - VM 执行引擎与报告生成
-│   └── ai_bridge    - AI 翻译与安全审查
+├── Core Modules
+│   ├── ast          — Abstract syntax tree definition and construction
+│   ├── abstract     — Schema verification and type checking
+│   ├── execution    — VM engine, context, reports, RuleSet, codegen, visualization
+│   └── ai_bridge    — AI translation and safety review (mock + LLM + streaming)
 │
-├── 基础设施
-│   ├── cdsl_json    - 零依赖 JSON 解析器
-│   ├── cdsl_error   - 结构化错误报告
-│   ├── cdsl_arena   - Arena 内存分配器
-│   └── cdsl_hashmap - 哈希表实现
+├── Infrastructure
+│   ├── cdsl_json    — Zero-dependency JSON parser
+│   ├── cdsl_error   — Structured error reporting
+│   ├── cdsl_arena   — Arena memory allocator
+│   └── cdsl_hashmap — Hash table implementation
 │
-├── 语法定义
-│   ├── lexer.l      - Flex 词法规则
-│   └── parser.y     - Bison 语法规则
+├── Grammar
+│   ├── lexer.l      — Flex lexical rules
+│   └── parser.y     — Bison grammar rules
 │
-└── 构建与文档
+└── Build & Docs
     ├── CMakeLists.txt
     ├── Doxyfile
-    └── cmake/       - 包配置模板
+    ├── cmake/       — Package config templates
+    └── docs/        — Markdown documentation
 ```
 
 ---
 
-## 1. AST 模块 (`ast.h` / `ast.c`)
+## 1. AST Module (`ast.h` / `ast.c`)
 
-### 职责
-定义 DSL 的所有语法节点类型，提供节点构建和内存释放 API。
+### Responsibility
+Define all DSL syntax node types, provide node construction and memory free APIs.
 
-### 核心数据结构
+### Core Data Structures
 
 ```
-cdsl_rule_t (规则)
-├── name                   - 规则名称
-├── meta_list              - 元数据链表 (description, weight, ...)
-├── when_expr              - WHEN 表达式 (简单规则)
-├── then_action            - THEN 动作 (简单规则)
-└── metrics                - METRIC 链表 (评分规则)
+cdsl_rule_t (Rule)
+├── name                   — Rule name
+├── meta_list              — Metadata linked list (description, weight, ...)
+├── when_expr              — WHEN expression (simple rule)
+├── then_action            — THEN action (simple rule)
+├── template_name          — Name of template this rule extends (or NULL)
+└── metrics                — METRIC linked list (scoring rule)
     └── cdsl_metric_node_t
-        ├── name           - 指标名称
-        ├── meta_list      - 指标元数据 (weight, is_critical)
-        ├── case_list      - CASE 分支链表
+        ├── name           — Metric name
+        ├── meta_list      — Metric metadata (weight, is_critical)
+        ├── case_list      — CASE branch linked list
         │   └── cdsl_case_node_t
-        │       ├── condition  - 条件表达式
-        │       └── action     - 命中动作
-        └── default_action - DEFAULT 动作
+        │       ├── condition  — Condition expression
+        │       └── action     — Hit action
+        └── default_action — DEFAULT action
 ```
 
-### 表达式节点类型
+### Expression Node Types
 
-| 类型 | 数据 | 示例 |
-|---|---|---|
-| `CDSL_EXPR_ID` | 变量名 | `user.age` |
-| `CDSL_EXPR_INT` | 整数值 | `18` |
-| `CDSL_EXPR_FLOAT` | 浮点值 | `3.14` |
-| `CDSL_EXPR_BOOL` | 布尔值 | `true` |
-| `CDSL_EXPR_STRING` | 字符串 | `"hello"` |
-| `CDSL_EXPR_BINARY` | 二元运算 | `a + b`, `x == y` |
-| `CDSL_EXPR_UNARY` | 一元运算 | `!flag` |
+| Type | Data | Example |
+|------|------|---------|
+| `CDSL_EXPR_ID` | Variable name | `user.age` |
+| `CDSL_EXPR_INT` | Integer value | `18` |
+| `CDSL_EXPR_FLOAT` | Float value | `3.14` |
+| `CDSL_EXPR_BOOL` | Boolean value | `true` |
+| `CDSL_EXPR_STRING` | String value | `"hello"` |
+| `CDSL_EXPR_BINARY` | Binary operation | `a + b`, `x == y` |
+| `CDSL_EXPR_UNARY` | Unary operation | `!flag` |
+| `CDSL_EXPR_CALL` | Function call | `strlen(name)` |
 
-### 关键 API
+### Key API
 
 ```c
-// 解析 DSL 字符串为 AST
+// Parse DSL string into AST
 cdsl_rule_t* cdsl_parse_string(const char* dsl_code);
 
-// 构建表达式节点
+// Build expression nodes
 cdsl_expr_node_t* cdsl_create_expr_binary(cdsl_op_t op, cdsl_expr_node_t* left, cdsl_expr_node_t* right);
+cdsl_expr_node_t* cdsl_create_expr_call(char* name, cdsl_arg_node_t* args);
 
-// 释放整个规则树
+// Metadata access
+char* cdsl_meta_get(cdsl_meta_item_t* list, const char* key);
+
+// Free entire rule tree
 void cdsl_free_rule(cdsl_rule_t* rule);
 ```
 
 ---
 
-## 2. Abstract 模块 (`abstract.h` / `abstract.c`)
+## 2. Abstract Module (`abstract.h` / `abstract.c`)
 
-### 职责
-Schema 注册和规则静态验证。在执行前拦截类型错误和未定义变量。
+### Responsibility
+Schema registration and static rule verification. Intercepts type errors and undefined variables before execution.
 
-### Schema 结构
+### Schema Structure
 
 ```
 cdsl_schema_t
-├── vars (cdsl_var_schema_t 链表)
+├── vars (cdsl_var_schema_t linked list)
 │   └── { name: "user.age", type: CDSL_TYPE_INT }
 │   └── { name: "user.name", type: CDSL_TYPE_STRING }
 │   └── ...
-└── actions (cdsl_action_schema_t 链表)
+└── actions (cdsl_action_schema_t linked list)
     └── { name: "block", return: VOID, arg_count: 1, arg_types: [STRING] }
     └── { name: "score", return: VOID, arg_count: 1, arg_types: [INT] }
     └── ...
 ```
 
-### 验证流程
+### Verification Flow
 
 ```
 cdsl_verify_rule(rule, schema)
     │
-    ├─ 遍历所有表达式节点
-    │   └─ resolve_expr_type() → 查找变量类型，检查类型兼容性
+    ├─ Walk all expression nodes
+    │   └─ resolve_expr_type() → find variable type, check type compatibility
     │
-    ├─ 遍历所有 Action 调用
-    │   └─ verify_action() → 查找 Action Schema，检查参数个数和类型
+    ├─ Walk all Action calls
+    │   └─ verify_action() → find Action Schema, check arg count and types
     │
-    └─ 返回 1 (通过) 或 0 (失败，err_buf 包含错误信息)
+    └─ Return 1 (pass) or 0 (fail, err_buf contains error)
 ```
 
-### 错误报告
+### Error Reporting
 
-`cdsl_verify_rule_detailed()` 返回 `cdsl_error_list_t`，包含所有发现的错误：
+`cdsl_verify_rule_detailed()` returns `cdsl_error_list_t` with all found errors:
 
 ```c
 cdsl_error_list_t* errors = cdsl_verify_rule_detailed(rule, schema);
 for (int i = 0; i < errors->count; i++) {
     cdsl_error_print(errors->errors[i]);
-    // [TYPE] line 0, col 0: Unknown variable 'unknown.var'
-    //   hint: Register variable 'unknown.var' via cdsl_schema_register_var()
 }
+```
+
+### Key API
+
+```c
+cdsl_schema_t* cdsl_schema_create(void);
+void cdsl_schema_free(cdsl_schema_t* schema);
+void cdsl_schema_register_var(cdsl_schema_t* schema, const char* name, cdsl_type_t type);
+void cdsl_schema_register_action(cdsl_schema_t* schema, const char* name,
+                                  cdsl_type_t ret_type, int arg_count, ...);
+int cdsl_verify_rule(const cdsl_rule_t* rule, const cdsl_schema_t* schema,
+                      char* err_buf, int err_buf_sz);
+cdsl_error_list_t* cdsl_verify_rule_detailed(const cdsl_rule_t* rule,
+                                              const cdsl_schema_t* schema);
 ```
 
 ---
 
-## 3. Execution 模块 (`execution.h` / `execution.c`)
+## 3. Execution Module (`execution.h` / `execution.c`)
 
-### 职责
-AST 解释执行、上下文绑定、Action 回调分发、报告生成。
+### Responsibility
+AST interpretation, context binding, action callback dispatch, report generation, RuleSet management, compilation cache, code generation, and visualization.
 
-### 上下文 (Context)
+### Context
 
 ```
 cdsl_context_t
-├── schema   - 关联的 Schema
-└── entries  - 变量绑定链表
+├── schema   — Associated schema reference
+└── entries  — Variable binding linked list
     ├── { name: "user.age", value: {INT, 25} }
     ├── { name: "user.name", value: {STRING, "Alice"} }
     └── ...
 ```
 
-支持两种绑定方式：
-1. **API 绑定**: `cdsl_context_set_int(ctx, "user.age", 25)`
-2. **JSON 加载**: `cdsl_context_load_json(ctx, "{\"user\":{\"age\":25}}")`
+Two binding methods:
+1. **API binding**: `cdsl_context_set_int(ctx, "user.age", 25)`
+2. **JSON loading**: `cdsl_context_load_json(ctx, "{\"user\":{\"age\":25}}")`
 
-### VM 执行流程
+### VM Execution Flow
 
 ```
 cdsl_vm_execute(vm, rule, ctx)
     │
-    ├─ 简单规则 (rule->metrics == NULL)
+    ├─ Simple rule (rule->metrics == NULL)
     │   ├─ eval_expr(rule->when_expr, ctx) → bool
     │   ├─ if true: trigger_action(rule->then_action) → FAILED
     │   └─ if false: → PASSED
     │
-    └─ 评分规则 (rule->metrics != NULL)
+    └─ Scoring rule (rule->metrics != NULL)
         ├─ for each metric:
         │   ├─ for each case:
         │   │   ├─ eval_expr(case.condition, ctx)
@@ -170,11 +189,11 @@ cdsl_vm_execute(vm, rule, ctx)
         └─ determine tri-state status
 ```
 
-### 三态判定逻辑
+### Tri-state Decision Logic
 
 ```
 if (any_critical_metric_failed):
-    status = FAILED (一票否决)
+    status = FAILED (veto)
 else if (total_score >= pass_threshold):
     status = PASSED
 else if (total_score >= partial_threshold):
@@ -183,93 +202,217 @@ else:
     status = FAILED
 ```
 
-### RuleSet 批量执行
+### RuleSet Batch Execution
 
 ```
 cdsl_ruleset_t
-├── entries (按 priority 排序的链表)
-│   ├── { rule: r1, priority: 1 }  ← 先执行
+├── entries (sorted by priority)
+│   ├── { rule: r1, priority: 1 }  ← executes first
 │   ├── { rule: r2, priority: 2 }
-│   └── { rule: r3, priority: 3 }  ← 后执行
+│   └── { rule: r3, priority: 3 }  ← executes last
 └── count: 3
 
 cdsl_vm_execute_ruleset(vm, set, ctx)
-    → cdsl_ruleset_report_t
-        ├── rule_reports[]  - 每条规则的详细报告
-        ├── total_passed    - 通过数
-        ├── total_failed    - 失败数
-        ├── aggregate_score - 汇总分数
-        └── summary         - 摘要字符串
+    → cdsl_ruleset_report_t (per-rule reports + aggregates)
+```
+
+### Debug Trace Mode
+
+When enabled via `cdsl_vm_set_debug(vm, 1)`:
+- Each expression evaluation prints type and value to stderr
+- Each triggered action prints its name and arguments
+- Each metric evaluation shows matched case and score
+- Useful for debugging rule logic during development
+
+### Hot Reload
+
+```c
+// Load from file
+cdsl_ruleset_load_file(set, "path/to/rules.dsl", 1, schema, err, sizeof(err));
+
+// Remove by name
+cdsl_ruleset_remove(set, "rule_name");
+
+// Reload file (re-parses and replaces in-place)
+cdsl_ruleset_reload_file(set, "rule_name", "path/to/rules.dsl", schema, err, sizeof(err));
+```
+
+### Parallel Execution
+
+```c
+// Thread_count=0 uses hardware concurrency
+cdsl_ruleset_report_t* rpt = cdsl_vm_execute_ruleset_parallel(vm, set, ctx, 4);
+```
+
+Internal implementation creates per-thread VM clones and splits rules across threads.
+
+### Custom Function Registration
+
+```c
+// C callback
+cdsl_value_t my_strlen(const char* name, cdsl_arg_node_t* args, void* ud) {
+    cdsl_value_t v = { .type = CDSL_TYPE_INT, .data.int_val = 0 };
+    if (args && args->expr && args->expr->type == CDSL_EXPR_STRING)
+        v.data.int_val = strlen(args->expr->data.string_val);
+    return v;
+}
+
+// Register
+cdsl_vm_register_function(vm, "strlen", my_strlen);
+
+// Use in DSL: WHEN strlen(user.name) > 10 THEN ...
+```
+
+### Template & Inheritance
+
+Templates define reusable metric structures:
+
+```
+TEMPLATE base_audit {
+    METRIC blacklist {
+        META { weight = "30" is_critical = "true" }
+        CASE supplier.is_blacklisted == false THEN score(30)
+        DEFAULT fail_metric(0, "blacklisted")
+    }
+}
+
+RULE supplier_audit EXTENDS base_audit {
+    METRIC capital {
+        META { weight = "40" }
+        CASE supplier.capital >= 5000000 THEN score(40)
+        DEFAULT score(0)
+    }
+}
+```
+
+Templates are registered globally; `EXTENDS` copies template metrics into the rule before parsing custom ones.
+
+### Compilation Cache
+
+```c
+cdsl_compile_cache_t* cache = cdsl_compile_cache_create(64);
+
+// Parse + verify + cache
+cdsl_compiled_rule_t* cr = cdsl_compile(cache, dsl_string, schema, err, sizeof(err));
+
+// Execute from cache (no re-parse)
+cdsl_rule_report_t* rpt = cdsl_vm_execute_compiled(vm, cr, ctx);
+```
+
+Internal hash is computed from the DSL string and schema pointer for cache lookups.
+
+### Performance Monitoring
+
+```c
+cdsl_stats_t* stats = cdsl_vm_get_stats(vm);
+printf("Executions: %ld, Avg time: %.2f us\n", stats->total_executions, stats->avg_time_us);
+cdsl_vm_reset_stats(vm);
+```
+
+### Code Generation (DSL → C)
+
+```c
+char* c_code = cdsl_codegen_rule_to_c(rule, schema);
+// Output: C function that evaluates the rule
+cdsl_codegen_to_file(rule, schema, "generated_rule.c");
+```
+
+### Visualization (Graphviz DOT)
+
+```c
+// Single rule graph
+char* dot = cdsl_rule_to_dot(rule);
+cdsl_rule_to_dot_file(rule, "rule.dot");
+
+// Ruleset with dependencies
+char* set_dot = cdsl_ruleset_to_dot(ruleset);
+cdsl_ruleset_to_dot_file(ruleset, "ruleset.dot");
 ```
 
 ---
 
-## 4. AI Bridge 模块 (`ai_bridge.h` / `ai_bridge.c`)
+## 4. AI Bridge Module (`ai_bridge.h` / `ai_bridge.c`)
 
-### 职责
-自然语言转 DSL 翻译，DSL 规则安全性审查。
+### Responsibility
+Natural language to DSL translation, DSL rule safety review, with streaming support.
 
-### 工作模式
+### Work Modes
 
-| 模式 | `use_mock` | 说明 |
-|---|---|---|
-| Mock 模式 | 1 | 离线关键词匹配翻译，结构化审查 |
-| API 模式 | 0 | 调用 OpenAI-compatible LLM API |
+| Mode | `use_mock` | Description |
+|------|-----------|-------------|
+| Mock mode | 1 | Offline keyword-based translation, structured review |
+| API mode | 0 | OpenAI-compatible LLM API calls |
+| Stream (API) | 0 + stream call | Callback-based SSE streaming translation/review |
 
-### Mock 翻译逻辑
+### Mock Translation Logic
 
-根据自然语言中的关键词匹配预定义模板：
+Keyword matching to predefined templates:
 
-| 关键词 | 生成规则 |
-|---|---|
-| `supplier` / `供应商` / `资质` | 供应商资质审查规则 |
-| `document` / `文档` / `格式` | 文档格式审查规则 |
-| `content` / `内容` / `安全` | 内容安全审查规则 |
+| Keywords | Generated Rule |
+|----------|---------------|
+| `supplier` / supplier / qualification | Supplier qualification audit rule |
+| `document` / document / format | Document format audit rule |
+| `content` / content / safety | Content safety audit rule |
 
-### 安全审查评分
+### Safety Review Scores
 
-Mock 模式下的审查评分（满分 70 分）：
+Mock mode review scoring (max 70 points):
 
-| 检查项 | 分值 | 说明 |
-|---|---|---|
-| META 块存在 | +10 | 规则有元数据描述 |
-| METRIC 块存在 | +15 | 使用多指标结构 |
-| CASE + DEFAULT 完整 | +15 | 每个指标有完整分支 |
-| is_critical 标记 | +10 | 有红线合规项 |
-| weight 权重 | +10 | 指标有权重分配 |
-| description 描述 | +10 | 有功能描述 |
+| Check | Points | Description |
+|-------|--------|-------------|
+| META block exists | +10 | Rule has metadata description |
+| METRIC block exists | +15 | Uses multi-metric structure |
+| CASE + DEFAULT complete | +15 | Each metric has full branches |
+| is_critical marker | +10 | Has critical compliance item |
+| weight assignment | +10 | Metrics have weight distribution |
+| description field | +10 | Has functional description |
 
-分数 ≥ 50 → approved = 1
+Score ≥ 50 → approved = 1
+
+### Streaming API
+
+```c
+void my_chunk_callback(const char* chunk, void* user_data) {
+    printf("%s", chunk);
+    fflush(stdout);
+}
+
+char* full = cdsl_ai_translate_stream("supplier audit", schema, &cfg,
+                                       my_chunk_callback, NULL);
+char* review = cdsl_ai_review_stream(dsl, schema, &cfg,
+                                      my_chunk_callback, NULL);
+```
 
 ---
 
-## 5. 基础设施模块
+## 5. Infrastructure Modules
 
-### 5.1 JSON 解析器 (`cdsl_json.h` / `cdsl_json.c`)
+### 5.1 JSON Parser (`cdsl_json.h` / `cdsl_json.c`)
 
-零依赖的轻量 JSON 解析器，支持：
-- 对象、数组、字符串、数字、布尔、null
-- 嵌套结构
-- 被 `cdsl_context_load_json()` 使用
+Zero-dependency lightweight JSON parser:
+- Objects, arrays, strings, numbers, booleans, null
+- Nested structures
+- Used by `cdsl_context_load_json()`
 
-### 5.2 错误报告 (`cdsl_error.h` / `cdsl_error.c`)
+### 5.2 Error Reporting (`cdsl_error.h` / `cdsl_error.c`)
 
-结构化错误类型：
-- `CDSL_ERR_SYNTAX` - 语法错误
-- `CDSL_ERR_TYPE` - 类型错误
-- `CDSL_ERR_SEMANTIC` - 语义错误
-- `CDSL_ERR_RUNTIME` - 运行时错误
+Structured error types:
+- `CDSL_ERR_SYNTAX` — Syntax error
+- `CDSL_ERR_TYPE` — Type error
+- `CDSL_ERR_SEMANTIC` — Semantic error
+- `CDSL_ERR_RUNTIME` — Runtime error
 
-### 5.3 Arena 分配器 (`cdsl_arena.h` / `cdsl_arena.c`)
+### 5.3 Arena Allocator (`cdsl_arena.h` / `cdsl_arena.c`)
 
-批量内存分配器，适合 AST 节点等共享生命周期的对象：
-- 8 字节对齐
-- 默认 64KB 块大小
-- 一次释放所有内存
+Batch memory allocator for same-lifetime objects (AST nodes):
+- 8-byte aligned
+- Default 64KB block size
+- One-shot free of all memory
 
-### 5.4 哈希表 (`cdsl_hashmap.h` / `cdsl_hashmap.c`)
+### 5.4 Hash Table (`cdsl_hashmap.h` / `cdsl_hashmap.c`)
 
-O(1) 平均查找的键值表：
-- Separate chaining 解决冲突
-- 字符串键，泛型值指针
-- 可选析构回调
+O(1) average lookup key-value table:
+- Separate chaining for collision resolution
+- String keys, generic value pointers
+- Optional destructor callback
+- Used by template registry and compile cache

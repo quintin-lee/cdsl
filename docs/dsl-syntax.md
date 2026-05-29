@@ -1,75 +1,87 @@
-# DSL 语法说明
+# DSL Syntax Reference
 
-## 1. 词法规则
+## 1. Lexical Rules
 
-### 1.1 关键字
+### 1.1 Keywords
 
-| 关键字 | 说明 |
-|---|---|
-| `RULE` | 规则定义开始 |
-| `META` | 元数据块开始 |
-| `WHEN` | 条件表达式（简单规则） |
-| `THEN` | 动作声明（简单规则） |
-| `METRIC` | 指标块开始（评分规则） |
-| `CASE` | 条件分支（评分规则） |
-| `DEFAULT` | 默认分支（评分规则） |
-| `AND` / `&&` | 逻辑与 |
-| `OR` / `\|\|` | 逻辑或 |
-| `NOT` / `!` | 逻辑非 |
-| `true` / `false` | 布尔字面量 |
+| Keyword | Description |
+|---------|-------------|
+| `RULE` | Rule definition start |
+| `META` | Metadata block start |
+| `WHEN` | Condition expression (simple rules) |
+| `THEN` | Action declaration (simple rules) |
+| `METRIC` | Metric block start (scoring rules) |
+| `CASE` | Condition branch (scoring rules) |
+| `DEFAULT` | Default branch (scoring rules) |
+| `TEMPLATE` | Template rule definition (inheritance) |
+| `EXTENDS` | Rule inheritance from template |
+| `AND` / `&&` | Logical AND |
+| `OR` / `\|\|` | Logical OR |
+| `NOT` / `!` | Logical NOT |
+| `true` / `false` | Boolean literals |
 
-### 1.2 运算符
+### 1.2 Operators
 
-| 运算符 | 说明 | 返回类型 |
-|---|---|---|
-| `==` | 等于 | BOOL |
-| `!=` | 不等于 | BOOL |
-| `<` | 小于 | BOOL |
-| `>` | 大于 | BOOL |
-| `<=` | 小于等于 | BOOL |
-| `>=` | 大于等于 | BOOL |
-| `AND` / `&&` | 逻辑与（短路求值） | BOOL |
-| `OR` / `\|\|` | 逻辑或（短路求值） | BOOL |
-| `NOT` / `!` | 逻辑非 | BOOL |
+| Operator | Description | Return Type |
+|----------|-------------|-------------|
+| `==` | Equal | BOOL |
+| `!=` | Not equal | BOOL |
+| `<` | Less than | BOOL |
+| `>` | Greater than | BOOL |
+| `<=` | Less or equal | BOOL |
+| `>=` | Greater or equal | BOOL |
+| `AND` / `&&` | Logical AND (short-circuit) | BOOL |
+| `OR` / `\|\|` | Logical OR (short-circuit) | BOOL |
+| `NOT` / `!` | Logical NOT | BOOL |
 
-### 1.3 字面量
+### 1.3 Literals
 
-| 类型 | 示例 | 说明 |
-|---|---|---|
-| 整数 | `42`, `0`, `-1` | 32 位有符号整数 |
-| 浮点数 | `3.14`, `0.5`, `-1.0` | 64 位双精度浮点 |
-| 布尔 | `true`, `false` | 布尔值 |
-| 字符串 | `"hello"`, `"reason"` | 双引号包裹，不支持转义 |
+| Type | Examples | Notes |
+|------|----------|-------|
+| Integer | `42`, `0`, `-1` | 32-bit signed integer |
+| Float | `3.14`, `0.5`, `-1.0` | 64-bit double precision |
+| Boolean | `true`, `false` | Boolean literals |
+| String | `"hello"`, `"reason"` | Double-quoted, no escape support |
 
-### 1.4 标识符
+### 1.4 Identifiers
 
-- 以字母或下划线开头
-- 可包含字母、数字、下划线、点号
-- 示例: `user.age`, `transaction.amount`, `is_active`
+- Start with letter or underscore
+- Letters, digits, underscores, and dots allowed
+- Examples: `user.age`, `transaction.amount`, `is_active`, `strlen`
 
-### 1.5 注释
+### 1.5 Functions
 
-当前版本不支持注释。
+Function calls in expressions use `func_name(arg1, arg2, ...)` syntax:
+```
+strlen(user.name)
+abs(transaction.amount)
+```
+
+Functions are registered via `cdsl_vm_register_function()` in the host program.
+
+### 1.6 Comments
+
+Comments are not supported in the current grammar.
 
 ---
 
-## 2. 语法规则
+## 2. Grammar Rules
 
-### 2.1 简单规则 (WHEN/THEN)
+### 2.1 Simple Rule (WHEN/THEN)
 
-适用于二元通过/不通过场景（如格式校验、黑名单检查）。
+For binary pass/fail scenarios (format validation, blacklist checks).
 
 ```dsl
-RULE <规则名> {
+RULE <name> {
     META {
-        description = "<规则描述>"
+        description = "<description>"
     }
-    WHEN <条件表达式>
-    THEN <动作名>("<参数>")
+    WHEN <condition>
+    THEN <action>("<arg>")
 }
 ```
 
-**示例**:
+**Example**:
 ```dsl
 RULE check_blacklist {
     META {
@@ -80,38 +92,38 @@ RULE check_blacklist {
 }
 ```
 
-**执行逻辑**:
-- WHEN 条件为 **true** → 触发 THEN 动作 → 状态: **FAILED**
-- WHEN 条件为 **false** → 不触发动作 → 状态: **PASSED**
+**Execution logic**:
+- WHEN condition is **true** → trigger THEN action → status: **FAILED**
+- WHEN condition is **false** → no action → status: **PASSED**
 
-### 2.2 评分规则 (METRIC/CASE/DEFAULT)
+### 2.2 Scoring Rule (METRIC/CASE/DEFAULT)
 
-适用于多指标量化评分场景（如供应商资质审查、内容安全评分）。
+For multi-metric quantification scenarios (qualification audits, content scoring).
 
 ```dsl
-RULE <规则名> {
+RULE <name> {
     META {
-        description = "<规则描述>"
-        pass_threshold = "<通过分数线>"
-        partial_threshold = "<部分通过分数线>"
+        description = "<description>"
+        pass_threshold = "<pass score>"
+        partial_threshold = "<partial score>"
     }
-    METRIC <指标名> {
+    METRIC <name> {
         META {
-            description = "<指标描述>"
-            weight = "<满分权重>"
+            description = "<description>"
+            weight = "<weight>"
             is_critical = "<true/false>"
         }
-        CASE <条件表达式> THEN <动作名>("<参数>")
-        CASE <条件表达式> THEN <动作名>("<参数>")
-        DEFAULT <动作名>("<参数>")
+        CASE <condition> THEN <action>("<arg>")
+        CASE <condition> THEN <action>("<arg>")
+        DEFAULT <action>("<arg>")
     }
-    METRIC <指标名> {
+    METRIC <name> {
         ...
     }
 }
 ```
 
-**示例**:
+**Example**:
 ```dsl
 RULE supplier_audit {
     META {
@@ -140,79 +152,132 @@ RULE supplier_audit {
 }
 ```
 
-**执行逻辑**:
-1. 按 METRIC 定义顺序逐个执行
-2. 每个 METRIC 按 CASE 定义顺序匹配
-3. 第一个匹配的 CASE 决定得分，后续 CASE 不再评估
-4. 无 CASE 匹配时执行 DEFAULT
-5. 累计所有 METRIC 得分
-6. 根据阈值和红线项判定最终状态
+**Execution logic**:
+1. Process METRICs in declaration order
+2. Each METRIC evaluates CASEs in order
+3. First matching CASE determines score; remaining CASEs skipped
+4. No CASE matched → execute DEFAULT
+5. Accumulate all metric scores
+6. Apply thresholds and critical-rule veto for final status
+
+### 2.3 Template Rule (TEMPLATE/EXTENDS)
+
+For reusable rule definitions. Templates define metric blocks that can be inherited.
+
+```dsl
+TEMPLATE <name> {
+    METRIC <name> {
+        META { weight = "<weight>" ... }
+        CASE <condition> THEN <action>("<arg>")
+        DEFAULT <action>("<arg>")
+    }
+}
+
+RULE <name> EXTENDS <template_name> {
+    METRIC <name> {
+        ...
+    }
+}
+```
+
+**Example**:
+```dsl
+TEMPLATE base_audit {
+    METRIC blacklist {
+        META { weight = "30" is_critical = "true" }
+        CASE supplier.is_blacklisted == false THEN score(30)
+        DEFAULT fail_metric(0, "blacklisted")
+    }
+}
+
+RULE supplier_audit EXTENDS base_audit {
+    METRIC capital {
+        META { description = "Capital check" weight = "40" }
+        CASE supplier.registered_capital >= 5000000 THEN score(40)
+        CASE supplier.registered_capital >= 1000000 THEN score(20)
+        DEFAULT score(0)
+    }
+    METRIC experience {
+        META { description = "Experience check" weight = "30" }
+        CASE supplier.years_in_business >= 5 THEN score(30)
+        CASE supplier.years_in_business >= 2 THEN score(15)
+        DEFAULT score(0)
+    }
+}
+```
+
+**Resolution**:
+- Templates are registered globally via `cdsl_register_template()` during parsing
+- `EXTENDS` copies the template's metrics into the extending rule
+- Custom metrics are appended after inherited ones
+- Template names are local to `parser.y` and defined within the same DSL string
 
 ---
 
-## 3. META 块
+## 3. META Block
 
-META 块用于存储规则或指标的元数据，采用 key=value 字符串对格式。
+META blocks store key=value string pairs as metadata for rules or metrics.
 
-### 3.1 规则级 META
+### 3.1 Rule-level META
 
-| Key | 类型 | 说明 |
-|---|---|---|
-| `description` | string | 规则描述 |
-| `category` | string | 规则分类 |
-| `pass_threshold` | string(int) | 通过分数线（如 "80"） |
-| `partial_threshold` | string(int) | 部分通过分数线（如 "60"） |
+| Key | Type | Description |
+|-----|------|-------------|
+| `description` | string | Rule description |
+| `category` | string | Rule category |
+| `pass_threshold` | string(int) | Pass threshold (e.g. "80") |
+| `partial_threshold` | string(int) | Partial pass threshold (e.g. "60") |
+| `depends_on` | string | Comma-separated rule dependencies for RuleSet ordering |
 
-### 3.2 指标级 META
+### 3.2 Metric-level META
 
-| Key | 类型 | 说明 |
-|---|---|---|
-| `description` | string | 指标描述 |
-| `weight` | string(int) | 满分权重（如 "40"） |
-| `is_critical` | string(bool) | 是否为红线指标（"true"/"false"） |
+| Key | Type | Description |
+|-----|------|-------------|
+| `description` | string | Metric description |
+| `weight` | string(int) | Max score weight (e.g. "40") |
+| `is_critical` | string(bool) | Critical/veto metric ("true"/"false") |
 
-**注意**: 所有 META 值均为字符串类型，数字和布尔值需用引号包裹。
-
----
-
-## 4. 内置动作
-
-| 动作 | 参数 | 说明 |
-|---|---|---|
-| `score(N)` | int | 给当前指标打 N 分 |
-| `fail_metric(0, "reason")` | int, string | 指标失败，得 0 分并记录原因 |
-| `reject_supplier("reason")` | string | 拒绝供应商 |
-| `reject_document("reason")` | string | 拒绝文档 |
-| `block_content("reason")` | string | 拦截内容 |
-| `record_warning("reason")` | string | 记录警告 |
-
-**扩展**: 宿主程序可通过 `cdsl_vm_register_action()` 注册自定义动作。
+**Note**: All META values are strings. Numeric and boolean values must be quoted.
 
 ---
 
-## 5. 三态判定
+## 4. Built-in Actions
 
-### 5.1 简单规则
+| Action | Args | Description |
+|--------|------|-------------|
+| `score(N)` | int | Score N points for current metric |
+| `fail_metric(0, "reason")` | int, string | Fail metric with 0 score and reason |
+| `reject_supplier("reason")` | string | Reject supplier with reason |
+| `reject_document("reason")` | string | Reject document with reason |
+| `block_content("reason")` | string | Block content with reason |
+| `record_warning("reason")` | string | Record warning with reason |
 
-| WHEN 结果 | 状态 | 分数 |
-|---|---|---|
+**Extension**: Host programs can register custom actions via `cdsl_vm_register_action()`.
+
+---
+
+## 5. Tri-state Decision
+
+### 5.1 Simple Rule
+
+| WHEN Result | Status | Score |
+|-------------|--------|-------|
 | false | PASSED | 100/100 |
 | true | FAILED | 0/100 |
 
-### 5.2 评分规则
+### 5.2 Scoring Rule
 
 ```
-if (任一 is_critical="true" 指标得分 == 0):
-    status = FAILED (一票否决)
-else if (总分 >= pass_threshold):
+if (any is_critical="true" metric scores 0):
+    status = FAILED (veto)
+else if (total >= pass_threshold):
     status = PASSED
-else if (总分 >= partial_threshold):
+else if (total >= partial_threshold):
     status = PARTIALLY_PASSED
 else:
     status = FAILED
 ```
 
-### 5.3 报告输出示例
+### 5.3 Report Output Example
 
 ```
 ========================================
@@ -228,13 +293,14 @@ else:
   Score:    50 / 100
   Summary:  PARTIALLY PASSED (score: 50/100, needs improvement)
 ========================================
+  (*) critical metric
 ```
 
 ---
 
-## 6. JSON 上下文
+## 6. JSON Context
 
-通过 `cdsl_context_load_json()` 可以从 JSON 字符串加载上下文变量：
+Variables can be loaded from JSON via `cdsl_context_load_json()`:
 
 ```json
 {
@@ -251,18 +317,18 @@ else:
 }
 ```
 
-**自动转换规则**:
-- JSON number (无小数) → `CDSL_TYPE_INT`
-- JSON number (有小数) → `CDSL_TYPE_FLOAT`
+**Auto-conversion rules**:
+- JSON number (no decimal) → `CDSL_TYPE_INT`
+- JSON number (with decimal) → `CDSL_TYPE_FLOAT`
 - JSON boolean → `CDSL_TYPE_BOOL`
 - JSON string → `CDSL_TYPE_STRING`
-- JSON object → 递归展开，键名用 `.` 连接
+- JSON object → recursively flattened, keys joined with `.`
 
 ---
 
-## 7. 完整示例
+## 7. Complete Examples
 
-### 7.1 供应商资质审查
+### 7.1 Supplier Qualification Audit
 
 ```dsl
 RULE supplier_qualification {
@@ -302,7 +368,7 @@ RULE supplier_qualification {
 }
 ```
 
-### 7.2 文档格式审查
+### 7.2 Document Format Audit
 
 ```dsl
 RULE document_format_audit {
@@ -340,7 +406,7 @@ RULE document_format_audit {
 }
 ```
 
-### 7.3 简单黑名单检查
+### 7.3 Simple Blacklist Check
 
 ```dsl
 RULE check_blacklist {
@@ -351,3 +417,40 @@ RULE check_blacklist {
     THEN reject_supplier("blacklisted")
 }
 ```
+
+### 7.4 Template Inheritance
+
+```dsl
+TEMPLATE base_compliance {
+    METRIC blacklist_check {
+        META { weight = "30" is_critical = "true" }
+        CASE supplier.is_blacklisted == false THEN score(30)
+        DEFAULT fail_metric(0, "blacklisted")
+    }
+}
+
+RULE full_audit EXTENDS base_compliance {
+    METRIC capital_check {
+        META { description = "Capital" weight = "40" }
+        CASE supplier.registered_capital >= 5000000 THEN score(40)
+        DEFAULT score(0)
+    }
+    METRIC experience_check {
+        META { description = "Experience" weight = "30" }
+        CASE supplier.years_in_business >= 3 THEN score(30)
+        DEFAULT score(0)
+    }
+}
+```
+
+### 7.5 Custom Function Call
+
+```dsl
+RULE check_name_length {
+    META { description = "Validate name length" }
+    WHEN strlen(user.name) > 0
+    THEN record_warning("name_exists")
+}
+```
+
+Functions like `strlen` must be registered via `cdsl_vm_register_function()` in the host program.

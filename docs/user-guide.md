@@ -1,48 +1,64 @@
-# 用户手册
+# User Guide
 
-## 1. 快速开始
+## 1. Quick Start
 
-### 1.1 环境要求
+### 1.1 Requirements
 
-- C 编译器 (GCC / Clang)
+- C compiler (GCC / Clang)
 - CMake 3.14+
 - Flex 2.6+
 - Bison 3.8+
 
-### 1.2 构建项目
+### 1.2 Build
 
 ```bash
-# 克隆项目
 git clone <repo-url>
 cd dsl
-
-# 构建
 mkdir build && cd build
 cmake ..
 make -j$(nproc)
-
-# 运行演示
-./cdsl_demo
-
-# 运行测试
-ctest
-
-# 生成文档
-make doc
-# 文档位于 docs/html/index.html
 ```
 
-### 1.3 集成到宿主项目
+### 1.3 Run Demo
 
-**方式一：add_subdirectory**
+```bash
+./cdsl_demo
+```
+
+6 demo scenarios:
+1. **Supplier Qualification Audit** — AI-generated DSL, blacklist (critical) + capital + experience scoring
+2. **Document Format Audit** — AI-generated DSL, format (critical) + signature + size scoring
+3. **Content Safety Audit** — AI-generated DSL, sensitive words + PII + spam scoring
+4. **JSON Context** — Variables loaded from JSON string
+5. **Simple Rules** — Independent pass/fail checks (blacklist, capital floor, format)
+6. **RuleSet Batch** — Priority-ordered multi-rule execution with aggregate report
+
+### 1.4 Run Tests
+
+```bash
+ctest
+# or directly:
+./test_ast
+./test_execution
+```
+
+### 1.5 Generate Documentation
+
+```bash
+make doc
+# → docs/html/index.html
+```
+
+### 1.6 Integration
+
+**Method 1: add_subdirectory**
 
 ```cmake
-# 在你的 CMakeLists.txt 中
 add_subdirectory(path/to/cdsl)
 target_link_libraries(your_app PRIVATE cdsl)
 ```
 
-**方式二：安装后使用**
+**Method 2: Installed find_package**
 
 ```bash
 cd build && cmake --install . --prefix /usr/local
@@ -53,7 +69,7 @@ find_package(cdsl REQUIRED)
 target_link_libraries(your_app PRIVATE cdsl::cdsl_static)
 ```
 
-**方式三：pkg-config**
+**Method 3: pkg-config**
 
 ```bash
 pkg-config --cflags --libs cdsl
@@ -61,29 +77,29 @@ pkg-config --cflags --libs cdsl
 
 ---
 
-## 2. 核心 API 使用
+## 2. Core API Usage
 
-### 2.1 定义 Schema
+### 2.1 Define Schema
 
-Schema 是规则与宿主程序之间的契约，注册所有可用的变量和动作。
+Schema is the contract between rules and the host program — registers all available variables and actions.
 
 ```c
 #include "abstract.h"
 
 cdsl_schema_t* schema = cdsl_schema_create();
 
-// 注册变量
+// Register variables
 cdsl_schema_register_var(schema, "user.age", CDSL_TYPE_INT);
 cdsl_schema_register_var(schema, "user.name", CDSL_TYPE_STRING);
 cdsl_schema_register_var(schema, "user.is_active", CDSL_TYPE_BOOL);
 
-// 注册动作
+// Register actions
 cdsl_schema_register_action(schema, "block", CDSL_TYPE_VOID, 1, CDSL_TYPE_STRING);
 cdsl_schema_register_action(schema, "score", CDSL_TYPE_VOID, 1, CDSL_TYPE_INT);
 cdsl_schema_register_action(schema, "fail_metric", CDSL_TYPE_VOID, 2, CDSL_TYPE_INT, CDSL_TYPE_STRING);
 ```
 
-### 2.2 解析规则
+### 2.2 Parse Rule
 
 ```c
 #include "ast.h"
@@ -102,18 +118,18 @@ if (!rule) {
 }
 ```
 
-### 2.3 验证规则
+### 2.3 Verify Rule
 
 ```c
 #include "abstract.h"
 
-// 方式一：简单验证
+// Simple verification
 char err[512] = {0};
 if (!cdsl_verify_rule(rule, schema, err, sizeof(err))) {
     fprintf(stderr, "Verification failed: %s\n", err);
 }
 
-// 方式二：详细验证（收集所有错误）
+// Detailed verification (collect all errors)
 cdsl_error_list_t* errors = cdsl_verify_rule_detailed(rule, schema);
 if (errors->count > 0) {
     cdsl_error_list_print(errors);
@@ -121,12 +137,11 @@ if (errors->count > 0) {
 cdsl_error_list_free(errors);
 ```
 
-### 2.4 创建 VM 并注册动作
+### 2.4 Create VM and Register Actions
 
 ```c
 #include "execution.h"
 
-// 动作回调
 void on_block(const char* name, cdsl_arg_node_t* args, void* ud) {
     if (args && args->expr && args->expr->type == CDSL_EXPR_STRING) {
         printf("BLOCKED: %s\n", args->expr->data.string_val);
@@ -139,30 +154,31 @@ cdsl_vm_register_action(vm, "score", on_score);
 cdsl_vm_register_action(vm, "fail_metric", on_fail_metric);
 ```
 
-### 2.5 绑定上下文并执行
+### 2.5 Bind Context and Execute
 
 ```c
-// 方式一：API 绑定
+// Method 1: API binding
 cdsl_context_t* ctx = cdsl_context_create(schema);
 cdsl_context_set_int(ctx, "user.age", 25);
 cdsl_context_set_string(ctx, "user.name", "Alice");
 cdsl_context_set_bool(ctx, "user.is_active", 1);
 
-// 方式二：JSON 加载
+// Method 2: JSON loading
 cdsl_context_load_json(ctx, "{\"user\":{\"age\":25,\"name\":\"Alice\",\"is_active\":true}}");
 
-// 执行
-cdsl_rule_report_t* report = cdsl_vm_execute(vm, rule, ctx);
+// Execute
+cdsl_rule_report_t* rpt = cdsl_vm_execute(vm, rule, ctx);
 
-// 查看结果
-cdsl_report_print(report);
-// 或序列化为 JSON
-char* json = cdsl_report_to_json(report);
+// View report
+cdsl_report_print(rpt);
+
+// Serialize to JSON
+char* json = cdsl_report_to_json(rpt);
 printf("%s\n", json);
 free(json);
 
-// 清理
-cdsl_report_free(report);
+// Cleanup
+cdsl_report_free(rpt);
 cdsl_context_free(ctx);
 cdsl_vm_free(vm);
 cdsl_free_rule(rule);
@@ -171,9 +187,9 @@ cdsl_schema_free(schema);
 
 ---
 
-## 3. 评分规则使用
+## 3. Scoring Rules
 
-### 3.1 定义评分规则
+### 3.1 Define Scoring Rule
 
 ```c
 const char* dsl =
@@ -192,23 +208,24 @@ const char* dsl =
     "}";
 ```
 
-### 3.2 三态结果
+### 3.2 Tri-State Results
 
 ```c
 cdsl_rule_report_t* rpt = cdsl_vm_execute(vm, rule, ctx);
 
 switch (rpt->status) {
     case CDSL_STATUS_PASSED:
-        printf("通过: %d/%d\n", rpt->total_obtained_score, rpt->total_max_score);
+        printf("Passed: %d/%d\n", rpt->total_obtained_score, rpt->total_max_score);
         break;
     case CDSL_STATUS_PARTIALLY_PASSED:
-        printf("部分通过: %d/%d\n", rpt->total_obtained_score, rpt->total_max_score);
+        printf("Partially passed: %d/%d\n", rpt->total_obtained_score, rpt->total_max_score);
         break;
     case CDSL_STATUS_FAILED:
-        printf("未通过: %d/%d\n", rpt->total_obtained_score, rpt->total_max_score);
+        printf("Failed: %d/%d\n", rpt->total_obtained_score, rpt->total_max_score);
         for (int i = 0; i < rpt->metric_count; i++) {
             if (!rpt->metrics[i].is_passed && rpt->metrics[i].violation_reason) {
-                printf("  失败项: %s - %s\n", rpt->metrics[i].metric_name, rpt->metrics[i].violation_reason);
+                printf("  Failed item: %s - %s\n",
+                       rpt->metrics[i].metric_name, rpt->metrics[i].violation_reason);
             }
         }
         break;
@@ -217,56 +234,253 @@ switch (rpt->status) {
 
 ---
 
-## 4. 批量执行
+## 4. RuleSet Batch Execution
 
-### 4.1 RuleSet 使用
+### 4.1 Basic Usage
 
 ```c
 cdsl_ruleset_t* set = cdsl_ruleset_create();
 
-// 添加规则（数字越小优先级越高）
+// Add rules (lower priority = executes first)
 cdsl_ruleset_add(set, rule_high_priority, 1);
 cdsl_ruleset_add(set, rule_medium_priority, 5);
 cdsl_ruleset_add(set, rule_low_priority, 10);
 
-// 批量执行
+// Execute
 cdsl_ruleset_report_t* batch = cdsl_vm_execute_ruleset(vm, set, ctx);
 cdsl_ruleset_report_print(batch);
 
-// 查看汇总
-printf("通过: %d, 部分通过: %d, 失败: %d\n",
+// View aggregate
+printf("Passed: %d, Partial: %d, Failed: %d\n",
        batch->total_passed, batch->total_partially, batch->total_failed);
-printf("总分: %d/%d\n", batch->aggregate_score, batch->aggregate_max);
+printf("Total: %d/%d\n", batch->aggregate_score, batch->aggregate_max);
 
 cdsl_ruleset_report_free(batch);
 cdsl_ruleset_free(set);
 ```
 
+### 4.2 Hot Reload
+
+```c
+// Load from file
+cdsl_ruleset_load_file(set, "rules.dsl", 1, schema, err_buf, sizeof(err_buf));
+
+// Remove a rule by name
+cdsl_ruleset_remove(set, "check_blacklist");
+
+// Reload (re-parse and replace in-place)
+cdsl_ruleset_reload_file(set, "check_blacklist", "rules.dsl", schema, err_buf, sizeof(err_buf));
+```
+
+### 4.3 Parallel Execution
+
+```c
+// Thread count = 0 uses hardware concurrency
+cdsl_ruleset_report_t* batch = cdsl_vm_execute_ruleset_parallel(vm, set, ctx, 0);
+```
+
+### 4.4 Dependency Ordering
+
+```c
+// Define dependencies in META:
+// RULE r1 { META { depends_on = "r2,r3" } ... }
+
+// Validate and topologically sort
+cdsl_ruleset_validate_deps(set, err_buf, sizeof(err_buf));
+cdsl_ruleset_topo_sort(set);
+```
+
 ---
 
-## 5. AI 集成
+## 5. Debug Trace Mode
 
-### 5.1 Mock 模式（离线演示）
+Enable trace output to stderr for expression evaluation debugging:
+
+```c
+cdsl_vm_t* vm = cdsl_vm_create(schema);
+cdsl_vm_set_debug(vm, 1);  // Enable trace
+
+cdsl_rule_report_t* rpt = cdsl_vm_execute(vm, rule, ctx);
+
+// Sample trace output:
+// [eval] expr: binary(>=) left: id(user.age) right: int(18)
+// [eval]   result: bool(1)
+// [action] block("adult") triggered
+```
+
+---
+
+## 6. Performance Monitoring
+
+```c
+// After execution(s):
+cdsl_stats_t* stats = cdsl_vm_get_stats(vm);
+printf("Total executions: %ld\n", stats->total_executions);
+printf("Total rules:      %ld\n", stats->total_rules_executed);
+printf("Total metrics:    %ld\n", stats->total_metrics_evaluated);
+printf("Total actions:    %ld\n", stats->total_actions_triggered);
+printf("Total time:       %.0f us\n", stats->total_time_us);
+printf("Avg time/rule:    %.2f us\n", stats->avg_time_us);
+
+// Reset for a new measurement period
+cdsl_vm_reset_stats(vm);
+```
+
+---
+
+## 7. Compilation Cache
+
+Avoid re-parsing and re-verifying the same DSL string:
+
+```c
+cdsl_compile_cache_t* cache = cdsl_compile_cache_create(64);
+
+// First call: parse + verify + cache
+cdsl_compiled_rule_t* cr = cdsl_compile(cache, dsl_string, schema, err_buf, sizeof(err_buf));
+if (!cr) {
+    fprintf(stderr, "Compile failed: %s\n", err_buf);
+    return;
+}
+
+// Execute from cache (no re-parse)
+cdsl_rule_report_t* rpt = cdsl_vm_execute_compiled(vm, cr, ctx);
+
+// Subsequent calls with same DSL string hit the cache
+
+cdsl_compile_cache_free(cache);
+```
+
+---
+
+## 8. Custom Functions
+
+Register C callbacks as expression functions usable in DSL:
+
+```c
+// Callback
+cdsl_value_t my_strlen(const char* name, cdsl_arg_node_t* args, void* ud) {
+    cdsl_value_t v = { .type = CDSL_TYPE_INT, .data.int_val = 0 };
+    if (args && args->expr && args->expr->type == CDSL_EXPR_STRING) {
+        v.data.int_val = strlen(args->expr->data.string_val);
+    }
+    return v;
+}
+
+cdsl_value_t my_abs(const char* name, cdsl_arg_node_t* args, void* ud) {
+    cdsl_value_t v = { .type = CDSL_TYPE_INT, .data.int_val = 0 };
+    if (args && args->expr && args->expr->type == CDSL_EXPR_INT) {
+        v.data.int_val = abs(args->expr->data.int_val);
+    }
+    return v;
+}
+
+// Register
+cdsl_vm_register_function(vm, "strlen", my_strlen);
+cdsl_vm_register_function(vm, "abs", my_abs);
+```
+
+Usage in DSL:
+```dsl
+RULE check_name {
+    META { description = "Name validation" }
+    WHEN strlen(user.name) > 0
+    THEN record_warning("name_exists")
+}
+```
+
+---
+
+## 9. Template & Inheritance
+
+Define reusable metric blocks with `TEMPLATE` and inherit with `EXTENDS`:
+
+```dsl
+TEMPLATE base_audit {
+    METRIC blacklist_check {
+        META { weight = "30" is_critical = "true" }
+        CASE supplier.is_blacklisted == false THEN score(30)
+        DEFAULT fail_metric(0, "blacklisted")
+    }
+}
+
+RULE full_audit EXTENDS base_audit {
+    METRIC capital_check {
+        META { description = "Capital evaluation" weight = "40" }
+        CASE supplier.registered_capital >= 5000000 THEN score(40)
+        DEFAULT score(0)
+    }
+    METRIC experience_check {
+        META { description = "Experience check" weight = "30" }
+        CASE supplier.years_in_business >= 3 THEN score(30)
+        DEFAULT score(0)
+    }
+}
+```
+
+Template metrics are copied into the extending rule before custom metrics.
+
+---
+
+## 10. Code Generation (DSL → C)
+
+Generate equivalent C source code from a rule:
+
+```c
+char* c_code = cdsl_codegen_rule_to_c(rule, schema);
+printf("%s\n", c_code);
+free(c_code);
+
+// Write directly to file
+cdsl_codegen_to_file(rule, schema, "generated_rule.c");
+```
+
+---
+
+## 11. Visualization (Graphviz DOT)
+
+Generate DOT format graphs for visualization:
+
+```c
+// Single rule
+char* dot = cdsl_rule_to_dot(rule);
+cdsl_rule_to_dot_file(rule, "rule.dot");
+
+// Ruleset with dependency arrows
+char* set_dot = cdsl_ruleset_to_dot(ruleset);
+cdsl_ruleset_to_dot_file(ruleset, "ruleset.dot");
+```
+
+Render with Graphviz:
+```bash
+dot -Tpng rule.dot -o rule.png
+dot -Tpng ruleset.dot -o ruleset.png
+```
+
+---
+
+## 12. AI Integration
+
+### 12.1 Mock Mode (Offline Demo)
 
 ```c
 #include "ai_bridge.h"
 
-cdsl_ai_config_t cfg = cdsl_ai_config_default(); // use_mock = 1
+cdsl_ai_config_t cfg = cdsl_ai_config_default();  // use_mock = 1
 
-// 自然语言转 DSL
-char* dsl = cdsl_ai_translate("供应商资质审查，黑名单一票否决", schema, &cfg);
+// Natural language to DSL
+char* dsl = cdsl_ai_translate("supplier qualification audit with blacklist check", schema, &cfg);
 printf("Generated DSL:\n%s\n", dsl);
 
-// 规则安全审查
+// Rule safety review
 cdsl_ai_review_t* review = cdsl_ai_review(dsl, schema, &cfg);
-printf("Approved: %s, Risk: %d\n", review->approved ? "YES" : "NO", review->risk_score);
+printf("Approved: %s, Risk: %d/100\n", review->approved ? "YES" : "NO", review->risk_score);
 printf("Reason: %s\n", review->reason);
 
 cdsl_ai_review_free(review);
 free(dsl);
 ```
 
-### 5.2 API 模式（真实 LLM）
+### 12.2 API Mode (Real LLM)
 
 ```c
 cdsl_ai_config_t cfg = {
@@ -279,30 +493,45 @@ cdsl_ai_config_t cfg = {
 char* dsl = cdsl_ai_translate("check if transaction amount exceeds limit", schema, &cfg);
 ```
 
----
-
-## 6. 自定义动作
-
-宿主程序可以注册任意 C 函数作为动作回调：
+### 12.3 Streaming (SSE Callback)
 
 ```c
-// 自定义动作：发送告警
+void on_chunk(const char* chunk, void* ud) {
+    printf("%s", chunk);
+    fflush(stdout);
+}
+
+// Streaming translation
+char* full = cdsl_ai_translate_stream("supplier audit", schema, &cfg, on_chunk, NULL);
+
+// Streaming review
+char* review = cdsl_ai_review_stream(dsl, schema, &cfg, on_chunk, NULL);
+free(full);
+free(review);
+```
+
+---
+
+## 13. Custom Actions
+
+Register any C function as an action callback:
+
+```c
 void alert_handler(const char* name, cdsl_arg_node_t* args, void* ud) {
     const char* reason = "unknown";
     if (args && args->expr && args->expr->type == CDSL_EXPR_STRING) {
         reason = args->expr->data.string_val;
     }
-    // 调用你的告警系统
     send_alert(reason);
 }
 
 cdsl_vm_register_action(vm, "send_alert", alert_handler);
 ```
 
-然后在 DSL 中使用：
+DSL usage:
 ```dsl
 RULE alert_rule {
-    META { description = "Alert on high value" }
+    META { description = "Alert on high value transaction" }
     WHEN transaction.amount > 100000
     THEN send_alert("high_value_transaction")
 }
@@ -310,19 +539,18 @@ RULE alert_rule {
 
 ---
 
-## 7. 错误处理
+## 14. Error Handling
 
-### 7.1 解析错误
+### 14.1 Parse Errors
 
 ```c
 cdsl_rule_t* rule = cdsl_parse_string("INVALID DSL CODE");
 if (!rule) {
-    // Bison 会自动打印错误到 stderr:
-    // Syntax Error: syntax error at line 1
+    // Bison prints error to stderr automatically
 }
 ```
 
-### 7.2 验证错误
+### 14.2 Verification Errors
 
 ```c
 cdsl_error_list_t* errors = cdsl_verify_rule_detailed(rule, schema);
@@ -338,14 +566,15 @@ cdsl_error_list_free(errors);
 
 ---
 
-## 8. 线程安全注意事项
+## 15. Thread Safety Notes
 
-| 操作 | 线程安全 |
-|---|---|
-| `cdsl_parse_string()` | ❌ 不安全（Flex 全局状态） |
-| `cdsl_vm_execute()` | ✅ 安全（每线程独立 VM） |
-| `cdsl_context_*()` | ✅ 安全（每线程独立 Context） |
-| Schema 只读访问 | ✅ 安全 |
-| Rule 只读访问 | ✅ 安全 |
+| Operation | Thread Safe |
+|-----------|-------------|
+| `cdsl_parse_string()` | ❌ Unsafe (Flex global state) |
+| `cdsl_vm_execute()` | ✅ Safe (per-thread VM) |
+| `cdsl_context_*()` | ✅ Safe (per-thread Context) |
+| `cdsl_compile_cache_t` | ❌ Unsafe (protect with mutex) |
+| Schema (read-only) | ✅ Safe |
+| Rule (read-only) | ✅ Safe |
 
-**建议**: 每个线程创建独立的 VM 和 Context。Schema 和 Rule 可以跨线程共享（只读）。
+**Recommendation**: Create independent VM and Context per thread. Schema and Rule can be shared read-only across threads.

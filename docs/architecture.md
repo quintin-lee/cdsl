@@ -1,115 +1,144 @@
-# C-DSL 架构文档
+# C-DSL Architecture Document
 
-## 1. 概述
+## 1. Overview
 
-C-DSL 是一套基于 C 语言的领域特定语言（DSL）规则引擎框架，专为业务规则校验场景设计。支持自然语言描述的规则自动转为 DSL 语句，并通过 AI 审查 + 规则校验双重机制确保规则的正确性和安全性。
+C-DSL is a C-based DSL rule engine framework for business rule validation. Supports natural language rule descriptions → DSL translation, AI safety review, multi-metric scoring, and tri-state audit results.
 
-### 1.1 设计目标
+### 1.1 Design Goals
 
-| 目标 | 说明 |
+| Goal | Description |
 |---|---|
-| **零外部依赖** | 核心库无任何第三方依赖，JSON 解析器自行实现 |
-| **三层架构** | 语法层 → 抽象层 → 执行层，职责清晰 |
-| **AI 驱动** | 支持自然语言转 DSL，AI 规则安全性审查 |
-| **多指标评分** | 支持加权评分、红线一票否决、三态输出 |
-| **易于集成** | CMake 一键集成，支持静态库/共享库/pkg-config |
+| **Zero external dependencies** | Core library has no third-party deps; JSON parser is custom |
+| **Three-layer architecture** | Syntax → Abstract → Execution, clear separation of concerns |
+| **AI driven** | Natural language to DSL translation, AI rule safety review |
+| **Multi-metric scoring** | Weighted scoring, critical-rule veto, tri-state output |
+| **Easy integration** | CMake integration, static/shared library, pkg-config |
+| **Extensible** | Custom action callbacks, custom function registration, rule templates |
 
-### 1.2 技术栈
+### 1.2 Tech Stack
 
-- **语言**: C99
-- **构建**: CMake 3.14+
-- **语法解析**: Flex 2.6+ / Bison 3.8+
-- **文档**: Doxygen
-- **测试**: 自定义轻量测试框架
+- **Language**: C99
+- **Build**: CMake 3.14+
+- **Parsing**: Flex 2.6+ / Bison 3.8+
+- **Documentation**: Doxygen
+- **Testing**: Custom lightweight test framework
 
 ---
 
-## 2. 三层架构
+## 2. Three-Layer Architecture
 
 ```
-┌──────────────────────────────────────────────────────────┐
-│                   AI Bridge Layer                         │
-│         (Natural Language → DSL → Safety Review)         │
-└────────────────────────────┬─────────────────────────────┘
-                             │ Generated DSL String
+┌──────────────────────────────────────────────────────────────┐
+│                     AI Bridge Layer                           │
+│         Natural Language → DSL Translation                    │
+│         Rule Safety Review (mock / LLM / streaming)          │
+└────────────────────────────┬─────────────────────────────────┘
+                             │ DSL String
                              ▼
-┌──────────────────────────────────────────────────────────┐
-│  1. Syntax Layer (语法层)                                  │
-│     Flex (Lexer) ──► Token Stream ──► Bison (Parser)     │
-│                                          │                │
-│                                          ▼                │
-│                                    AST (语法树)            │
-└──────────────────────────────┬───────────────────────────┘
+┌──────────────────────────────────────────────────────────────┐
+│  1. Syntax Layer (Syntax Layer)                               │
+│     Flex (Lexer) ──► Token Stream ──► Bison (Parser)         │
+│                                            │                  │
+│                                            ▼                  │
+│                                      AST (Syntax Tree)        │
+│     Grammar: simple WHEN/THEN, METRIC/CASE/DEFAULT,           │
+│              TEMPLATE/EXTENDS inheritance                     │
+└──────────────────────────────┬───────────────────────────────┘
                                │ Raw AST
                                ▼
-┌──────────────────────────────────────────────────────────┐
-│  2. Abstract Layer (抽象层)                                │
-│     Schema Registration ──► Type Checking ──► Verify      │
-│     (保证变量存在、类型安全、防止运行时越界)                   │
-└──────────────────────────────┬───────────────────────────┘
+┌──────────────────────────────────────────────────────────────┐
+│  2. Abstract Layer (Abstract Layer)                           │
+│     Schema Registration                                       │
+│     ├─ Variable type checking                                 │
+│     ├─ Action signature validation                            │
+│     └─ Expression type compatibility                          │
+│     (Guarantees variable existence, type safety,              │
+│      prevents runtime out-of-bounds)                          │
+└──────────────────────────────┬───────────────────────────────┘
                                │ Verified AST
                                ▼
-┌──────────────────────────────────────────────────────────┐
-│  3. Execution Layer (执行层)                               │
-│     Context Binding ──► AST Interpreter ──► Report        │
-│     (绑定上下文变量，解释执行 AST，生成评分报告)              │
-└──────────────────────────────────────────────────────────┘
+┌──────────────────────────────────────────────────────────────┐
+│  3. Execution Layer (Execution Layer)                          │
+│     VM Engine                                                 │
+│     ├─ Context binding (API or JSON)                          │
+│     ├─ AST interpretation (eval_expr)                         │
+│     ├─ Simple rules: WHEN/THEN pass-fail                      │
+│     ├─ Scoring rules: METRIC/CASE matching, aggregation       │
+│     ├─ RuleSet: priority ordering, batch execution            │
+│     ├─ Hot reload: load/remove/reload rules at runtime        │
+│     ├─ Parallel: multi-threaded RuleSet execution             │
+│     ├─ Debug trace: step-by-step expression evaluation        │
+│     ├─ Compile cache: parse+verify caching by DSL hash        │
+│     ├─ Performance stats: execution counts and timing         │
+│     ├─ Code generation: DSL to C code                         │
+│     └─ Visualization: Graphviz DOT output                     │
+└──────────────────────────────────────────────────────────────┘
 ```
 
-### 2.1 语法层 (Syntax Layer)
+### 2.1 Syntax Layer
 
-**职责**: 将 DSL 源码文本解析为抽象语法树（AST）。
+**Responsibility**: Parse DSL source text into an abstract syntax tree (AST).
 
-**组件**:
-- `parser/lexer.l` - Flex 词法分析器，将源码拆分为 Token 流
-- `parser/parser.y` - Bison 语法分析器，将 Token 流构建为 AST
-- `src/ast.c` - AST 节点构建与内存管理
+**Components**:
+- `parser/lexer.l` — Flex lexer, tokenizes source into token stream
+- `parser/parser.y` — Bison parser, builds AST from token stream
+- `src/ast.c` — AST node construction and memory management
 
-**关键数据流**:
+**Grammar keywords**:
+- `RULE` / `META` / `WHEN` / `THEN` — simple rules
+- `METRIC` / `CASE` / `DEFAULT` — scoring rules
+- `TEMPLATE` / `EXTENDS` — template inheritance
+- `AND` / `OR` / `NOT` — logical operators
+
+### 2.2 Abstract Layer
+
+**Responsibility**: Static analysis of AST — type safety and semantic correctness.
+
+**Components**:
+- `src/abstract.c` — Type checker and semantic validator
+- `include/cdsl_error.h` — Structured error reporting
+
+**Checks performed**:
+- Variable existence (lookup in Schema)
+- Operand type compatibility (e.g., INT vs STRING comparison)
+- Action argument count and types
+- All errors collected (not fail-fast)
+
+### 2.3 Execution Layer
+
+**Responsibility**: Interpret the AST, bind runtime context, generate evaluation reports.
+
+**Components**:
+- `src/execution.c` — AST interpreter, context management, report generation, RuleSet, compilation cache, code generation, visualization
+- `src/cdsl_json.c` — JSON context loader
+
+**Execution flow**:
 ```
-DSL Source String → Lexer (Tokenize) → Parser (Build AST) → cdsl_rule_t
+1. Bind context variables (cdsl_context_t)
+2. Walk AST nodes and evaluate (eval_expr)
+3. For METRIC rules: match CASE per metric, accumulate score
+4. For simple rules: evaluate WHEN, trigger THEN on true
+5. Score vs thresholds → tri-state result
+6. Generate structured report (cdsl_rule_report_t)
 ```
 
-### 2.2 抽象层 (Abstract Layer)
-
-**职责**: 对 AST 进行静态分析，确保类型安全和语义正确。
-
-**组件**:
-- `src/abstract.c` - 类型检查器和语义验证器
-- `include/cdsl_error.h` - 结构化错误报告
-
-**检查内容**:
-- 变量是否存在（通过 Schema 查找）
-- 操作数类型是否匹配（如 INT 与 STRING 不能比较）
-- Action 参数个数和类型是否正确
-- 收集所有错误而非首个即停
-
-### 2.3 执行层 (Execution Layer)
-
-**职责**: 解释执行 AST，绑定运行时上下文，生成评估报告。
-
-**组件**:
-- `src/execution.c` - AST 解释器、上下文管理、报告生成
-- `src/cdsl_json.c` - JSON 上下文加载器
-
-**执行流程**:
-```
-1. 绑定上下文变量 (cdsl_context_t)
-2. 遍历 AST 节点求值 (eval_expr)
-3. 对 METRIC 规则：逐个 CASE 匹配，累计分数
-4. 对简单规则：计算 WHEN 表达式，触发 THEN 动作
-5. 根据分数和阈值判定三态结果
-6. 生成结构化报告 (cdsl_rule_report_t)
-```
+**Additional capabilities**:
+- **Debug trace**: When `cdsl_vm_set_debug(vm, 1)` is called, each expression evaluation prints its type and value to stderr
+- **Hot reload**: Rules can be loaded from files, removed by name, and reloaded without restart
+- **Parallel**: `cdsl_vm_execute_ruleset_parallel()` distributes rules across threads
+- **Compile cache**: `cdsl_compile()` returns a cached parsed+verified rule; `cdsl_vm_execute_compiled()` executes it
+- **Stats**: `cdsl_vm_get_stats()` returns execution count and timing data
+- **Code generation**: `cdsl_codegen_rule_to_c()` outputs C source code equivalent to a rule
+- **Visualization**: `cdsl_rule_to_dot()` / `cdsl_ruleset_to_dot()` generate Graphviz DOT format
 
 ---
 
-## 3. 数据流
+## 3. Data Flow
 
-### 3.1 简单规则执行流
+### 3.1 Simple Rule
 
 ```
-输入: "RULE check { WHEN user.age > 18 THEN block(\"adult\") }"
+Input: "RULE check { WHEN user.age > 18 THEN block(\"adult\") }"
                           │
                           ▼
                     ┌─────────────┐
@@ -118,7 +147,7 @@ DSL Source String → Lexer (Tokenize) → Parser (Build AST) → cdsl_rule_t
                            │ cdsl_rule_t
                            ▼
                     ┌─────────────┐
-                    │  Verifier   │ ← Schema (user.age: INT, block(STRING))
+                    │  Verifier   │ ← Schema
                     └──────┬──────┘
                            │ Verified AST
                            ▼
@@ -132,10 +161,10 @@ DSL Source String → Lexer (Tokenize) → Parser (Build AST) → cdsl_rule_t
                     └─────────────┘
 ```
 
-### 3.2 多指标评分执行流
+### 3.2 Scoring Rule
 
 ```
-输入: RULE scoring { METRIC m1 { CASE ... THEN score(40) } METRIC m2 { ... } }
+Input: RULE scoring { METRIC m1 { CASE ... THEN score(40) } METRIC m2 { ... } }
                           │
                           ▼
                     ┌─────────────┐
@@ -174,25 +203,35 @@ DSL Source String → Lexer (Tokenize) → Parser (Build AST) → cdsl_rule_t
 
 ---
 
-## 4. 线程安全
+## 4. Thread Safety
 
-- 每个线程应创建独立的 `cdsl_vm_t` 和 `cdsl_context_t`
-- `cdsl_schema_t` 可以跨线程共享（只读）
-- `cdsl_rule_t` 解析后可以跨线程共享（只读）
-- Flex/Bison 解析器使用全局状态，**不支持并发解析**，需加锁或使用独立进程
+| Operation | Thread Safe | Notes |
+|-----------|-------------|-------|
+| `cdsl_parse_string()` | ❌ | Flex/Bison use global state; serialize or use in single thread |
+| `cdsl_vm_execute()` | ✅ | Each thread needs its own VM instance |
+| `cdsl_context_*()` | ✅ | Each thread needs its own Context |
+| `cdsl_schema_t` (read-only) | ✅ | Schema can be shared across threads |
+| `cdsl_rule_t` (read-only) | ✅ | Parsed rules can be shared across threads |
+| `cdsl_ruleset_t` (read-only) | ✅ | RuleSet can be shared after construction |
+| `cdsl_vm_execute_ruleset_parallel()` | ✅ | Creates internal per-thread VMs |
+| `cdsl_compile_cache_t` | ❌ | Cache not thread-safe; protect with mutex |
 
 ---
 
-## 5. 内存管理
+## 5. Memory Management
 
-| 对象 | 分配方式 | 释放方式 |
-|---|---|---|
+| Object | Allocation | Free |
+|--------|-----------|------|
 | `cdsl_rule_t` | `malloc` | `cdsl_free_rule()` |
 | `cdsl_context_t` | `malloc` | `cdsl_context_free()` |
 | `cdsl_vm_t` | `malloc` | `cdsl_vm_free()` |
 | `cdsl_report_t` | `malloc` | `cdsl_report_free()` |
 | `cdsl_ruleset_t` | `malloc` | `cdsl_ruleset_free()` |
 | `cdsl_schema_t` | `malloc` | `cdsl_schema_free()` |
-| `cdsl_arena_t` | `malloc` | `cdsl_arena_free()` (批量释放) |
+| `cdsl_arena_t` | `malloc` | `cdsl_arena_free()` (bulk release) |
+| `cdsl_compile_cache_t` | `malloc` | `cdsl_compile_cache_free()` |
+| `cdsl_ai_review_t` | `malloc` | `cdsl_ai_review_free()` |
+| DOT/C codegen output | `malloc` (via `open_memstream`) | `free()` |
+| `cdsl_ruleset_report_t` | `malloc` | `cdsl_ruleset_report_free()` |
 
-**注意**: `cdsl_parse_string()` 返回的 rule 的内部字符串由 parser 复制，用户需调用 `cdsl_free_rule()` 释放。
+**Note**: Internal strings in `cdsl_rule_t` from `cdsl_parse_string()` are copied by the parser; free with `cdsl_free_rule()`.
