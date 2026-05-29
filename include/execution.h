@@ -192,6 +192,13 @@ void cdsl_context_set_float(cdsl_context_t* ctx, const char* name, double val);
 void cdsl_context_set_bool(cdsl_context_t* ctx, const char* name, int val);
 void cdsl_context_set_string(cdsl_context_t* ctx, const char* name, const char* val);
 
+int cdsl_context_get_int(const cdsl_context_t* ctx, const char* name, int default_val);
+double cdsl_context_get_float(const cdsl_context_t* ctx, const char* name, double default_val);
+int cdsl_context_get_bool(const cdsl_context_t* ctx, const char* name, int default_val);
+const char*
+cdsl_context_get_string(const cdsl_context_t* ctx, const char* name, const char* default_val);
+int cdsl_context_remove(cdsl_context_t* ctx, const char* name);
+
 /**
  * @brief Load context variables from a JSON string.
  *

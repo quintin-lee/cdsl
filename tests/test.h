@@ -29,7 +29,11 @@ static int _test_fail = 0;
 
 #define TEST_END()                                                                                 \
 	do {                                                                                       \
-		printf("OK\n");                                                                    \
+		if (_test_fail == 0) {                                                             \
+			printf("OK\n");                                                            \
+		} else {                                                                           \
+			printf("FAILED\n");                                                        \
+		}                                                                                  \
 	} while (0)
 
 #define TEST_SUMMARY()                                                                             \

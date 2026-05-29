@@ -59,6 +59,31 @@ test_context_set_get(void)
 	TEST_ASSERT(found_name, "name set correctly");
 	TEST_ASSERT(found_active, "active set correctly");
 
+	/* Test context getters */
+	TEST_ASSERT_INT(cdsl_context_get_int(ctx, "user.age", 0), 25, "get_int age ok");
+	TEST_ASSERT_STR(
+	    cdsl_context_get_string(ctx, "user.name", NULL), "Alice", "get_string name ok");
+	TEST_ASSERT_INT(cdsl_context_get_bool(ctx, "user.active", 0), 1, "get_bool active ok");
+
+	/* Test default values */
+	TEST_ASSERT_INT(cdsl_context_get_int(ctx, "nonexistent", 42), 42, "get_int default ok");
+	TEST_ASSERT_STR(cdsl_context_get_string(ctx, "nonexistent", "default"),
+			"default",
+			"get_string default ok");
+
+	/* Test type conversions */
+	cdsl_context_set_float(ctx, "score.value", 95.5);
+	TEST_ASSERT_INT(
+	    cdsl_context_get_int(ctx, "score.value", 0), 95, "get_int float conversion ok");
+	TEST_ASSERT(cdsl_context_get_float(ctx, "user.age", 0.0) == 25.0,
+		    "get_float int conversion ok");
+
+	/* Test context remove */
+	int removed = cdsl_context_remove(ctx, "user.age");
+	TEST_ASSERT_INT(removed, 1, "remove age ok");
+	TEST_ASSERT_INT(cdsl_context_get_int(ctx, "user.age", -1), -1, "age removed ok");
+	TEST_ASSERT_INT(cdsl_context_remove(ctx, "nonexistent"), 0, "remove nonexistent ok");
+
 	cdsl_context_free(ctx);
 	cdsl_schema_free(schema);
 	TEST_END();

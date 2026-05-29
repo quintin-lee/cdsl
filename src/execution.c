@@ -186,6 +186,95 @@ cdsl_context_set_string(cdsl_context_t* ctx, const char* name, const char* val)
 	}
 }
 
+int
+cdsl_context_get_int(const cdsl_context_t* ctx, const char* name, int default_val)
+{
+	cdsl_context_entry_t* e = ctx_get((cdsl_context_t*)ctx, name);
+	if (e) {
+		if (e->value.type == CDSL_TYPE_INT) {
+			return e->value.data.int_val;
+		}
+		if (e->value.type == CDSL_TYPE_FLOAT) {
+			return (int)e->value.data.float_val;
+		}
+		if (e->value.type == CDSL_TYPE_BOOL) {
+			return e->value.data.bool_val;
+		}
+	}
+	return default_val;
+}
+
+double
+cdsl_context_get_float(const cdsl_context_t* ctx, const char* name, double default_val)
+{
+	cdsl_context_entry_t* e = ctx_get((cdsl_context_t*)ctx, name);
+	if (e) {
+		if (e->value.type == CDSL_TYPE_FLOAT) {
+			return e->value.data.float_val;
+		}
+		if (e->value.type == CDSL_TYPE_INT) {
+			return (double)e->value.data.int_val;
+		}
+		if (e->value.type == CDSL_TYPE_BOOL) {
+			return (double)e->value.data.bool_val;
+		}
+	}
+	return default_val;
+}
+
+int
+cdsl_context_get_bool(const cdsl_context_t* ctx, const char* name, int default_val)
+{
+	cdsl_context_entry_t* e = ctx_get((cdsl_context_t*)ctx, name);
+	if (e) {
+		if (e->value.type == CDSL_TYPE_BOOL) {
+			return e->value.data.bool_val;
+		}
+		if (e->value.type == CDSL_TYPE_INT) {
+			return e->value.data.int_val != 0;
+		}
+		if (e->value.type == CDSL_TYPE_FLOAT) {
+			return e->value.data.float_val != 0.0;
+		}
+	}
+	return default_val;
+}
+
+const char*
+cdsl_context_get_string(const cdsl_context_t* ctx, const char* name, const char* default_val)
+{
+	cdsl_context_entry_t* e = ctx_get((cdsl_context_t*)ctx, name);
+	if (e && e->value.type == CDSL_TYPE_STRING) {
+		return e->value.data.string_val;
+	}
+	return default_val;
+}
+
+int
+cdsl_context_remove(cdsl_context_t* ctx, const char* name)
+{
+	if (!ctx || !name) {
+		return 0;
+	}
+	cdsl_context_entry_t* prev = NULL;
+	for (cdsl_context_entry_t* e = ctx->entries; e; prev = e, e = e->next) {
+		if (strcmp(e->name, name) == 0) {
+			if (prev) {
+				prev->next = e->next;
+			} else {
+				ctx->entries = e->next;
+			}
+			free(e->name);
+			if (e->value.type == CDSL_TYPE_STRING) {
+				free(e->value.data.string_val);
+			}
+			free(e);
+			return 1;
+		}
+	}
+	return 0;
+}
+
 /**
  * @brief Recursively load JSON object values into the context (internal).
  *
