@@ -424,8 +424,28 @@ void cdsl_report_print(const cdsl_rule_report_t* report);
 char* cdsl_report_to_json(const cdsl_rule_report_t* report);
 
 /**
- * @brief Compile a DSL rule string into an AST with caching.
+ * @brief Handle to a compiled rule in the cache.
+ */
+typedef struct cdsl_compiled_rule {
+	cdsl_rule_t* rule; /**< Parsed and verified AST */
+	char* dsl_hash;	   /**< Hash of the original DSL source */
+	int verified;	   /**< 1 if successfully verified against schema */
+} cdsl_compiled_rule_t;
+
+/**
+ * @brief Thread-safe compilation cache.
  *
+ * Stores compiled ASTs indexed by their DSL source hash to avoid
+ * redundant parsing and verification.
+ */
+typedef struct cdsl_compile_cache {
+	cdsl_hashmap_t* map;   /**< Internal hashmap storage */
+	pthread_rwlock_t lock; /**< Reader-writer lock for concurrency */
+} cdsl_compile_cache_t;
+
+/**
+ * @brief Compile a DSL rule string into an AST with caching.
+...
  * This function handles parsing, verification, and caching. If the same DSL code
  * (by hash) is already in the cache, the cached AST is returned.
  *
