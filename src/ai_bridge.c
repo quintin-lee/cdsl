@@ -4,6 +4,36 @@
 #include <stdio.h>
 #include <ctype.h>
 
+#ifdef CDSL_USE_CURL
+#include <curl/curl.h>
+
+/* Memory buffer for CURL response */
+struct curl_mem_buffer {
+	char* data;
+	size_t size;
+};
+
+/* Callback to collect CURL response data */
+static size_t
+cdsl_curl_write_callback(void* contents, size_t size, size_t nmemb, void* userp)
+{
+	size_t realsize = size * nmemb;
+	struct curl_mem_buffer* mem = (struct curl_mem_buffer*)userp;
+
+	char* ptr = realloc(mem->data, mem->size + realsize + 1);
+	if (!ptr) {
+		return 0; /* out of memory */
+	}
+
+	mem->data = ptr;
+	memcpy(&(mem->data[mem->size]), contents, realsize);
+	mem->size += realsize;
+	mem->data[mem->size] = 0;
+
+	return realsize;
+}
+#endif
+
 /* Escapes single quotes in s for use inside a single-quoted shell argument.
  * Replaces each ' with '"'"' (close-quote, double-quote single-quote, re-open).
  * Returns allocated string caller must free. */
@@ -50,6 +80,82 @@ call_llm_api(const char* prompt, const cdsl_ai_config_t* config)
 		return NULL;
 	}
 
+#ifdef CDSL_USE_CURL
+	CURL* curl = curl_easy_init();
+	if (!curl) {
+		return NULL;
+	}
+
+	char url[512];
+	snprintf(url, sizeof(url), "%s/chat/completions", config->api_base);
+
+	struct curl_slist* headers = NULL;
+	headers = curl_slist_append(headers, "Content-Type: application/json");
+	char auth_header[512];
+	snprintf(auth_header, sizeof(auth_header), "Authorization: Bearer %s", config->api_key);
+	headers = curl_slist_append(headers, auth_header);
+
+	/* Escape prompt for JSON */
+	size_t p_len = strlen(prompt);
+	char* escaped_prompt = malloc(p_len * 4 + 1);
+	char* dst = escaped_prompt;
+	for (const char* s = prompt; *s; s++) {
+		if (*s == '"') {
+			*dst++ = '\\';
+			*dst++ = '"';
+		} else if (*s == '\\') {
+			*dst++ = '\\';
+			*dst++ = '\\';
+		} else if (*s == '\n') {
+			*dst++ = '\\';
+			*dst++ = 'n';
+		} else if (*s == '\r') {
+			*dst++ = '\\';
+			*dst++ = 'r';
+		} else if (*s == '\t') {
+			*dst++ = '\\';
+			*dst++ = 't';
+		} else {
+			*dst++ = *s;
+		}
+	}
+	*dst = '\0';
+
+	char* body = malloc(strlen(config->model) + strlen(escaped_prompt) + 128);
+	sprintf(body,
+		"{\"model\":\"%s\",\"messages\":[{\"role\":\"user\",\"content\":\"%s\"}],"
+		"\"temperature\":0.1}",
+		config->model,
+		escaped_prompt);
+	free(escaped_prompt);
+
+	struct curl_mem_buffer chunk;
+	chunk.data = malloc(1);
+	chunk.size = 0;
+
+	curl_easy_setopt(curl, CURLOPT_URL, url);
+	curl_easy_setopt(curl, CURLOPT_HTTPHEADER, headers);
+	curl_easy_setopt(curl, CURLOPT_POSTFIELDS, body);
+	curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, cdsl_curl_write_callback);
+	curl_easy_setopt(curl, CURLOPT_WRITEDATA, (void*)&chunk);
+	curl_easy_setopt(curl, CURLOPT_TIMEOUT, 30L);
+
+	CURLcode res = curl_easy_perform(curl);
+	char* result = NULL;
+	if (res == CURLE_OK) {
+		result = chunk.data;
+	} else {
+		free(chunk.data);
+	}
+
+	curl_slist_free_all(headers);
+	free(body);
+	curl_easy_cleanup(curl);
+
+	if (!result) {
+		return NULL;
+	}
+#else
 	char* escaped_prompt = malloc(strlen(prompt) * 4 + 1);
 	char* dst = escaped_prompt;
 	for (const char* s = prompt; *s; s++) {
@@ -139,6 +245,7 @@ call_llm_api(const char* prompt, const cdsl_ai_config_t* config)
 	}
 	result[total] = '\0';
 	pclose(fp);
+#endif
 
 	char* content = strstr(result, "\"content\":\"");
 	if (!content) {

@@ -9,6 +9,15 @@ set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 find_package(FLEX REQUIRED)
 find_package(BISON REQUIRED)
 
+# libcurl for AI bridge
+find_package(CURL)
+if(CURL_FOUND)
+    message(STATUS "Found libcurl - native AI bridge networking enabled")
+    add_definitions(-DCDSL_USE_CURL)
+else()
+    message(WARNING "libcurl not found - AI bridge will fallback to popen(\"curl ...\")")
+endif()
+
 bison_target(MyParser parser/parser.y ${CMAKE_CURRENT_BINARY_DIR}/parser.tab.c)
 flex_target(MyLexer parser/lexer.l ${CMAKE_CURRENT_BINARY_DIR}/lexer.c)
 add_flex_bison_dependency(MyLexer MyParser)
@@ -34,6 +43,10 @@ target_include_directories(cdsl_objects PRIVATE
     $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
     $<BUILD_INTERFACE:${CMAKE_CURRENT_BINARY_DIR}>
 )
+if(CURL_FOUND)
+    target_link_libraries(cdsl_objects PRIVATE CURL::libcurl)
+endif()
+
 if(MSVC)
     target_compile_options(cdsl_objects PRIVATE /W4 /WX)
 else()
@@ -48,6 +61,9 @@ target_include_directories(cdsl_static PUBLIC
 )
 set_target_properties(cdsl_static PROPERTIES OUTPUT_NAME cdsl)
 target_link_libraries(cdsl_static PUBLIC Threads::Threads)
+if(CURL_FOUND)
+    target_link_libraries(cdsl_static PRIVATE CURL::libcurl)
+endif()
 
 # 4. Shared library
 add_library(cdsl_shared SHARED $<TARGET_OBJECTS:cdsl_objects>)
@@ -56,11 +72,9 @@ target_include_directories(cdsl_shared PUBLIC
     $<BUILD_INTERFACE:${CMAKE_CURRENT_BINARY_DIR}>
 )
 target_link_libraries(cdsl_shared PUBLIC Threads::Threads)
-set_target_properties(cdsl_shared PROPERTIES
-    OUTPUT_NAME cdsl
-    VERSION ${PROJECT_VERSION}
-    SOVERSION ${PROJECT_VERSION_MAJOR}
-)
+if(CURL_FOUND)
+    target_link_libraries(cdsl_shared PRIVATE CURL::libcurl)
+endif()
 
 # 5. Default target alias
 add_library(cdsl ALIAS cdsl_static)
