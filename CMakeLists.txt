@@ -97,6 +97,10 @@ add_executable(test_parallel_parse tests/test_parallel_parse.c)
 target_link_libraries(test_parallel_parse PRIVATE cdsl_static)
 add_test(NAME test_parallel_parse COMMAND test_parallel_parse)
 
+add_executable(test_parallel_cache tests/test_parallel_cache.c)
+target_link_libraries(test_parallel_cache PRIVATE cdsl_static)
+add_test(NAME test_parallel_cache COMMAND test_parallel_cache)
+
 # 7. Install targets
 include(GNUInstallDirs)
 

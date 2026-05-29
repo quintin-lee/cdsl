@@ -1252,18 +1252,17 @@ cdsl_report_to_json(const cdsl_rule_report_t* report)
 }
 
 /**
- * @brief Compute a djb2 hash for a DSL string (internal).
- * @param s String to hash
- * @return Hash value
+ * @brief Helper to free a compiled rule entry (internal).
  */
-static unsigned int
-hash_dsl_string(const char* s)
+static void
+free_compiled_rule(void* val)
 {
-	unsigned int h = 5381;
-	for (; *s; s++) {
-		h = ((h << 5) + h) + (unsigned char)*s;
+	cdsl_compiled_rule_t* e = (cdsl_compiled_rule_t*)val;
+	if (e) {
+		cdsl_free_rule(e->rule);
+		free(e->dsl_hash);
+		free(e);
 	}
-	return h;
 }
 
 /**
@@ -1276,8 +1275,8 @@ cdsl_compile_cache_t*
 cdsl_compile_cache_create(int capacity)
 {
 	cdsl_compile_cache_t* c = calloc(1, sizeof(*c));
-	c->capacity = capacity > 0 ? capacity : 64;
-	c->entries = calloc(c->capacity, sizeof(cdsl_compiled_rule_t*));
+	c->map = cdsl_hashmap_create(capacity > 0 ? capacity : 64);
+	pthread_rwlock_init(&c->lock, NULL);
 	return c;
 }
 
@@ -1294,14 +1293,10 @@ cdsl_compile_cache_free(cdsl_compile_cache_t* cache)
 	if (!cache) {
 		return;
 	}
-	for (int i = 0; i < cache->capacity; i++) {
-		cdsl_compiled_rule_t* e = cache->entries[i];
-		if (e) {
-			free(e->dsl_hash);
-			free(e);
-		}
-	}
-	free(cache->entries);
+	pthread_rwlock_wrlock(&cache->lock);
+	cdsl_hashmap_free(cache->map, free_compiled_rule);
+	pthread_rwlock_unlock(&cache->lock);
+	pthread_rwlock_destroy(&cache->lock);
 	free(cache);
 }
 
@@ -1331,11 +1326,18 @@ cdsl_compile(cdsl_compile_cache_t* cache,
 		}
 		return NULL;
 	}
-	unsigned int idx = hash_dsl_string(dsl_code) % cache->capacity;
-	cdsl_compiled_rule_t* existing = cache->entries[idx];
-	if (existing && existing->dsl_hash && strcmp(existing->dsl_hash, dsl_code) == 0) {
+
+	/* 1. Fast path: Read lock for lookup */
+	pthread_rwlock_rdlock(&cache->lock);
+	cdsl_compiled_rule_t* existing =
+	    (cdsl_compiled_rule_t*)cdsl_hashmap_get(cache->map, dsl_code);
+	if (existing) {
+		pthread_rwlock_unlock(&cache->lock);
 		return existing;
 	}
+	pthread_rwlock_unlock(&cache->lock);
+
+	/* 2. Slow path: Parse and verify outside lock */
 	cdsl_rule_t* rule = cdsl_parse_string(dsl_code);
 	if (!rule) {
 		if (err_buf) {
@@ -1350,19 +1352,27 @@ cdsl_compile(cdsl_compile_cache_t* cache,
 				snprintf(err_buf, err_buf_sz, "Verify failed: %s", verr);
 			}
 			cdsl_free_rule(rule);
-			return 0;
+			return NULL;
 		}
 	}
+
+	/* 3. Write path: Update cache */
+	pthread_rwlock_wrlock(&cache->lock);
+	existing = (cdsl_compiled_rule_t*)cdsl_hashmap_get(cache->map, dsl_code);
 	if (existing) {
-		cdsl_free_rule(existing->rule);
-		free(existing->dsl_hash);
-	} else {
-		existing = calloc(1, sizeof(*existing));
-		cache->entries[idx] = existing;
+		/* Someone else compiled it while we were parsing */
+		cdsl_free_rule(rule);
+		pthread_rwlock_unlock(&cache->lock);
+		return existing;
 	}
+
+	existing = calloc(1, sizeof(*existing));
 	existing->rule = rule;
 	existing->dsl_hash = strdup(dsl_code);
 	existing->verified = 1;
+	cdsl_hashmap_put(cache->map, dsl_code, existing);
+
+	pthread_rwlock_unlock(&cache->lock);
 	return existing;
 }
 

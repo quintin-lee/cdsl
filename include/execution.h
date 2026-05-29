@@ -16,6 +16,7 @@
 #include "ast.h"
 #include "abstract.h"
 #include "cdsl_hashmap.h"
+#include <pthread.h>
 
 /**
  * @brief Runtime value wrapper.
@@ -242,9 +243,8 @@ typedef struct cdsl_compiled_rule {
 } cdsl_compiled_rule_t;
 
 typedef struct cdsl_compile_cache {
-	cdsl_compiled_rule_t** entries;
-	int count;
-	int capacity;
+	cdsl_hashmap_t* map;   /**< Map from DSL hash to compiled rule */
+	pthread_rwlock_t lock; /**< Lock for thread-safe access */
 } cdsl_compile_cache_t;
 
 cdsl_compile_cache_t* cdsl_compile_cache_create(int capacity);
