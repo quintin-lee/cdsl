@@ -31,7 +31,8 @@ C-DSL is a C-based DSL rule engine framework for business rule validation. Suppo
 ┌──────────────────────────────────────────────────────────────┐
 │                     AI Bridge Layer                           │
 │         Natural Language → DSL Translation                    │
-│         Rule Safety Review (mock / LLM / streaming)          │
+│         (schema-aware offline generation / LLM API / stream)  │
+│         Rule Safety Review (structural analysis / LLM)        │
 └────────────────────────────┬─────────────────────────────────┘
                              │ DSL String
                              ▼

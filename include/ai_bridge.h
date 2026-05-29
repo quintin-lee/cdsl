@@ -44,10 +44,11 @@ typedef struct {
  * @endcode
  */
 typedef struct {
-    int use_mock;      /**< 1 = use offline mock translation, 0 = use LLM API */
-    char* api_key;     /**< API key for LLM service (e.g. OpenAI) */
-    char* api_base;    /**< API base URL (e.g. "https://api.openai.com/v1") */
-    char* model;       /**< Model name (e.g. "gpt-4o-mini") */
+    int use_mock;           /**< 1 = use offline mock translation, 0 = use LLM API */
+    char* api_key;          /**< API key for LLM service (e.g. OpenAI) */
+    char* api_base;         /**< API base URL (e.g. "https://api.openai.com/v1") */
+    char* model;            /**< Model name (e.g. "gpt-4o-mini") */
+    char* business_context; /**< Optional business context to guide DSL generation */
 } cdsl_ai_config_t;
 
 /**

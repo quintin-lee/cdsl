@@ -340,23 +340,18 @@ Natural language to DSL translation, DSL rule safety review, with streaming supp
 
 | Mode | `use_mock` | Description |
 |------|-----------|-------------|
-| Mock mode | 1 | Offline keyword-based translation, structured review |
+| Offline | 1 | Schema-based generic DSL generation, structural rule review |
 | API mode | 0 | OpenAI-compatible LLM API calls |
 | Stream (API) | 0 + stream call | Callback-based SSE streaming translation/review |
 
-### Mock Translation Logic
+### Offline Generation
 
-Keyword matching to predefined templates:
-
-| Keywords | Generated Rule |
-|----------|---------------|
-| `supplier` / supplier / qualification | Supplier qualification audit rule |
-| `document` / document / format | Document format audit rule |
-| `content` / content / safety | Content safety audit rule |
-
-### Safety Review Scores
-
-Mock mode review scoring (max 70 points):
+The offline mode generates DSL rules dynamically from the registered schema:
+- Creates one METRIC per schema variable
+- Generates type-appropriate CASE conditions (e.g., `>= 0` for INT, `!= ""` for STRING)
+- Supports simple WHEN/THEN rules when input contains "when" / "if" keywords
+- Rule name is extracted from the first word of the natural language input
+- `business_context` field can provide additional guidance for API mode prompts
 
 | Check | Points | Description |
 |-------|--------|-------------|

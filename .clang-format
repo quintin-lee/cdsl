@@ -1,0 +1,29 @@
+---
+BasedOnStyle: LLVM
+AccessModifierOffset: -8
+AlignAfterOpenBracket: Align
+AlignTrailingComments:
+  Kind: Always
+  OverEmptyLines: 0
+AllowShortBlocksOnASingleLine: Never
+AllowShortCaseLabelsOnASingleLine: false
+AllowShortFunctionsOnASingleLine: None
+AllowShortIfStatementsOnASingleLine: false
+AllowShortLoopsOnASingleLine: false
+AlwaysBreakAfterReturnType: AllDefinitions
+BinPackArguments: false
+BinPackParameters: false
+BreakBeforeBraces: Linux
+ColumnLimit: 100
+DerivePointerAlignment: false
+IndentCaseLabels: false
+IndentWidth: 8
+InsertBraces: true
+MaxEmptyLinesToKeep: 1
+PointerAlignment: Left
+ReflowComments: false
+SortIncludes: false
+SpaceBeforeParens: ControlStatements
+TabWidth: 8
+UseTab: Always
+...

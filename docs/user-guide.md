@@ -460,25 +460,30 @@ dot -Tpng ruleset.dot -o ruleset.png
 
 ## 12. AI Integration
 
-### 12.1 Mock Mode (Offline Demo)
+### 12.1 Offline Mode (Demo)
 
 ```c
 #include "ai_bridge.h"
 
 cdsl_ai_config_t cfg = cdsl_ai_config_default();  // use_mock = 1
 
-// Natural language to DSL
-char* dsl = cdsl_ai_translate("supplier qualification audit with blacklist check", schema, &cfg);
+// Natural language to DSL — generates schema-aware rules
+char* dsl = cdsl_ai_translate("supplier qualification audit", schema, &cfg);
 printf("Generated DSL:\n%s\n", dsl);
+
+// Optional business context to guide generation
+cfg.business_context = "Evaluate supplier capital, blacklist status, and experience";
+char* dsl2 = cdsl_ai_translate("supplier audit", schema, &cfg);
 
 // Rule safety review
 cdsl_ai_review_t* review = cdsl_ai_review(dsl, schema, &cfg);
 printf("Approved: %s, Risk: %d/100\n", review->approved ? "YES" : "NO", review->risk_score);
-printf("Reason: %s\n", review->reason);
 
 cdsl_ai_review_free(review);
 free(dsl);
 ```
+
+The offline mode generates DSL using the registered schema variables — one metric per variable — with appropriate CASE conditions based on each variable's type.
 
 ### 12.2 API Mode (Real LLM)
 
@@ -487,7 +492,8 @@ cdsl_ai_config_t cfg = {
     .use_mock = 0,
     .api_key = getenv("OPENAI_API_KEY"),
     .api_base = "https://api.openai.com/v1",
-    .model = "gpt-4o-mini"
+    .model = "gpt-4o-mini",
+    .business_context = "Financial compliance audit with 3-tier scoring"
 };
 
 char* dsl = cdsl_ai_translate("check if transaction amount exceeds limit", schema, &cfg);

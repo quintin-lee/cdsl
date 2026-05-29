@@ -528,10 +528,11 @@ Topologically sort rules based on `depends_on` meta. Returns 1 on success, 0 if 
 #### `cdsl_ai_config_t`
 ```c
 typedef struct {
-    int use_mock;
-    char* api_key;
-    char* api_base;
-    char* model;
+    int use_mock;           // 1 = offline generation, 0 = LLM API
+    char* api_key;          // API key for LLM service
+    char* api_base;         // API base URL (e.g. "https://api.openai.com/v1")
+    char* model;            // Model name (e.g. "gpt-4o-mini")
+    char* business_context; // Optional business info to guide DSL generation
 } cdsl_ai_config_t;
 ```
 
@@ -565,7 +566,7 @@ char* cdsl_ai_translate(const char* natural_language,
                          const cdsl_schema_t* schema,
                          const cdsl_ai_config_t* config);
 ```
-Translate natural language to DSL code. In mock mode uses keyword matching; in API mode calls LLM. Must be freed with `free()`.
+Translate natural language to DSL code. In offline mode generates DSL from schema variables; in API mode calls LLM. The `business_context` field in config provides additional context for generation. Must be freed with `free()`.
 
 #### `cdsl_ai_review`
 ```c

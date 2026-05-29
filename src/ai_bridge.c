@@ -67,126 +67,187 @@ cdsl_ai_config_t cdsl_ai_config_default(void) {
     cfg.api_key = NULL;
     cfg.api_base = NULL;
     cfg.model = NULL;
+    cfg.business_context = NULL;
     return cfg;
 }
 
-static char* mock_translate_supplier_capital(void) {
-    return strdup(
-        "RULE supplier_qualification_audit {\n"
-        "    META {\n"
-        "        description = \"Supplier onboarding qualification audit and grading\"\n"
-        "        category = \"compliance\"\n"
-        "        pass_threshold = \"80\"\n"
-        "        partial_threshold = \"60\"\n"
-        "    }\n"
-        "    METRIC credit_check {\n"
-        "        META {\n"
-        "            description = \"Anti-fraud and blacklist compliance\"\n"
-        "            weight = \"30\"\n"
-        "            is_critical = \"true\"\n"
-        "        }\n"
-        "        CASE supplier.is_blacklisted == false THEN score(30)\n"
-        "        DEFAULT fail_metric(0, \"blacklisted_supplier_rejected\")\n"
-        "    }\n"
-        "    METRIC capital_check {\n"
-        "        META {\n"
-        "            description = \"Registered capital score\"\n"
-        "            weight = \"40\"\n"
-        "        }\n"
-        "        CASE supplier.registered_capital >= 5000000 THEN score(40)\n"
-        "        CASE supplier.registered_capital >= 1000000 THEN score(20)\n"
-        "        DEFAULT score(0)\n"
-        "    }\n"
-        "    METRIC experience_check {\n"
-        "        META {\n"
-        "            description = \"Supplier business age evaluation\"\n"
-        "            weight = \"30\"\n"
-        "        }\n"
-        "        CASE supplier.years_in_business >= 5 THEN score(30)\n"
-        "        CASE supplier.years_in_business >= 2 THEN score(15)\n"
-        "        DEFAULT score(0)\n"
-        "    }\n"
-        "}\n"
-    );
+static const char* type_to_str(cdsl_type_t t) {
+    switch (t) {
+        case CDSL_TYPE_INT:    return "INT";
+        case CDSL_TYPE_FLOAT:  return "FLOAT";
+        case CDSL_TYPE_BOOL:   return "BOOL";
+        case CDSL_TYPE_STRING: return "STRING";
+        default:               return "VOID";
+    }
 }
 
-static char* mock_translate_doc_format(void) {
-    return strdup(
-        "RULE document_format_audit {\n"
-        "    META {\n"
-        "        description = \"Document format and signature compliance\"\n"
-        "        category = \"compliance\"\n"
-        "        pass_threshold = \"100\"\n"
-        "        partial_threshold = \"60\"\n"
-        "    }\n"
-        "    METRIC format_check {\n"
-        "        META {\n"
-        "            description = \"File format validation\"\n"
-        "            weight = \"50\"\n"
-        "            is_critical = \"true\"\n"
-        "        }\n"
-        "        CASE document.format == \"pdf\" THEN score(50)\n"
-        "        DEFAULT fail_metric(0, \"invalid_format\")\n"
-        "    }\n"
-        "    METRIC signature_check {\n"
-        "        META {\n"
-        "            description = \"Digital signature verification\"\n"
-        "            weight = \"30\"\n"
-        "        }\n"
-        "        CASE document.has_digital_signature == true THEN score(30)\n"
-        "        DEFAULT score(0)\n"
-        "    }\n"
-        "    METRIC size_check {\n"
-        "        META {\n"
-        "            description = \"File size under limit\"\n"
-        "            weight = \"20\"\n"
-        "        }\n"
-        "        CASE document.size_mb <= 10.0 THEN score(20)\n"
-        "        CASE document.size_mb <= 20.0 THEN score(10)\n"
-        "        DEFAULT score(0)\n"
-        "    }\n"
-        "}\n"
-    );
+static int count_schema_vars(const cdsl_schema_t* schema) {
+    int n = 0;
+    for (cdsl_var_schema_t* v = schema ? schema->vars : NULL; v; v = v->next) n++;
+    return n;
 }
 
-static char* mock_translate_content_safety(void) {
-    return strdup(
-        "RULE content_safety_audit {\n"
+static void build_schema_prompt(char* buf, size_t sz, const cdsl_schema_t* schema) {
+    size_t pos = strlen(buf);
+    snprintf(buf + pos, sz - pos, "Available variables:\n");
+    for (cdsl_var_schema_t* v = schema ? schema->vars : NULL; v; v = v->next) {
+        pos = strlen(buf);
+        snprintf(buf + pos, sz - pos, "  - %s (%s)\n", v->name, type_to_str(v->type));
+    }
+    pos = strlen(buf);
+    snprintf(buf + pos, sz - pos, "\nAvailable actions:\n");
+    for (cdsl_action_schema_t* a = schema ? schema->actions : NULL; a; a = a->next) {
+        pos = strlen(buf);
+        snprintf(buf + pos, sz - pos, "  - %s(", a->name);
+        for (int i = 0; i < a->arg_count; i++) {
+            if (i > 0) { pos = strlen(buf); snprintf(buf + pos, sz - pos, ", "); }
+            pos = strlen(buf);
+            snprintf(buf + pos, sz - pos, "%s", type_to_str(a->arg_types[i]));
+        }
+        pos = strlen(buf);
+        snprintf(buf + pos, sz - pos, ") -> %s\n", type_to_str(a->return_type));
+    }
+}
+
+static int has_keyword(const char* text, const char* word) {
+    if (!text || !word) return 0;
+    size_t wlen = strlen(word);
+    const char* p = text;
+    while ((p = strstr(p, word)) != NULL) {
+        char before = (p > text) ? *(p - 1) : ' ';
+        char after = p[wlen];
+        if ((before == ' ' || before == '\t' || before == '\n' || before == ',' || before == '(')
+            && (after == ' ' || after == '\t' || after == '\n' || after == ',' || after == '.' || after == ')' || after == '\0')) {
+            return 1;
+        }
+        p++;
+    }
+    return 0;
+}
+
+static char* mock_translate_generic(const char* natural_language,
+                                     const cdsl_schema_t* schema,
+                                     const char* business_context) {
+    int is_simple = (has_keyword(natural_language, "when")
+                     || has_keyword(natural_language, "if")
+                     || has_keyword(natural_language, "WHEN")
+                     || has_keyword(natural_language, "IF"));
+    int n_vars = count_schema_vars(schema);
+
+    if (!schema || n_vars == 0) {
+        return strdup(
+            "RULE generated_rule {\n"
+            "    META {\n"
+            "        description = \"Auto-generated rule\"\n"
+            "        pass_threshold = \"80\"\n"
+            "        partial_threshold = \"50\"\n"
+            "    }\n"
+            "    METRIC score {\n"
+            "        META { description = \"Score metric\" weight = \"100\" }\n"
+            "        DEFAULT score(0)\n"
+            "    }\n"
+            "}\n"
+        );
+    }
+
+    char rule_name[128] = {0};
+    const char* nl = natural_language;
+    while (*nl == ' ') nl++;
+    int rn = 0;
+    for (int i = 0; nl[i] && nl[i] != ' ' && nl[i] != ',' && nl[i] != '.' && rn < 32; i++) {
+        if (isalpha((unsigned char)nl[i]) || nl[i] == '_') rule_name[rn++] = tolower((unsigned char)nl[i]);
+    }
+    rule_name[rn] = '\0';
+    if (rn == 0) strcpy(rule_name, "rule");
+
+    char desc[256];
+    snprintf(desc, sizeof(desc), "%s", natural_language);
+    if (business_context) {
+        snprintf(desc + strlen(desc), sizeof(desc) - strlen(desc), " | context: %s", business_context);
+    }
+
+    if (is_simple && n_vars >= 1) {
+        cdsl_var_schema_t* first_var = schema->vars;
+        char buf[4096];
+        snprintf(buf, sizeof(buf),
+            "RULE %s {\n"
+            "    META {\n"
+            "        description = \"%s\"\n"
+            "    }\n"
+            "    WHEN %s %s %s\n"
+            "    THEN record_warning(\"triggered\")\n"
+            "}\n",
+            rule_name, desc,
+            first_var->name,
+            (first_var->type == CDSL_TYPE_INT || first_var->type == CDSL_TYPE_FLOAT) ? ">" : "==",
+            first_var->type == CDSL_TYPE_STRING ? "\"expected\"" :
+            first_var->type == CDSL_TYPE_BOOL ? "true" : "0");
+        return strdup(buf);
+    }
+
+    char buf[8192] = {0};
+    snprintf(buf, sizeof(buf),
+        "RULE %s {\n"
         "    META {\n"
-        "        description = \"User-generated content safety and moderation\"\n"
-        "        category = \"moderation\"\n"
+        "        description = \"%s\"\n"
         "        pass_threshold = \"80\"\n"
         "        partial_threshold = \"50\"\n"
-        "    }\n"
-        "    METRIC sensitive_check {\n"
-        "        META {\n"
-        "            description = \"Sensitive words detection\"\n"
-        "            weight = \"30\"\n"
-        "            is_critical = \"true\"\n"
-        "        }\n"
-        "        CASE content.sensitive_words_count == 0 THEN score(30)\n"
-        "        DEFAULT fail_metric(0, \"sensitive_words_detected\")\n"
-        "    }\n"
-        "    METRIC pii_check {\n"
-        "        META {\n"
-        "            description = \"Personal identifiable information protection\"\n"
-        "            weight = \"40\"\n"
-        "            is_critical = \"true\"\n"
-        "        }\n"
-        "        CASE content.contains_pii == false THEN score(40)\n"
-        "        DEFAULT fail_metric(0, \"pii_exposure_risk\")\n"
-        "    }\n"
-        "    METRIC spam_check {\n"
-        "        META {\n"
-        "            description = \"Spam and quality scoring\"\n"
-        "            weight = \"30\"\n"
-        "        }\n"
-        "        CASE content.ai_spam_score < 0.3 THEN score(30)\n"
-        "        CASE content.ai_spam_score < 0.7 THEN score(15)\n"
-        "        DEFAULT score(0)\n"
-        "    }\n"
-        "}\n"
-    );
+        "    }\n",
+        rule_name, desc);
+
+    int metric_idx = 0;
+    for (cdsl_var_schema_t* v = schema->vars; v && metric_idx < 8; v = v->next, metric_idx++) {
+        char mname[64];
+        const char* dot = strrchr(v->name, '.');
+        if (dot) snprintf(mname, sizeof(mname), "m%d_%s", metric_idx + 1, dot + 1);
+        else snprintf(mname, sizeof(mname), "m%d", metric_idx + 1);
+
+        int weight = 100 / (n_vars < 1 ? 1 : n_vars);
+        int is_first = (metric_idx == 0);
+
+        snprintf(buf + strlen(buf), sizeof(buf) - strlen(buf),
+            "    METRIC %s {\n"
+            "        META {\n"
+            "            description = \"Check %s\"\n"
+            "            weight = \"%d\"%s\n"
+            "        }\n",
+            mname, v->name, weight, is_first ? "\n            is_critical = \"true\"" : "");
+
+        switch (v->type) {
+            case CDSL_TYPE_INT:
+                snprintf(buf + strlen(buf), sizeof(buf) - strlen(buf),
+                    "        CASE %s >= 0 THEN score(%d)\n"
+                    "        DEFAULT score(0)\n",
+                    v->name, weight);
+                break;
+            case CDSL_TYPE_FLOAT:
+                snprintf(buf + strlen(buf), sizeof(buf) - strlen(buf),
+                    "        CASE %s >= 0.0 THEN score(%d)\n"
+                    "        DEFAULT score(0)\n",
+                    v->name, weight);
+                break;
+            case CDSL_TYPE_BOOL:
+                snprintf(buf + strlen(buf), sizeof(buf) - strlen(buf),
+                    "        CASE %s == true THEN score(%d)\n"
+                    "        DEFAULT score(0)\n",
+                    v->name, weight);
+                break;
+            case CDSL_TYPE_STRING:
+                snprintf(buf + strlen(buf), sizeof(buf) - strlen(buf),
+                    "        CASE %s != \"\" THEN score(%d)\n"
+                    "        DEFAULT score(0)\n",
+                    v->name, weight);
+                break;
+            default:
+                snprintf(buf + strlen(buf), sizeof(buf) - strlen(buf),
+                    "        DEFAULT score(%d)\n", weight);
+                break;
+        }
+        snprintf(buf + strlen(buf), sizeof(buf) - strlen(buf), "    }\n");
+    }
+
+    snprintf(buf + strlen(buf), sizeof(buf) - strlen(buf), "}\n");
+    return strdup(buf);
 }
 
 char* cdsl_ai_translate(const char* natural_language,
@@ -194,53 +255,36 @@ char* cdsl_ai_translate(const char* natural_language,
                          const cdsl_ai_config_t* config) {
     if (!natural_language) return NULL;
 
-    char lower[1024];
-    int len = strlen(natural_language);
-    if (len >= 1024) len = 1023;
-    for (int i = 0; i < len; i++) lower[i] = tolower((unsigned char)natural_language[i]);
-    lower[len] = '\0';
-
     if (config && config->use_mock) {
-        if (strstr(lower, "supplier") || strstr(lower, "供应商") || strstr(lower, "资质")) {
-            return mock_translate_supplier_capital();
-        }
-        if (strstr(lower, "document") || strstr(lower, "文档") || strstr(lower, "格式")) {
-            return mock_translate_doc_format();
-        }
-        if (strstr(lower, "content") || strstr(lower, "内容") || strstr(lower, "安全")) {
-            return mock_translate_content_safety();
-        }
-        return mock_translate_supplier_capital();
+        return mock_translate_generic(natural_language, schema, config->business_context);
     }
 
-    char prompt[4096];
+    char prompt[16384] = {0};
     snprintf(prompt, sizeof(prompt),
-        "You are a C-DSL rule translator. Convert the following natural language "
-        "description into a valid C-DSL rule.\n\n"
-        "Available variables:\n");
-    for (cdsl_var_schema_t* v = schema ? schema->vars : NULL; v; v = v->next) {
-        char typebuf[32];
-        switch (v->type) {
-            case CDSL_TYPE_INT:    strcpy(typebuf, "INT"); break;
-            case CDSL_TYPE_FLOAT:  strcpy(typebuf, "FLOAT"); break;
-            case CDSL_TYPE_BOOL:   strcpy(typebuf, "BOOL"); break;
-            case CDSL_TYPE_STRING: strcpy(typebuf, "STRING"); break;
-            default:               strcpy(typebuf, "VOID"); break;
-        }
+        "You are a C-DSL rule engine. Convert the following natural language description "
+        "into a valid C-DSL rule.\n\n"
+        "## C-DSL Syntax Reference\n"
+        "- Simple rule: RULE name { META { description = \"...\" } WHEN <expr> THEN action(\"arg\") }\n"
+        "- Scoring rule: RULE name { META { description = \"...\" pass_threshold = \"80\" partial_threshold = \"50\" } METRIC m { META { weight = \"40\" is_critical = \"true\" } CASE <expr> THEN score(N) DEFAULT score(0) } }\n"
+        "- Operators: == != < > <= >= AND OR NOT\n"
+        "- Keywords: true false\n"
+        "- Functions: score(N), fail_metric(N, \"reason\") and registered actions\n\n");
+
+    build_schema_prompt(prompt, sizeof(prompt), schema);
+
+    if (config && config->business_context) {
         snprintf(prompt + strlen(prompt), sizeof(prompt) - strlen(prompt),
-                 "  - %s (%s)\n", v->name, typebuf);
+                 "\nAdditional business context:\n%s\n", config->business_context);
     }
+
     snprintf(prompt + strlen(prompt), sizeof(prompt) - strlen(prompt),
-             "\nAvailable actions: score(), fail_metric(), block_action(), reject_document()\n"
-             "Use METRIC/CASE/DEFAULT for multi-indicator scoring.\n"
-             "Use META { weight = \"N\", is_critical = \"true\" } for critical metrics.\n"
-             "Use META { pass_threshold = \"N\", partial_threshold = \"N\" }.\n\n"
-             "User request: %s\n\n"
-             "Output ONLY the DSL code in a ```dsl code block.", natural_language);
+             "\nUser request: %s\n\n"
+             "Output ONLY the DSL code wrapped in a ```dsl code block. "
+             "Use the exact variable names listed above. "
+             "Choose appropriate threshold values based on the business context.",
+             natural_language);
 
-    fprintf(stderr, "[AI Bridge] Would call LLM API with prompt:\n%s\n", prompt);
-
-    if (!config->use_mock && config->api_key) {
+    if (config && !config->use_mock && config->api_key) {
         char* response = call_llm_api(prompt, config);
         if (response) {
             char* start = strstr(response, "```dsl");
@@ -256,79 +300,66 @@ char* cdsl_ai_translate(const char* natural_language,
                     return dsl;
                 }
             }
+            char* dsl = strdup(response);
             free(response);
+            return dsl;
         }
-        fprintf(stderr, "[AI Bridge] API call failed, falling back to mock.\n");
+        fprintf(stderr, "[AI Bridge] API call failed, falling back to generic generation.\n");
     }
 
-    return mock_translate_supplier_capital();
+    if (config) fprintf(stderr, "[AI Bridge] Mock-generating DSL from prompt.\n%s\n", prompt);
+    return mock_translate_generic(natural_language, schema,
+                                  config ? config->business_context : NULL);
 }
 
 cdsl_ai_review_t* cdsl_ai_review(const char* dsl_code,
                                    const cdsl_schema_t* schema,
                                    const cdsl_ai_config_t* config) {
-    cdsl_ai_review_t* rev = calloc(1, sizeof(*rev));
+    if (!dsl_code) return NULL;
 
     if (config && config->use_mock) {
-        if (!dsl_code || strlen(dsl_code) == 0) {
-            rev->approved = 0;
-            rev->risk_score = 100;
-            rev->reason = strdup("Empty DSL code provided");
-            rev->suggestions = strdup("Provide a valid DSL rule definition");
-            return rev;
-        }
-
         int has_meta = (strstr(dsl_code, "META") != NULL);
         int has_metric = (strstr(dsl_code, "METRIC") != NULL);
         int has_case = (strstr(dsl_code, "CASE") != NULL);
         int has_default = (strstr(dsl_code, "DEFAULT") != NULL);
+        int has_when = (strstr(dsl_code, "WHEN") != NULL);
+        int has_score = (strstr(dsl_code, "score(") != NULL);
         int has_critical = (strstr(dsl_code, "is_critical") != NULL);
-        int has_weight = (strstr(dsl_code, "weight") != NULL);
-        int has_desc = (strstr(dsl_code, "description") != NULL);
 
-        int score = 0;
-        char reason[1024] = {0};
+        int score = 10;
         char suggestions[1024] = {0};
 
-        if (has_meta) { score += 10; }
-        else { strcat(suggestions, "Add META block with description. "); }
+        if (has_meta) score += 15;
+        else strcat(suggestions, "Add META block with description and thresholds. ");
 
-        if (has_metric) { score += 15; }
-        else { strcat(suggestions, "Consider using METRIC blocks for multi-indicator assessment. "); }
-
-        if (has_case && has_default) { score += 15; }
-        else { strcat(suggestions, "Ensure all METRIC blocks have CASE and DEFAULT branches. "); }
-
-        if (has_critical) { score += 10; }
-        else { strcat(suggestions, "Mark critical compliance items with is_critical=true. "); }
-
-        if (has_weight) { score += 10; }
-        else { strcat(suggestions, "Assign weights to each metric for scoring. "); }
-
-        if (has_desc) { score += 10; }
-
-        int risk = 100 - score;
-
-        if (score >= 50) {
-            rev->approved = 1;
-            rev->risk_score = risk;
-            snprintf(reason, sizeof(reason),
-                     "Rule structure review passed. Score: %d/70. "
-                     "No logical contradictions or safety violations detected.", score);
-        } else {
-            rev->approved = 0;
-            rev->risk_score = risk;
-            snprintf(reason, sizeof(reason),
-                     "Rule structure incomplete. Score: %d/70. "
-                     "Missing critical structural elements.", score);
+        if (has_metric && has_metric) {
+            score += 15;
+            if (has_case && has_default) score += 15;
+            else strcat(suggestions, "Add CASE and DEFAULT branches to each METRIC. ");
+        } else if (has_when) {
+            score += 15;
         }
 
+        if (has_critical) score += 10;
+        else if (has_metric) strcat(suggestions, "Mark critical items with is_critical=true. ");
+
+        if (has_score) score += 10;
+
+        int risk = (score < 30) ? 100 - score * 2 : 100 - score;
+
+        cdsl_ai_review_t* rev = calloc(1, sizeof(*rev));
+        rev->approved = (score >= 40);
+        rev->risk_score = risk < 0 ? 0 : (risk > 100 ? 100 : risk);
+        char reason[512];
+        snprintf(reason, sizeof(reason),
+                 "Analysis score: %d/75. %s",
+                 score, rev->approved ? "Rule structure is adequate." : "Rule structure needs improvement.");
         rev->reason = strdup(reason);
-        rev->suggestions = strdup(suggestions);
+        rev->suggestions = suggestions[0] ? strdup(suggestions) : strdup("No issues found.");
         return rev;
     }
 
-    if (!config->use_mock && config->api_key) {
+    if (config && !config->use_mock && config->api_key) {
         char review_prompt[8192];
         snprintf(review_prompt, sizeof(review_prompt),
             "You are a DSL rule safety reviewer. Analyze the following C-DSL rule for:\n"
@@ -340,11 +371,10 @@ cdsl_ai_review_t* cdsl_ai_review(const char* dsl_code,
             dsl_code);
 
         char* response = call_llm_api(review_prompt, config);
+        cdsl_ai_review_t* rev = calloc(1, sizeof(*rev));
         if (response) {
             char* ap = strstr(response, "\"approved\":");
-            if (ap) {
-                rev->approved = (strstr(ap, "true") != NULL);
-            }
+            if (ap) rev->approved = (strstr(ap, "true") != NULL);
             char* rs = strstr(response, "\"risk_score\":");
             if (rs) rev->risk_score = atoi(rs + 13);
             char* rn = strstr(response, "\"reason\":\"");
@@ -360,14 +390,16 @@ cdsl_ai_review_t* cdsl_ai_review(const char* dsl_code,
                 if (se) rev->suggestions = strndup(sg, se - sg);
             }
             free(response);
-            return rev;
         }
-        fprintf(stderr, "[AI Bridge] API call failed, falling back to mock.\n");
+        if (!rev->reason) rev->reason = strdup("LLM review completed");
+        if (!rev->suggestions) rev->suggestions = strdup("");
+        return rev;
     }
 
+    cdsl_ai_review_t* rev = calloc(1, sizeof(*rev));
     rev->approved = 1;
     rev->risk_score = 10;
-    rev->reason = strdup("LLM review passed (API mode)");
+    rev->reason = strdup("Generic review passed");
     rev->suggestions = strdup("No suggestions");
     return rev;
 }
@@ -457,33 +489,33 @@ char* cdsl_ai_translate_stream(const char* natural_language,
     if (!natural_language) return NULL;
 
     if (config && config->use_mock) {
-        char* result = cdsl_ai_translate(natural_language, schema, config);
+        char* result = mock_translate_generic(natural_language, schema,
+                                               config ? config->business_context : NULL);
         if (result && callback) callback(result, user_data);
         return result;
     }
 
-    char prompt[4096];
+    char prompt[16384] = {0};
     snprintf(prompt, sizeof(prompt),
-        "You are a C-DSL rule translator. Convert the following natural language "
-        "description into a valid C-DSL rule.\n\n"
-        "Available variables:\n");
-    for (cdsl_var_schema_t* v = schema ? schema->vars : NULL; v; v = v->next) {
-        char typebuf[32];
-        switch (v->type) {
-            case CDSL_TYPE_INT:    strcpy(typebuf, "INT"); break;
-            case CDSL_TYPE_FLOAT:  strcpy(typebuf, "FLOAT"); break;
-            case CDSL_TYPE_BOOL:   strcpy(typebuf, "BOOL"); break;
-            case CDSL_TYPE_STRING: strcpy(typebuf, "STRING"); break;
-            default:               strcpy(typebuf, "VOID"); break;
-        }
+        "You are a C-DSL rule translator. Convert the following request into "
+        "a valid C-DSL rule.\n\n"
+        "## C-DSL Syntax Reference\n"
+        "- Simple rule: RULE name { META { description = \"...\" } WHEN <expr> THEN action(\"arg\") }\n"
+        "- Scoring rule: RULE name { META { description = \"...\" pass_threshold = \"80\" partial_threshold = \"50\" } METRIC m { META { weight = \"40\" is_critical = \"true\" } CASE <expr> THEN score(N) DEFAULT score(0) } }\n"
+        "- Operators: == != < > <= >= AND OR NOT\n"
+        "- Keywords: true false\n"
+        "- Functions: score(N), fail_metric(N, \"reason\") etc.\n\n");
+
+    build_schema_prompt(prompt, sizeof(prompt), schema);
+
+    if (config && config->business_context) {
         snprintf(prompt + strlen(prompt), sizeof(prompt) - strlen(prompt),
-                 "  - %s (%s)\n", v->name, typebuf);
+                 "\nAdditional business context:\n%s\n", config->business_context);
     }
+
     snprintf(prompt + strlen(prompt), sizeof(prompt) - strlen(prompt),
-             "\nAvailable actions: score(), fail_metric(), block_action(), reject_document()\n"
-             "Use METRIC/CASE/DEFAULT for multi-indicator scoring.\n\n"
-             "User request: %s\n\n"
-             "Output ONLY the DSL code in a ```dsl code block.", natural_language);
+             "\nUser request: %s\n\nOutput ONLY the DSL code in a ```dsl code block.",
+             natural_language);
 
     return call_llm_api_stream(prompt, config, callback, user_data);
 }
@@ -496,8 +528,8 @@ char* cdsl_ai_review_stream(const char* dsl_code,
 
     if (config && config->use_mock) {
         cdsl_ai_review_t* rev = cdsl_ai_review(dsl_code, schema, config);
-        char* json = malloc(512);
-        snprintf(json, 512, "{\"approved\":%s,\"risk_score\":%d,\"reason\":\"%s\",\"suggestions\":\"%s\"}",
+        char* json = malloc(1024);
+        snprintf(json, 1024, "{\"approved\":%s,\"risk_score\":%d,\"reason\":\"%s\",\"suggestions\":\"%s\"}",
                  rev->approved ? "true" : "false", rev->risk_score, rev->reason, rev->suggestions);
         cdsl_ai_review_free(rev);
         if (callback) callback(json, user_data);
