@@ -26,18 +26,26 @@ set(CDSL_SOURCES
     ${FLEX_MyLexer_OUTPUTS}
 )
 
-# 2. Static library
-add_library(cdsl_static STATIC ${CDSL_SOURCES})
+# 2. Object library (avoids compiling sources twice for static+shared)
+find_package(Threads REQUIRED)
+add_library(cdsl_objects OBJECT ${CDSL_SOURCES})
+set_property(TARGET cdsl_objects PROPERTY POSITION_INDEPENDENT_CODE 1)
+target_include_directories(cdsl_objects PRIVATE
+    $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
+    $<BUILD_INTERFACE:${CMAKE_CURRENT_BINARY_DIR}>
+)
+
+# 3. Static library
+add_library(cdsl_static STATIC $<TARGET_OBJECTS:cdsl_objects>)
 target_include_directories(cdsl_static PUBLIC
     $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
     $<BUILD_INTERFACE:${CMAKE_CURRENT_BINARY_DIR}>
 )
 set_target_properties(cdsl_static PROPERTIES OUTPUT_NAME cdsl)
-find_package(Threads REQUIRED)
 target_link_libraries(cdsl_static PUBLIC Threads::Threads)
 
-# 3. Shared library
-add_library(cdsl_shared SHARED ${CDSL_SOURCES})
+# 4. Shared library
+add_library(cdsl_shared SHARED $<TARGET_OBJECTS:cdsl_objects>)
 target_include_directories(cdsl_shared PUBLIC
     $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
     $<BUILD_INTERFACE:${CMAKE_CURRENT_BINARY_DIR}>
@@ -49,7 +57,7 @@ set_target_properties(cdsl_shared PROPERTIES
     SOVERSION ${PROJECT_VERSION_MAJOR}
 )
 
-# 4. Default target alias
+# 5. Default target alias
 add_library(cdsl ALIAS cdsl_static)
 
 # 5. Demo
@@ -165,7 +173,7 @@ else()
 endif()
 
 # 11. Doxygen documentation
-option(CDSL_GENERATE_DOCS "Generate Doxygen API documentation during build" ON)
+option(CDSL_GENERATE_DOCS "Generate Doxygen API documentation during build" OFF)
 
 find_package(Doxygen QUIET)
 if(DOXYGEN_FOUND)
