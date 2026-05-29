@@ -18,6 +18,12 @@
 #include "cdsl_hashmap.h"
 #include <pthread.h>
 
+/* Forward declarations */
+struct cdsl_vm;
+struct cdsl_context;
+typedef struct cdsl_vm cdsl_vm_t;
+typedef struct cdsl_context cdsl_context_t;
+
 /**
  * @brief Runtime value wrapper.
  *
@@ -56,11 +62,11 @@ typedef struct cdsl_context_entry {
  * cdsl_context_load_json(ctx, "{\"user\":{\"age\":25,\"name\":\"Alice\"}}");
  * @endcode
  */
-typedef struct cdsl_context {
+struct cdsl_context {
 	const cdsl_schema_t* schema;   /**< Associated schema */
 	cdsl_context_entry_t* entries; /**< Variable bindings */
 	cdsl_hashmap_t* map;	       /**< Fast lookup index */
-} cdsl_context_t;
+};
 
 /**
  * @brief Action callback function type.
@@ -85,12 +91,14 @@ typedef struct cdsl_action_cb_entry {
  *
  * @param func_name Name of the function
  * @param args Linked list of argument expressions
- * @param user_data User-provided data pointer
+ * @param ctx Execution context (for argument evaluation)
+ * @param vm VM instance (for recursion limits and state)
  * @return Result value (caller owns the memory for string values)
  */
 typedef cdsl_value_t (*cdsl_func_cb_t)(const char* func_name,
 				       cdsl_arg_node_t* args,
-				       void* user_data);
+				       cdsl_context_t* ctx,
+				       cdsl_vm_t* vm);
 
 /**
  * @brief Registered function entry.
@@ -126,7 +134,7 @@ typedef struct {
  * cdsl_rule_report_t* rpt = cdsl_vm_execute(vm, rule, ctx);
  * @endcode
  */
-typedef struct cdsl_vm {
+struct cdsl_vm {
 	const cdsl_schema_t* schema;	   /**< Schema reference */
 	cdsl_action_cb_entry_t* callbacks; /**< Registered action callbacks */
 	cdsl_func_entry_t* functions;	   /**< Registered function callbacks */
@@ -134,7 +142,7 @@ typedef struct cdsl_vm {
 	int debug_enabled;		   /**< 1 to enable trace output */
 	cdsl_stats_t stats;		   /**< Execution statistics */
 	int max_expr_depth; /**< Max expression nesting depth (default CDSL_MAX_EXPR_DEPTH) */
-} cdsl_vm_t;
+};
 
 /**
  * @brief Rule execution status (tri-state).

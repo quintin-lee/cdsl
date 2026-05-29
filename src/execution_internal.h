@@ -31,4 +31,9 @@ const char* cdsl_status_str_internal(cdsl_rule_status_t s);
  */
 cdsl_context_entry_t* cdsl_context_get_entry_internal(cdsl_context_t* ctx, const char* name);
 
+/**
+ * @brief Register all built-in functions in the VM.
+ */
+void cdsl_vm_register_builtins(cdsl_vm_t* vm);
+
 #endif

@@ -287,6 +287,7 @@ cdsl_vm_create(const cdsl_schema_t* schema)
 	vm->schema = schema;
 	vm->debug_enabled = 0;
 	vm->max_expr_depth = CDSL_MAX_EXPR_DEPTH;
+	cdsl_vm_register_builtins(vm);
 	return vm;
 }
 

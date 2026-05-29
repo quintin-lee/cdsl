@@ -295,8 +295,7 @@ cdsl_eval_expr_internal(
 						"[TRACE]   calling function: %s()\n",
 						expr->data.call.func_name);
 				}
-				result = fn->cb(
-				    expr->data.call.func_name, expr->data.call.args, vm->user_data);
+				result = fn->cb(expr->data.call.func_name, expr->data.call.args, ctx, vm);
 				if (debug) {
 					fprintf(stderr, "[TRACE]   function result: ");
 					switch (result.type) {
@@ -634,10 +633,31 @@ cdsl_report_to_json(const cdsl_rule_report_t* report)
 	if (!report) {
 		return strdup("{}");
 	}
-	char* json = malloc(4096);
-	int off = 0;
+
+	size_t cap = 1024;
+	char* json = malloc(cap);
+	if (!json) {
+		return NULL;
+	}
+
+	size_t off = 0;
+
+#define JSON_CHECK_CAP(needed)                                                                     \
+	do {                                                                                       \
+		if (off + (needed) + 1 > cap) {                                                    \
+			cap = off + (needed) + 1024;                                               \
+			char* new_json = realloc(json, cap);                                       \
+			if (!new_json) {                                                           \
+				free(json);                                                        \
+				return NULL;                                                       \
+			}                                                                          \
+			json = new_json;                                                           \
+		}                                                                                  \
+	} while (0)
+
+	JSON_CHECK_CAP(512);
 	off += snprintf(json + off,
-			4096 - off,
+			cap - off,
 			"{\"rule_name\":\"%s\",\"description\":\"%s\","
 			"\"status\":\"%s\",\"total_max_score\":%d,\"total_obtained_score\":%d,"
 			"\"decision_summary\":\"%s\",\"metrics\":[",
@@ -650,12 +670,14 @@ cdsl_report_to_json(const cdsl_rule_report_t* report)
 
 	for (int i = 0; i < report->metric_count; i++) {
 		cdsl_metric_result_t* m = &report->metrics[i];
+		JSON_CHECK_CAP(512 + (m->violation_reason ? strlen(m->violation_reason) : 0));
+
 		if (i > 0) {
-			off += snprintf(json + off, 4096 - off, ",");
+			off += snprintf(json + off, cap - off, ",");
 		}
 		off += snprintf(
 		    json + off,
-		    4096 - off,
+		    cap - off,
 		    "{\"metric_name\":\"%s\",\"description\":\"%s\","
 		    "\"max_weight\":%d,\"score_obtained\":%d,\"is_critical\":%d,\"is_passed\":%d",
 		    m->metric_name ? m->metric_name : "",
@@ -666,12 +688,17 @@ cdsl_report_to_json(const cdsl_rule_report_t* report)
 		    m->is_passed);
 		if (m->violation_reason) {
 			off += snprintf(json + off,
-					4096 - off,
+					cap - off,
 					",\"violation_reason\":\"%s\"",
 					m->violation_reason);
 		}
-		off += snprintf(json + off, 4096 - off, "}");
+		off += snprintf(json + off, cap - off, "}");
 	}
-	off += snprintf(json + off, 4096 - off, "]}");
+
+	JSON_CHECK_CAP(4);
+	off += snprintf(json + off, cap - off, "]}");
+
+#undef JSON_CHECK_CAP
+
 	return json;
 }
