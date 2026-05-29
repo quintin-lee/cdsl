@@ -598,7 +598,7 @@ cdsl_ai_review(const char* dsl_code, const cdsl_schema_t* schema, const cdsl_ai_
 			strcat(suggestions, "Add META block with description and thresholds. ");
 		}
 
-		if (has_metric && has_metric) {
+		if (has_metric) {
 			score += 15;
 			if (has_case && has_default) {
 				score += 15;

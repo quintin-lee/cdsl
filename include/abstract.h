@@ -87,12 +87,12 @@ void cdsl_schema_register_var(cdsl_schema_t* schema, const char* name, cdsl_type
  *
  * @param schema Target schema
  * @param name Action name (duplicated internally)
- * @param return_type Return type (typically CDSL_TYPE_VOID)
+ * @param return_type Return type (as int, enum promoted to int in variadic context)
  * @param arg_count Number of expected arguments
- * @param ... Variadic list of cdsl_type_t values for each argument type
+ * @param ... Variadic list of int values for each argument type
  */
 void cdsl_schema_register_action(
-    cdsl_schema_t* schema, const char* name, cdsl_type_t ret_type, int arg_count, ...);
+    cdsl_schema_t* schema, const char* name, int ret_type, int arg_count, ...);
 
 /**
  * @brief Verify a rule against the schema (simple error string).

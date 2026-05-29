@@ -60,6 +60,12 @@ cdsl_schema_free(cdsl_schema_t* schema)
 void
 cdsl_schema_register_var(cdsl_schema_t* schema, const char* name, cdsl_type_t type)
 {
+	for (cdsl_var_schema_t* cur = schema->vars; cur; cur = cur->next) {
+		if (strcmp(cur->name, name) == 0) {
+			cur->type = type;
+			return;
+		}
+	}
 	cdsl_var_schema_t* v = calloc(1, sizeof(*v));
 	v->name = strdup(name);
 	v->type = type;
@@ -72,24 +78,24 @@ cdsl_schema_register_var(cdsl_schema_t* schema, const char* name, cdsl_type_t ty
  *
  * @param schema   Target schema
  * @param name     Action name (copied internally)
- * @param ret_type Return type
+ * @param ret_type Return type (as int - enum promoted)
  * @param arg_count Number of arguments
- * @param ...      Argument types (cdsl_type_t values)
+ * @param ...      Argument types (int values)
  */
 void
 cdsl_schema_register_action(
-    cdsl_schema_t* schema, const char* name, cdsl_type_t ret_type, int arg_count, ...)
+    cdsl_schema_t* schema, const char* name, int ret_type, int arg_count, ...)
 {
 	cdsl_action_schema_t* a = calloc(1, sizeof(*a));
 	a->name = strdup(name);
-	a->return_type = ret_type;
+	a->return_type = (cdsl_type_t)ret_type;
 	a->arg_count = arg_count;
 	if (arg_count > 0) {
 		a->arg_types = malloc(sizeof(cdsl_type_t) * arg_count);
 		va_list ap;
 		va_start(ap, arg_count);
 		for (int i = 0; i < arg_count; i++) {
-			a->arg_types[i] = va_arg(ap, cdsl_type_t);
+			a->arg_types[i] = (cdsl_type_t)va_arg(ap, int);
 		}
 		va_end(ap);
 	}

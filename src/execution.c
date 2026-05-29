@@ -2155,12 +2155,27 @@ read_file(const char* path)
 	if (!f) {
 		return NULL;
 	}
-	fseek(f, 0, SEEK_END);
+	if (fseek(f, 0, SEEK_END) != 0) {
+		fclose(f);
+		return NULL;
+	}
 	long sz = ftell(f);
-	fseek(f, 0, SEEK_SET);
+	if (sz < 0) {
+		fclose(f);
+		return NULL;
+	}
+	if (fseek(f, 0, SEEK_SET) != 0) {
+		fclose(f);
+		return NULL;
+	}
 	char* buf = malloc(sz + 1);
 	if (buf) {
-		fread(buf, 1, sz, f);
+		size_t n = fread(buf, 1, sz, f);
+		if (n != (size_t)sz) {
+			free(buf);
+			fclose(f);
+			return NULL;
+		}
 		buf[sz] = '\0';
 	}
 	fclose(f);

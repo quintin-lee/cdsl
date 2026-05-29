@@ -85,5 +85,39 @@ void* cdsl_hashmap_get(cdsl_hashmap_t* map, const char* key);
  */
 int cdsl_hashmap_remove(cdsl_hashmap_t* map, const char* key, cdsl_hashmap_free_fn free_fn);
 
+/**
+ * @brief Check if a key exists in the map.
+ * @param map Target map
+ * @param key Key to search for
+ * @return 1 if key exists, 0 otherwise
+ */
+int cdsl_hashmap_has(const cdsl_hashmap_t* map, const char* key);
+
+/**
+ * @brief Callback iterator function type.
+ */
+typedef void (*cdsl_hashmap_iter_fn)(const char* key, void* value, void* user_data);
+
+/**
+ * @brief Iterate over all entries in the map.
+ * @param map Target map
+ * @param cb  Callback function (called for each entry)
+ * @param user_data Opaque pointer passed to callback
+ */
+void cdsl_hashmap_iterate(const cdsl_hashmap_t* map, cdsl_hashmap_iter_fn cb, void* user_data);
+
+/**
+ * @brief Get all keys in the map.
+ *
+ * Allocates and returns an array of keys (NULL-terminated).
+ * Both the array and individual key strings are allocated on heap;
+ * caller must free them.
+ *
+ * @param map   Target map
+ * @param count Optional output for the key count (may be NULL)
+ * @return Allocated NULL-terminated array of duplicated key strings, or NULL if empty
+ */
+char** cdsl_hashmap_keys(const cdsl_hashmap_t* map, int* count);
+
 #endif
 /** @} */

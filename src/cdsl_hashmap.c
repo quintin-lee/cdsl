@@ -154,3 +154,63 @@ cdsl_hashmap_remove(cdsl_hashmap_t* map, const char* key, cdsl_hashmap_free_fn f
 	}
 	return 0;
 }
+
+int
+cdsl_hashmap_has(const cdsl_hashmap_t* map, const char* key)
+{
+	if (!map || !key) {
+		return 0;
+	}
+	unsigned int idx = hash_string(key, map->bucket_count);
+	const cdsl_hashmap_entry_t* e = map->buckets[idx];
+	while (e) {
+		if (strcmp(e->key, key) == 0) {
+			return 1;
+		}
+		e = e->next;
+	}
+	return 0;
+}
+
+void
+cdsl_hashmap_iterate(const cdsl_hashmap_t* map, cdsl_hashmap_iter_fn cb, void* user_data)
+{
+	if (!map || !cb) {
+		return;
+	}
+	for (int i = 0; i < map->bucket_count; i++) {
+		const cdsl_hashmap_entry_t* e = map->buckets[i];
+		while (e) {
+			cb(e->key, e->value, user_data);
+			e = e->next;
+		}
+	}
+}
+
+char**
+cdsl_hashmap_keys(const cdsl_hashmap_t* map, int* count)
+{
+	if (count) {
+		*count = 0;
+	}
+	if (!map || map->size == 0) {
+		return NULL;
+	}
+	char** keys = malloc(sizeof(char*) * (map->size + 1));
+	if (!keys) {
+		return NULL;
+	}
+	int idx = 0;
+	for (int i = 0; i < map->bucket_count; i++) {
+		const cdsl_hashmap_entry_t* e = map->buckets[i];
+		while (e) {
+			keys[idx++] = strdup(e->key);
+			e = e->next;
+		}
+	}
+	keys[idx] = NULL;
+	if (count) {
+		*count = idx;
+	}
+	return keys;
+}
