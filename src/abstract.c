@@ -178,3 +178,80 @@ int cdsl_verify_rule(const cdsl_rule_t* rule, const cdsl_schema_t* schema,
 
     return 1;
 }
+
+static void resolve_expr_type_detailed(cdsl_expr_node_t* expr, const cdsl_schema_t* schema,
+                                        cdsl_error_list_t* errors) {
+    if (!expr) return;
+    switch (expr->type) {
+        case CDSL_EXPR_ID: {
+            cdsl_var_schema_t* v = find_var(schema, expr->data.id_val);
+            if (!v) {
+                cdsl_error_list_add(errors, cdsl_error_create(
+                    CDSL_ERR_TYPE, 0, 0,
+                    "Unknown variable in expression",
+                    expr->data.id_val));
+            }
+            break;
+        }
+        case CDSL_EXPR_BINARY: {
+            resolve_expr_type_detailed(expr->data.binary.left, schema, errors);
+            resolve_expr_type_detailed(expr->data.binary.right, schema, errors);
+            break;
+        }
+        case CDSL_EXPR_UNARY:
+            resolve_expr_type_detailed(expr->data.unary.expr, schema, errors);
+            break;
+        default: break;
+    }
+}
+
+static void verify_action_detailed(cdsl_action_node_t* action, const cdsl_schema_t* schema,
+                                    const char* context, cdsl_error_list_t* errors) {
+    if (!action) return;
+    cdsl_action_schema_t* a = find_action(schema, action->action_name);
+    if (!a) {
+        char hint[256];
+        snprintf(hint, sizeof(hint), "Register action '%s' via cdsl_schema_register_action()", action->action_name);
+        cdsl_error_list_add(errors, cdsl_error_create(
+            CDSL_ERR_SEMANTIC, 0, 0,
+            "Unknown action", hint));
+        return;
+    }
+    int nargs = count_args(action->args);
+    if (nargs != a->arg_count) {
+        char msg[256];
+        snprintf(msg, sizeof(msg), "Action '%s' expects %d args, got %d",
+                 action->action_name, a->arg_count, nargs);
+        cdsl_error_list_add(errors, cdsl_error_create(CDSL_ERR_TYPE, 0, 0, msg, NULL));
+    }
+    cdsl_arg_node_t* arg = action->args;
+    for (int i = 0; i < nargs && arg; i++) {
+        resolve_expr_type_detailed(arg->expr, schema, errors);
+        arg = arg->next;
+    }
+}
+
+cdsl_error_list_t* cdsl_verify_rule_detailed(const cdsl_rule_t* rule,
+                                               const cdsl_schema_t* schema) {
+    cdsl_error_list_t* errors = cdsl_error_list_create();
+    if (!rule || !schema) {
+        cdsl_error_list_add(errors, cdsl_error_create(
+            CDSL_ERR_SEMANTIC, 0, 0, "Null rule or schema", NULL));
+        return errors;
+    }
+
+    if (rule->metrics) {
+        for (cdsl_metric_node_t* m = rule->metrics; m; m = m->next) {
+            for (cdsl_case_node_t* c = m->case_list; c; c = c->next) {
+                resolve_expr_type_detailed(c->condition, schema, errors);
+                verify_action_detailed(c->action, schema, m->name, errors);
+            }
+            verify_action_detailed(m->default_action, schema, m->name, errors);
+        }
+    } else {
+        if (rule->when_expr) resolve_expr_type_detailed(rule->when_expr, schema, errors);
+        verify_action_detailed(rule->then_action, schema, rule->name, errors);
+    }
+
+    return errors;
+}

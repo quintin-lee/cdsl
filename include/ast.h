@@ -3,6 +3,12 @@
 
 #include <stddef.h>
 
+#define CDSL_MAX_EXPR_DEPTH    64
+#define CDSL_MAX_METRICS       32
+#define CDSL_MAX_CASES         16
+#define CDSL_MAX_RULES         128
+#define CDSL_MAX_INPUT_LENGTH  65536
+
 typedef enum {
     CDSL_TYPE_INT,
     CDSL_TYPE_FLOAT,

@@ -84,5 +84,36 @@ void cdsl_vm_register_action(cdsl_vm_t* vm, const char* action_name, cdsl_action
 cdsl_rule_report_t* cdsl_vm_execute(cdsl_vm_t* vm, const cdsl_rule_t* rule, cdsl_context_t* ctx);
 void cdsl_report_free(cdsl_rule_report_t* report);
 void cdsl_report_print(const cdsl_rule_report_t* report);
+char* cdsl_report_to_json(const cdsl_rule_report_t* report);
+
+typedef struct cdsl_ruleset_entry {
+    cdsl_rule_t* rule;
+    int priority;
+    struct cdsl_ruleset_entry* next;
+} cdsl_ruleset_entry_t;
+
+typedef struct cdsl_ruleset {
+    cdsl_ruleset_entry_t* entries;
+    int count;
+} cdsl_ruleset_t;
+
+typedef struct {
+    cdsl_rule_report_t** rule_reports;
+    int rule_count;
+    int total_passed;
+    int total_partially;
+    int total_failed;
+    int total_error;
+    int aggregate_score;
+    int aggregate_max;
+    char* summary;
+} cdsl_ruleset_report_t;
+
+cdsl_ruleset_t* cdsl_ruleset_create(void);
+void cdsl_ruleset_free(cdsl_ruleset_t* set);
+void cdsl_ruleset_add(cdsl_ruleset_t* set, cdsl_rule_t* rule, int priority);
+cdsl_ruleset_report_t* cdsl_vm_execute_ruleset(cdsl_vm_t* vm, cdsl_ruleset_t* set, cdsl_context_t* ctx);
+void cdsl_ruleset_report_free(cdsl_ruleset_report_t* report);
+void cdsl_ruleset_report_print(const cdsl_ruleset_report_t* report);
 
 #endif

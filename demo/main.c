@@ -331,6 +331,53 @@ static void demo_simple_rules(cdsl_schema_t* schema) {
     }
 }
 
+static void demo_ruleset_batch(cdsl_schema_t* schema) {
+    print_separator("=== DEMO 6: RuleSet Batch Execution ===");
+
+    cdsl_ruleset_t* set = cdsl_ruleset_create();
+
+    const char* dsl_rules[] = {
+        "RULE blacklist_check {"
+        "    META { description = \"Blacklist compliance\" }"
+        "    WHEN supplier.is_blacklisted == true"
+        "    THEN reject_supplier(\"blacklisted\")"
+        "}",
+        "RULE capital_check {"
+        "    META { description = \"Capital threshold\" }"
+        "    WHEN supplier.registered_capital < 500000"
+        "    THEN reject_supplier(\"low_capital\")"
+        "}",
+        "RULE experience_check {"
+        "    META { description = \"Business experience\" }"
+        "    WHEN supplier.years_in_business < 2"
+        "    THEN record_warning(\"short_experience\")"
+        "}",
+    };
+    int priorities[] = {1, 2, 3};
+
+    cdsl_vm_t* vm = cdsl_vm_create(schema);
+    cdsl_vm_register_action(vm, "reject_supplier", action_callback);
+    cdsl_vm_register_action(vm, "record_warning", action_callback);
+
+    for (int i = 0; i < 3; i++) {
+        cdsl_rule_t* rule = cdsl_parse_string(dsl_rules[i]);
+        if (rule) cdsl_ruleset_add(set, rule, priorities[i]);
+    }
+
+    cdsl_context_t* ctx = cdsl_context_create(schema);
+    cdsl_context_set_bool(ctx, "supplier.is_blacklisted", 0);
+    cdsl_context_set_int(ctx, "supplier.registered_capital", 300000);
+    cdsl_context_set_int(ctx, "supplier.years_in_business", 1);
+
+    cdsl_ruleset_report_t* batch = cdsl_vm_execute_ruleset(vm, set, ctx);
+    cdsl_ruleset_report_print(batch);
+
+    cdsl_ruleset_report_free(batch);
+    cdsl_context_free(ctx);
+    cdsl_vm_free(vm);
+    cdsl_ruleset_free(set);
+}
+
 int main(void) {
     printf("========================================\n");
     printf("   C-DSL Framework Demo\n");
@@ -364,6 +411,7 @@ int main(void) {
     demo_content_audit(schema, &ai_cfg);
     demo_json_context();
     demo_simple_rules(schema);
+    demo_ruleset_batch(schema);
 
     cdsl_schema_free(schema);
     return 0;

@@ -4,6 +4,63 @@
 #include <stdio.h>
 #include <ctype.h>
 
+static char* call_llm_api(const char* prompt, const cdsl_ai_config_t* config) {
+    if (!config || !config->api_key || !config->api_base || !config->model) return NULL;
+
+    char* escaped_prompt = malloc(strlen(prompt) * 4 + 1);
+    char* dst = escaped_prompt;
+    for (const char* s = prompt; *s; s++) {
+        if (*s == '"') { *dst++ = '\\'; *dst++ = '"'; }
+        else if (*s == '\\') { *dst++ = '\\'; *dst++ = '\\'; }
+        else if (*s == '\n') { *dst++ = '\\'; *dst++ = 'n'; }
+        else if (*s == '\r') { *dst++ = '\\'; *dst++ = 'r'; }
+        else if (*s == '\t') { *dst++ = '\\'; *dst++ = 't'; }
+        else { *dst++ = *s; }
+    }
+    *dst = '\0';
+
+    char cmd[16384];
+    snprintf(cmd, sizeof(cmd),
+        "curl -s -X POST \"%s/chat/completions\" "
+        "-H \"Content-Type: application/json\" "
+        "-H \"Authorization: Bearer %s\" "
+        "-d '{\"model\":\"%s\",\"messages\":[{\"role\":\"user\",\"content\":\"%s\"}],\"temperature\":0.1}'",
+        config->api_base, config->api_key, config->model, escaped_prompt);
+    free(escaped_prompt);
+
+    FILE* fp = popen(cmd, "r");
+    if (!fp) return NULL;
+
+    char* result = malloc(16384);
+    size_t total = 0;
+    size_t n;
+    while ((n = fread(result + total, 1, 16383 - total, fp)) > 0) {
+        total += n;
+    }
+    result[total] = '\0';
+    pclose(fp);
+
+    char* content = strstr(result, "\"content\":\"");
+    if (!content) { free(result); return NULL; }
+    content += 11;
+    char* end = strchr(content, '\"');
+    if (!end) { free(result); return NULL; }
+    *end = '\0';
+
+    char* decoded = malloc(end - content + 1);
+    char* d = decoded;
+    for (char* s = content; *s; s++) {
+        if (*s == '\\' && s[1] == 'n') { *d++ = '\n'; s++; }
+        else if (*s == '\\' && s[1] == 't') { *d++ = '\t'; s++; }
+        else if (*s == '\\' && s[1] == '"') { *d++ = '"'; s++; }
+        else if (*s == '\\' && s[1] == '\\') { *d++ = '\\'; s++; }
+        else { *d++ = *s; }
+    }
+    *d = '\0';
+    free(result);
+    return decoded;
+}
+
 cdsl_ai_config_t cdsl_ai_config_default(void) {
     cdsl_ai_config_t cfg;
     cfg.use_mock = 1;
@@ -182,7 +239,28 @@ char* cdsl_ai_translate(const char* natural_language,
              "Output ONLY the DSL code in a ```dsl code block.", natural_language);
 
     fprintf(stderr, "[AI Bridge] Would call LLM API with prompt:\n%s\n", prompt);
-    fprintf(stderr, "[AI Bridge] No API key configured. Falling back to mock.\n");
+
+    if (!config->use_mock && config->api_key) {
+        char* response = call_llm_api(prompt, config);
+        if (response) {
+            char* start = strstr(response, "```dsl");
+            if (start) {
+                start += 6;
+                while (*start == '\n') start++;
+                char* end = strstr(start, "```");
+                if (end) {
+                    char* dsl = malloc(end - start + 1);
+                    memcpy(dsl, start, end - start);
+                    dsl[end - start] = '\0';
+                    free(response);
+                    return dsl;
+                }
+            }
+            free(response);
+        }
+        fprintf(stderr, "[AI Bridge] API call failed, falling back to mock.\n");
+    }
+
     return mock_translate_supplier_capital();
 }
 
@@ -248,6 +326,43 @@ cdsl_ai_review_t* cdsl_ai_review(const char* dsl_code,
         rev->reason = strdup(reason);
         rev->suggestions = strdup(suggestions);
         return rev;
+    }
+
+    if (!config->use_mock && config->api_key) {
+        char review_prompt[8192];
+        snprintf(review_prompt, sizeof(review_prompt),
+            "You are a DSL rule safety reviewer. Analyze the following C-DSL rule for:\n"
+            "1. Logical contradictions (e.g., x > 10 AND x < 5)\n"
+            "2. Missing META blocks or weights\n"
+            "3. Security risks (e.g., unauthorized actions)\n\n"
+            "DSL code:\n%s\n\n"
+            "Respond in JSON: {\"approved\":true/false,\"risk_score\":0-100,\"reason\":\"...\",\"suggestions\":\"...\"}",
+            dsl_code);
+
+        char* response = call_llm_api(review_prompt, config);
+        if (response) {
+            char* ap = strstr(response, "\"approved\":");
+            if (ap) {
+                rev->approved = (strstr(ap, "true") != NULL);
+            }
+            char* rs = strstr(response, "\"risk_score\":");
+            if (rs) rev->risk_score = atoi(rs + 13);
+            char* rn = strstr(response, "\"reason\":\"");
+            if (rn) {
+                rn += 10;
+                char* re = strchr(rn, '\"');
+                if (re) rev->reason = strndup(rn, re - rn);
+            }
+            char* sg = strstr(response, "\"suggestions\":\"");
+            if (sg) {
+                sg += 15;
+                char* se = strchr(sg, '\"');
+                if (se) rev->suggestions = strndup(sg, se - sg);
+            }
+            free(response);
+            return rev;
+        }
+        fprintf(stderr, "[AI Bridge] API call failed, falling back to mock.\n");
     }
 
     rev->approved = 1;

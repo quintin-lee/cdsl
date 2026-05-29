@@ -2,6 +2,7 @@
 #define CDSL_ABSTRACT_H
 
 #include "ast.h"
+#include "cdsl_error.h"
 
 typedef struct cdsl_var_schema {
     char* name;
@@ -29,5 +30,7 @@ void cdsl_schema_register_action(cdsl_schema_t* schema, const char* name,
                                   cdsl_type_t ret_type, int arg_count, ...);
 int cdsl_verify_rule(const cdsl_rule_t* rule, const cdsl_schema_t* schema,
                       char* err_buf, int err_buf_sz);
+cdsl_error_list_t* cdsl_verify_rule_detailed(const cdsl_rule_t* rule,
+                                               const cdsl_schema_t* schema);
 
 #endif

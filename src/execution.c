@@ -490,3 +490,131 @@ void cdsl_report_print(const cdsl_rule_report_t* report) {
     printf("  Summary:  %s\n", report->decision_summary);
     printf("========================================\n\n");
 }
+
+char* cdsl_report_to_json(const cdsl_rule_report_t* report) {
+    if (!report) return strdup("{}");
+    char* json = malloc(4096);
+    int off = 0;
+    off += snprintf(json + off, 4096 - off,
+        "{\"rule_name\":\"%s\",\"description\":\"%s\","
+        "\"status\":\"%s\",\"total_max_score\":%d,\"total_obtained_score\":%d,"
+        "\"decision_summary\":\"%s\",\"metrics\":[",
+        report->rule_name ? report->rule_name : "",
+        report->description ? report->description : "",
+        status_str(report->status),
+        report->total_max_score, report->total_obtained_score,
+        report->decision_summary ? report->decision_summary : "");
+
+    for (int i = 0; i < report->metric_count; i++) {
+        cdsl_metric_result_t* m = &report->metrics[i];
+        if (i > 0) off += snprintf(json + off, 4096 - off, ",");
+        off += snprintf(json + off, 4096 - off,
+            "{\"metric_name\":\"%s\",\"description\":\"%s\","
+            "\"max_weight\":%d,\"score_obtained\":%d,\"is_critical\":%d,\"is_passed\":%d",
+            m->metric_name ? m->metric_name : "",
+            m->description ? m->description : "",
+            m->max_weight, m->score_obtained, m->is_critical, m->is_passed);
+        if (m->violation_reason) {
+            off += snprintf(json + off, 4096 - off,
+                ",\"violation_reason\":\"%s\"", m->violation_reason);
+        }
+        off += snprintf(json + off, 4096 - off, "}");
+    }
+    off += snprintf(json + off, 4096 - off, "]}");
+    return json;
+}
+
+cdsl_ruleset_t* cdsl_ruleset_create(void) {
+    return calloc(1, sizeof(cdsl_ruleset_t));
+}
+
+void cdsl_ruleset_free(cdsl_ruleset_t* set) {
+    if (!set) return;
+    cdsl_ruleset_entry_t* e = set->entries;
+    while (e) {
+        cdsl_ruleset_entry_t* next = e->next;
+        cdsl_free_rule(e->rule);
+        free(e);
+        e = next;
+    }
+    free(set);
+}
+
+void cdsl_ruleset_add(cdsl_ruleset_t* set, cdsl_rule_t* rule, int priority) {
+    if (!set || !rule) return;
+    cdsl_ruleset_entry_t* e = calloc(1, sizeof(*e));
+    e->rule = rule;
+    e->priority = priority;
+    if (!set->entries || priority < set->entries->priority) {
+        e->next = set->entries;
+        set->entries = e;
+    } else {
+        cdsl_ruleset_entry_t* cur = set->entries;
+        while (cur->next && cur->next->priority <= priority) cur = cur->next;
+        e->next = cur->next;
+        cur->next = e;
+    }
+    set->count++;
+}
+
+cdsl_ruleset_report_t* cdsl_vm_execute_ruleset(cdsl_vm_t* vm, cdsl_ruleset_t* set, cdsl_context_t* ctx) {
+    if (!vm || !set || !ctx) return NULL;
+    cdsl_ruleset_report_t* rpt = calloc(1, sizeof(*rpt));
+    rpt->rule_count = set->count;
+    rpt->rule_reports = calloc(set->count, sizeof(cdsl_rule_report_t*));
+
+    int idx = 0;
+    int agg_score = 0, agg_max = 0;
+    for (cdsl_ruleset_entry_t* e = set->entries; e; e = e->next, idx++) {
+        rpt->rule_reports[idx] = cdsl_vm_execute(vm, e->rule, ctx);
+        cdsl_rule_report_t* rr = rpt->rule_reports[idx];
+        if (!rr) continue;
+        agg_score += rr->total_obtained_score;
+        agg_max += rr->total_max_score;
+        switch (rr->status) {
+            case CDSL_STATUS_PASSED:           rpt->total_passed++; break;
+            case CDSL_STATUS_PARTIALLY_PASSED: rpt->total_partially++; break;
+            case CDSL_STATUS_FAILED:           rpt->total_failed++; break;
+            default:                           rpt->total_error++; break;
+        }
+    }
+    rpt->aggregate_score = agg_score;
+    rpt->aggregate_max = agg_max;
+
+    char buf[256];
+    snprintf(buf, sizeof(buf), "%d rules: %d passed, %d partial, %d failed | Score: %d/%d",
+             rpt->rule_count, rpt->total_passed, rpt->total_partially,
+             rpt->total_failed, agg_score, agg_max);
+    rpt->summary = strdup(buf);
+    return rpt;
+}
+
+void cdsl_ruleset_report_free(cdsl_ruleset_report_t* report) {
+    if (!report) return;
+    if (report->rule_reports) {
+        for (int i = 0; i < report->rule_count; i++) {
+            cdsl_report_free(report->rule_reports[i]);
+        }
+        free(report->rule_reports);
+    }
+    free(report->summary);
+    free(report);
+}
+
+void cdsl_ruleset_report_print(const cdsl_ruleset_report_t* report) {
+    if (!report) { printf("No report.\n"); return; }
+    printf("\n========================================\n");
+    printf("  BATCH AUDIT REPORT\n");
+    printf("========================================\n");
+    for (int i = 0; i < report->rule_count; i++) {
+        cdsl_rule_report_t* rr = report->rule_reports[i];
+        if (rr) {
+            printf("  [%s] %s - %s (score: %d/%d)\n",
+                   status_str(rr->status), rr->rule_name, rr->decision_summary,
+                   rr->total_obtained_score, rr->total_max_score);
+        }
+    }
+    printf("----------------------------------------\n");
+    printf("  Summary:  %s\n", report->summary);
+    printf("========================================\n\n");
+}
