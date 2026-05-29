@@ -94,5 +94,50 @@ cdsl_ai_review_t* cdsl_ai_review(const char* dsl_code,
  */
 void cdsl_ai_review_free(cdsl_ai_review_t* review);
 
+/**
+ * @brief Streaming callback for AI responses.
+ *
+ * Called for each chunk of text received from the streaming API.
+ *
+ * @param chunk Text chunk received
+ * @param user_data User-provided data pointer
+ */
+typedef void (*cdsl_ai_stream_cb_t)(const char* chunk, void* user_data);
+
+/**
+ * @brief Stream translate natural language to DSL.
+ *
+ * Sends the prompt to the LLM API with streaming enabled.
+ * Each chunk of the response is delivered via the callback.
+ *
+ * @param natural_language User's rule description
+ * @param schema Registered schema
+ * @param config AI configuration
+ * @param callback Streaming callback function
+ * @param user_data User data passed to callback
+ * @return Complete response string (must be freed with free()), or NULL on error
+ */
+char* cdsl_ai_translate_stream(const char* natural_language,
+                                const cdsl_schema_t* schema,
+                                const cdsl_ai_config_t* config,
+                                cdsl_ai_stream_cb_t callback, void* user_data);
+
+/**
+ * @brief Stream review a DSL rule.
+ *
+ * Sends the review request to the LLM API with streaming enabled.
+ *
+ * @param dsl_code DSL rule to review
+ * @param schema Registered schema
+ * @param config AI configuration
+ * @param callback Streaming callback function
+ * @param user_data User data passed to callback
+ * @return Complete response string (must be freed with free()), or NULL on error
+ */
+char* cdsl_ai_review_stream(const char* dsl_code,
+                             const cdsl_schema_t* schema,
+                             const cdsl_ai_config_t* config,
+                             cdsl_ai_stream_cb_t callback, void* user_data);
+
 #endif
 /** @} */

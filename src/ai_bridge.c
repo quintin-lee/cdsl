@@ -378,3 +378,141 @@ void cdsl_ai_review_free(cdsl_ai_review_t* review) {
     free(review->suggestions);
     free(review);
 }
+
+static char* call_llm_api_stream(const char* prompt, const cdsl_ai_config_t* config,
+                                  cdsl_ai_stream_cb_t callback, void* user_data) {
+    if (!config || !config->api_key || !config->api_base || !config->model) return NULL;
+
+    char* escaped_prompt = malloc(strlen(prompt) * 4 + 1);
+    char* dst = escaped_prompt;
+    for (const char* s = prompt; *s; s++) {
+        if (*s == '"') { *dst++ = '\\'; *dst++ = '"'; }
+        else if (*s == '\\') { *dst++ = '\\'; *dst++ = '\\'; }
+        else if (*s == '\n') { *dst++ = '\\'; *dst++ = 'n'; }
+        else if (*s == '\r') { *dst++ = '\\'; *dst++ = 'r'; }
+        else if (*s == '\t') { *dst++ = '\\'; *dst++ = 't'; }
+        else { *dst++ = *s; }
+    }
+    *dst = '\0';
+
+    char cmd[16384];
+    snprintf(cmd, sizeof(cmd),
+        "curl -s -N -X POST \"%s/chat/completions\" "
+        "-H \"Content-Type: application/json\" "
+        "-H \"Authorization: Bearer %s\" "
+        "-d '{\"model\":\"%s\",\"messages\":[{\"role\":\"user\",\"content\":\"%s\"}],\"temperature\":0.1,\"stream\":true}'",
+        config->api_base, config->api_key, config->model, escaped_prompt);
+    free(escaped_prompt);
+
+    FILE* fp = popen(cmd, "r");
+    if (!fp) return NULL;
+
+    char* result = malloc(16384);
+    size_t total = 0;
+    result[0] = '\0';
+    char line[4096];
+
+    while (fgets(line, sizeof(line), fp)) {
+        if (strncmp(line, "data: ", 6) != 0) continue;
+        char* data = line + 6;
+        if (strcmp(data, "[DONE]\n") == 0) break;
+
+        char* content = strstr(data, "\"content\":\"");
+        if (!content) continue;
+        content += 11;
+        char* end = strchr(content, '\"');
+        if (!end) continue;
+
+        size_t len = end - content;
+        if (total + len + 1 > 16384) {
+            result = realloc(result, total + len + 64);
+        }
+        for (size_t i = 0; i < len; i++) {
+            if (content[i] == '\\' && i + 1 < len) {
+                if (content[i+1] == 'n') { result[total++] = '\n'; i++; }
+                else if (content[i+1] == 't') { result[total++] = '\t'; i++; }
+                else if (content[i+1] == '"') { result[total++] = '"'; i++; }
+                else if (content[i+1] == '\\') { result[total++] = '\\'; i++; }
+                else { result[total++] = content[i]; }
+            } else {
+                result[total++] = content[i];
+            }
+        }
+        result[total] = '\0';
+
+        if (callback) {
+            char* chunk = strndup(content, len);
+            callback(chunk, user_data);
+            free(chunk);
+        }
+    }
+    pclose(fp);
+    return result;
+}
+
+char* cdsl_ai_translate_stream(const char* natural_language,
+                                const cdsl_schema_t* schema,
+                                const cdsl_ai_config_t* config,
+                                cdsl_ai_stream_cb_t callback, void* user_data) {
+    if (!natural_language) return NULL;
+
+    if (config && config->use_mock) {
+        char* result = cdsl_ai_translate(natural_language, schema, config);
+        if (result && callback) callback(result, user_data);
+        return result;
+    }
+
+    char prompt[4096];
+    snprintf(prompt, sizeof(prompt),
+        "You are a C-DSL rule translator. Convert the following natural language "
+        "description into a valid C-DSL rule.\n\n"
+        "Available variables:\n");
+    for (cdsl_var_schema_t* v = schema ? schema->vars : NULL; v; v = v->next) {
+        char typebuf[32];
+        switch (v->type) {
+            case CDSL_TYPE_INT:    strcpy(typebuf, "INT"); break;
+            case CDSL_TYPE_FLOAT:  strcpy(typebuf, "FLOAT"); break;
+            case CDSL_TYPE_BOOL:   strcpy(typebuf, "BOOL"); break;
+            case CDSL_TYPE_STRING: strcpy(typebuf, "STRING"); break;
+            default:               strcpy(typebuf, "VOID"); break;
+        }
+        snprintf(prompt + strlen(prompt), sizeof(prompt) - strlen(prompt),
+                 "  - %s (%s)\n", v->name, typebuf);
+    }
+    snprintf(prompt + strlen(prompt), sizeof(prompt) - strlen(prompt),
+             "\nAvailable actions: score(), fail_metric(), block_action(), reject_document()\n"
+             "Use METRIC/CASE/DEFAULT for multi-indicator scoring.\n\n"
+             "User request: %s\n\n"
+             "Output ONLY the DSL code in a ```dsl code block.", natural_language);
+
+    return call_llm_api_stream(prompt, config, callback, user_data);
+}
+
+char* cdsl_ai_review_stream(const char* dsl_code,
+                             const cdsl_schema_t* schema,
+                             const cdsl_ai_config_t* config,
+                             cdsl_ai_stream_cb_t callback, void* user_data) {
+    if (!dsl_code) return NULL;
+
+    if (config && config->use_mock) {
+        cdsl_ai_review_t* rev = cdsl_ai_review(dsl_code, schema, config);
+        char* json = malloc(512);
+        snprintf(json, 512, "{\"approved\":%s,\"risk_score\":%d,\"reason\":\"%s\",\"suggestions\":\"%s\"}",
+                 rev->approved ? "true" : "false", rev->risk_score, rev->reason, rev->suggestions);
+        cdsl_ai_review_free(rev);
+        if (callback) callback(json, user_data);
+        return json;
+    }
+
+    char review_prompt[8192];
+    snprintf(review_prompt, sizeof(review_prompt),
+        "You are a DSL rule safety reviewer. Analyze the following C-DSL rule for:\n"
+        "1. Logical contradictions\n"
+        "2. Missing META blocks or weights\n"
+        "3. Security risks\n\n"
+        "DSL code:\n%s\n\n"
+        "Respond in JSON: {\"approved\":true/false,\"risk_score\":0-100,\"reason\":\"...\",\"suggestions\":\"...\"}",
+        dsl_code);
+
+    return call_llm_api_stream(review_prompt, config, callback, user_data);
+}
