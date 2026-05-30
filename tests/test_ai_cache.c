@@ -7,7 +7,7 @@
  */
 
 #include "test.h"
-#include "ai_bridge.h"
+#include "cdsl/ai.h"
 #include "cdsl/util/hashmap.h"
 #include <stdlib.h>
 #include <string.h>

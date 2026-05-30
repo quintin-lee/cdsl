@@ -20,7 +20,7 @@
 #include "ast.h"
 #include "cdsl/schema.h"
 #include "execution.h"
-#include "ai_bridge.h"
+#include "cdsl/ai.h"
 
 /**
  * @brief Callback function for action invocations in the demo.
