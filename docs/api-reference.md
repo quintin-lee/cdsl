@@ -68,7 +68,7 @@ typedef struct cdsl_rule {
     cdsl_expr_node_t* when_expr;
     cdsl_action_node_t* then_action;
     cdsl_metric_node_t* metrics;
-    char* template_name;
+    cdsl_arena_t* arena;
 } cdsl_rule_t;
 ```
 
@@ -289,9 +289,8 @@ typedef struct cdsl_compiled_rule {
 
 ```c
 typedef struct cdsl_compile_cache {
-    cdsl_compiled_rule_t** entries;
-    int count;
-    int capacity;
+    cdsl_hashmap_t* map;
+    pthread_rwlock_t lock;
 } cdsl_compile_cache_t;
 ```
 
@@ -320,6 +319,13 @@ typedef struct {
 | `cdsl_context_set_float(ctx, name, val)`               | Set or update a float variable                   |
 | `cdsl_context_set_bool(ctx, name, val)`                | Set or update a boolean variable                 |
 | `cdsl_context_set_string(ctx, name, val)`              | Set or update a string variable                  |
+| `cdsl_context_set_date(ctx, name, val)`                | Set or update a date/time variable               |
+| `cdsl_context_get_int(ctx, name, default_val)`         | Get integer value (returns default if not found) |
+| `cdsl_context_get_float(ctx, name, default_val)`       | Get float value (returns default if not found)   |
+| `cdsl_context_get_bool(ctx, name, default_val)`        | Get boolean value (returns default if not found) |
+| `cdsl_context_get_string(ctx, name, default_val)`      | Get string value (returns default if not found)  |
+| `cdsl_context_get_date(ctx, name, default_val)`        | Get date value (returns default if not found)    |
+| `cdsl_context_remove(ctx, name)`                       | Remove a variable (returns 1 if found, 0 if not) |
 | `cdsl_context_load_json(ctx, json_str)`                | Load variables from JSON (returns 1 on success)  |
 
 #### `cdsl_context_load_json`
@@ -339,6 +345,8 @@ Loads variables from a JSON string. Nested objects are flattened with dot notati
 | `cdsl_vm_register_action(vm, name, cb)`        | Register an action callback                      |
 | `cdsl_vm_register_function(vm, name, cb)`      | Register a function callback for expressions     |
 | `cdsl_vm_set_debug(vm, enabled)`               | Enable/disable debug trace to stderr             |
+| `cdsl_vm_get_max_expr_depth(vm)`               | Get max expression nesting depth                 |
+| `cdsl_vm_set_max_expr_depth(vm, depth)`        | Set max expression nesting depth (must be > 0)   |
 | `cdsl_vm_get_stats(vm)`                        | Get execution statistics (caller must free)      |
 | `cdsl_vm_reset_stats(vm)`                      | Reset all statistics counters                    |
 
@@ -543,13 +551,19 @@ typedef struct {
 | `cdsl_hashmap_put(map, key, value)`              | Insert or update; returns 1 on success        |
 | `cdsl_hashmap_get(map, key)`                     | Look up by key; returns NULL if not found     |
 | `cdsl_hashmap_remove(map, key, free_fn)`         | Remove entry; returns 1 if found, 0 otherwise |
-| `cdsl_hashmap_contains(map, key)`                | Check key existence; returns 1 if found       |
+| `cdsl_hashmap_has(map, key)`                     | Check key existence; returns 1 if found       |
+| `cdsl_hashmap_iterate(map, cb, user_data)`       | Iterate over all entries calling cb for each  |
+| `cdsl_hashmap_keys(map, count)`                  | Get all keys as NULL-terminated array         |
 
 ---
 
 ## 8. JSON Module
 
-| Function                     | Description                                  |
-|------------------------------|----------------------------------------------|
-| `cdsl_json_parse(json)`      | Parse JSON string into value tree            |
-| `cdsl_json_free(val)`        | Recursively free JSON value tree             |
+| Function                       | Description                                    |
+|--------------------------------|------------------------------------------------|
+| `cdsl_json_parse(json)`        | Parse JSON string into value tree              |
+| `cdsl_json_free(val)`          | Recursively free JSON value tree               |
+| `cdsl_json_object_length(val)` | Return number of keys in JSON object           |
+| `cdsl_json_array_length(val)`  | Return number of elements in JSON array        |
+| `cdsl_json_get_object(val, k)` | Get child object by key (NULL if not found)    |
+| `cdsl_json_get_array(val, i)`  | Get array element by index (NULL if out of range)|

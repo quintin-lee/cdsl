@@ -481,6 +481,7 @@ void cdsl_free_rule(cdsl_rule_t* rule);
  * @param dsl_code Null-terminated DSL source string
  * @return Parsed rule, or NULL on parse error
  */
+[[nodiscard]]
 cdsl_rule_t* cdsl_parse_string(const char* dsl_code);
 
 /** @name Template Registry */

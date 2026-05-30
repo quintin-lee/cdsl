@@ -30,11 +30,13 @@ typedef struct cdsl_compile_cache {
 	pthread_rwlock_t lock;
 } cdsl_compile_cache_t;
 
+[[nodiscard]]
 cdsl_compiled_rule_t* cdsl_compile(cdsl_compile_cache_t* cache,
 				   const char* dsl_code,
 				   const cdsl_schema_t* schema,
 				   char* err_buf,
 				   int err_buf_sz);
+[[nodiscard]]
 cdsl_compile_cache_t* cdsl_compile_cache_create(int capacity);
 void cdsl_compile_cache_free(cdsl_compile_cache_t* cache);
 

@@ -43,6 +43,7 @@ typedef struct cdsl_schema {
  * @brief Create an empty schema.
  * @return Newly allocated schema (must be freed with cdsl_schema_free)
  */
+[[nodiscard]]
 cdsl_schema_t* cdsl_schema_create(void);
 
 /**

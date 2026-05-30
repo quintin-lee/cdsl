@@ -53,11 +53,14 @@ struct cdsl_vm;
 struct cdsl_context;
 struct cdsl_compiled_rule;
 
+[[nodiscard]]
 cdsl_rule_report_t*
 cdsl_vm_execute(struct cdsl_vm* vm, const cdsl_rule_t* rule, struct cdsl_context* ctx);
 void cdsl_report_free(cdsl_rule_report_t* report);
 void cdsl_report_print(const cdsl_rule_report_t* report);
+[[nodiscard]]
 char* cdsl_report_to_json(const cdsl_rule_report_t* report);
+[[nodiscard]]
 cdsl_rule_report_t* cdsl_vm_execute_compiled(struct cdsl_vm* vm,
 					     struct cdsl_compiled_rule* compiled,
 					     struct cdsl_context* ctx);

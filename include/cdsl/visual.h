@@ -12,8 +12,10 @@
 #include "cdsl/schema.h"
 #include "cdsl/ruleset.h"
 
+[[nodiscard]]
 char* cdsl_rule_to_dot(const cdsl_rule_t* rule);
 int cdsl_rule_to_dot_file(const cdsl_rule_t* rule, const char* filepath);
+[[nodiscard]]
 char* cdsl_ruleset_to_dot(const cdsl_ruleset_t* set);
 int cdsl_ruleset_to_dot_file(const cdsl_ruleset_t* set, const char* filepath);
 

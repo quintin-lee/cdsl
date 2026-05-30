@@ -71,6 +71,7 @@ typedef struct cdsl_vm {
 	int max_expr_depth;
 } cdsl_vm_t;
 
+[[nodiscard]]
 cdsl_vm_t* cdsl_vm_create(const cdsl_schema_t* schema);
 void cdsl_vm_free(cdsl_vm_t* vm);
 void cdsl_vm_register_action(cdsl_vm_t* vm, const char* action_name, cdsl_action_cb_t cb);
@@ -78,6 +79,7 @@ void cdsl_vm_register_function(cdsl_vm_t* vm, const char* func_name, cdsl_func_c
 void cdsl_vm_set_debug(cdsl_vm_t* vm, int enabled);
 int cdsl_vm_get_max_expr_depth(const cdsl_vm_t* vm);
 void cdsl_vm_set_max_expr_depth(cdsl_vm_t* vm, int depth);
+[[nodiscard]]
 cdsl_stats_t* cdsl_vm_get_stats(const cdsl_vm_t* vm);
 void cdsl_vm_reset_stats(cdsl_vm_t* vm);
 

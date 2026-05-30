@@ -44,6 +44,7 @@ typedef struct cdsl_context {
 	cdsl_hashmap_t* map;
 } cdsl_context_t;
 
+[[nodiscard]]
 cdsl_context_t* cdsl_context_create(const cdsl_schema_t* schema);
 void cdsl_context_free(cdsl_context_t* ctx);
 void cdsl_context_set_int(cdsl_context_t* ctx, const char* name, int val);
