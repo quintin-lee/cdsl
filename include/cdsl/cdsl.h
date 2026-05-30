@@ -14,10 +14,20 @@
 #include "cdsl/util/hashmap.h"
 #include "cdsl/util/json.h"
 
-/* Core modules */
+/* Core schema & AST */
 #include "cdsl/schema.h"
 #include "cdsl/ast.h"
-#include "cdsl/execution.h"
+
+/* Execution sub-modules */
+#include "cdsl/context.h"
+#include "cdsl/vm.h"
+#include "cdsl/report.h"
+#include "cdsl/cache.h"
+#include "cdsl/ruleset.h"
+#include "cdsl/codegen.h"
+#include "cdsl/visual.h"
+
+/* AI bridge */
 #include "cdsl/ai.h"
 
 #endif
