@@ -28,7 +28,7 @@ static void test_rule_visualization() {
     cdsl_schema_t* schema = cdsl_schema_create();
     cdsl_schema_register_var(schema, "user.age", CDSL_TYPE_INT);
     cdsl_schema_register_var(schema, "user.name", CDSL_TYPE_STRING);
-    cdsl_schema_register_action(, "", , 0);
+    cdsl_schema_register_action(schema, "log", CDSL_TYPE_VOID, 1, CDSL_TYPE_STRING);
     
     cdsl_ruleset_t* ruleset = cdsl_ruleset_create();
     
