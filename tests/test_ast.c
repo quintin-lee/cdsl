@@ -8,7 +8,7 @@
  */
 
 #include "test.h"
-#include "ast.h"
+#include "cdsl/ast.h"
 #include <stdlib.h>
 
 /**

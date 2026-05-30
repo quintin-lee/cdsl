@@ -14,9 +14,9 @@
  */
 
 #include "test.h"
-#include "ast.h"
+#include "cdsl/ast.h"
 #include "cdsl/schema.h"
-#include "execution.h"
+#include "cdsl/execution.h"
 
 /** @brief Whether the most recent action callback was invoked. */
 static int action_called = 0;

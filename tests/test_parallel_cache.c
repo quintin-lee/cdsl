@@ -9,7 +9,7 @@
  * unique rules to exercise both cache hits and misses.
  */
 
-#include "execution.h"
+#include "cdsl/execution.h"
 #include <pthread.h>
 #include <stdio.h>
 #include <stdlib.h>

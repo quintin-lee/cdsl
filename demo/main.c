@@ -17,9 +17,9 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include "ast.h"
+#include "cdsl/ast.h"
 #include "cdsl/schema.h"
-#include "execution.h"
+#include "cdsl/execution.h"
 #include "cdsl/ai.h"
 
 /**

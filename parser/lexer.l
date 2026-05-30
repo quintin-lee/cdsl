@@ -19,7 +19,7 @@
  */
 
 %{
-#include "ast.h"
+#include "cdsl/ast.h"
 #include "parser.tab.h"
 #include <string.h>
 #include <stdlib.h>

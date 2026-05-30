@@ -21,15 +21,17 @@ typedef struct {
 static void
 skip_ws(json_parser_t* p)
 {
-	while (p->src[p->pos] && isspace((unsigned char)p->src[p->pos]))
+	while (p->src[p->pos] && isspace((unsigned char)p->src[p->pos])) {
 		p->pos++;
+	}
 }
 
 static char*
 parse_string_raw(json_parser_t* p)
 {
-	if (p->src[p->pos] != '"')
+	if (p->src[p->pos] != '"') {
 		return NULL;
+	}
 	p->pos++;
 	size_t cap = 64;
 	size_t len = 0;
@@ -68,20 +70,20 @@ parse_string_raw(json_parser_t* p)
 					p->pos++;
 					char c = p->src[p->pos];
 					code *= 16;
-					if (c >= '0' && c <= '9')
+					if (c >= '0' && c <= '9') {
 						code += c - '0';
-					else if (c >= 'a' && c <= 'f')
+					} else if (c >= 'a' && c <= 'f') {
 						code += c - 'a' + 10;
-					else if (c >= 'A' && c <= 'F')
+					} else if (c >= 'A' && c <= 'F') {
 						code += c - 'A' + 10;
-					else {
+					} else {
 						free(s);
 						return NULL;
 					}
 				}
-				if (code < 128)
+				if (code < 128) {
 					s[len++] = (char)code;
-				else if (code < 0x800) {
+				} else if (code < 0x800) {
 					s[len++] = 0xC0 | (code >> 6);
 					s[len++] = 0x80 | (code & 0x3F);
 				} else {
@@ -109,8 +111,9 @@ parse_string_raw(json_parser_t* p)
 			s[len++] = p->src[p->pos++];
 		}
 	}
-	if (p->src[p->pos] == '"')
+	if (p->src[p->pos] == '"') {
 		p->pos++;
+	}
 	s[len] = '\0';
 	return s;
 }
@@ -120,8 +123,9 @@ static cdsl_json_value_t* parse_value(json_parser_t* p);
 static cdsl_json_value_t*
 parse_object(json_parser_t* p)
 {
-	if (p->src[p->pos] != '{')
+	if (p->src[p->pos] != '{') {
 		return NULL;
+	}
 	p->pos++;
 	cdsl_json_value_t* head = NULL;
 	cdsl_json_value_t* tail = NULL;
@@ -130,31 +134,36 @@ parse_object(json_parser_t* p)
 	while (p->src[p->pos] && p->src[p->pos] != '}') {
 		skip_ws(p);
 		char* key = parse_string_raw(p);
-		if (!key)
+		if (!key) {
 			break;
+		}
 		skip_ws(p);
-		if (p->src[p->pos] == ':')
+		if (p->src[p->pos] == ':') {
 			p->pos++;
+		}
 		skip_ws(p);
 		cdsl_json_value_t* val = parse_value(p);
 		if (val) {
 			val->key = key;
 			val->next = NULL;
-			if (tail)
+			if (tail) {
 				tail->next = val;
-			else
+			} else {
 				head = val;
+			}
 			tail = val;
 			count++;
 		} else {
 			free(key);
 		}
 		skip_ws(p);
-		if (p->src[p->pos] == ',')
+		if (p->src[p->pos] == ',') {
 			p->pos++;
+		}
 	}
-	if (p->src[p->pos] == '}')
+	if (p->src[p->pos] == '}') {
 		p->pos++;
+	}
 	cdsl_json_value_t* obj = calloc(1, sizeof(*obj));
 	obj->type = JSON_OBJECT;
 	obj->value.object.items = head;
@@ -165,8 +174,9 @@ parse_object(json_parser_t* p)
 static cdsl_json_value_t*
 parse_array(json_parser_t* p)
 {
-	if (p->src[p->pos] != '[')
+	if (p->src[p->pos] != '[') {
 		return NULL;
+	}
 	p->pos++;
 	cdsl_json_value_t* head = NULL;
 	cdsl_json_value_t* tail = NULL;
@@ -176,19 +186,22 @@ parse_array(json_parser_t* p)
 		cdsl_json_value_t* val = parse_value(p);
 		if (val) {
 			val->next = NULL;
-			if (tail)
+			if (tail) {
 				tail->next = val;
-			else
+			} else {
 				head = val;
+			}
 			tail = val;
 			count++;
 		}
 		skip_ws(p);
-		if (p->src[p->pos] == ',')
+		if (p->src[p->pos] == ',') {
 			p->pos++;
+		}
 	}
-	if (p->src[p->pos] == ']')
+	if (p->src[p->pos] == ']') {
 		p->pos++;
+	}
 	cdsl_json_value_t* arr = calloc(1, sizeof(*arr));
 	arr->type = JSON_ARRAY;
 	arr->value.array.items = head;
@@ -201,10 +214,12 @@ parse_value(json_parser_t* p)
 {
 	skip_ws(p);
 	char c = p->src[p->pos];
-	if (c == '{')
+	if (c == '{') {
 		return parse_object(p);
-	if (c == '[')
+	}
+	if (c == '[') {
 		return parse_array(p);
+	}
 	if (c == '"') {
 		char* s = parse_string_raw(p);
 		cdsl_json_value_t* v = calloc(1, sizeof(*v));
@@ -244,8 +259,9 @@ parse_value(json_parser_t* p)
 cdsl_json_value_t*
 cdsl_json_parse(const char* json)
 {
-	if (!json)
+	if (!json) {
 		return NULL;
+	}
 	json_parser_t p = {.src = json, .pos = 0};
 	return parse_value(&p);
 }
@@ -253,10 +269,12 @@ cdsl_json_parse(const char* json)
 void
 cdsl_json_free(cdsl_json_value_t* val)
 {
-	if (!val)
+	if (!val) {
 		return;
-	if (val->key)
+	}
+	if (val->key) {
 		free(val->key);
+	}
 	switch (val->type) {
 	case JSON_STRING:
 		free(val->value.string_val);

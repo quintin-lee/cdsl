@@ -9,7 +9,7 @@
  * and template definitions.
  */
 
-#include "ast.h"
+#include "cdsl/ast.h"
 #include <pthread.h>
 #include <stdio.h>
 #include <stdlib.h>

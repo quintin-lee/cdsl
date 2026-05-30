@@ -7,7 +7,7 @@
  * @{
  */
 
-#include "ast.h"
+#include "cdsl/ast.h"
 #include <stdlib.h>
 #include <string.h>
 
@@ -99,11 +99,13 @@ cdsl_arg_node_t*
 cdsl_append_arg(cdsl_arg_node_t* list, cdsl_expr_node_t* expr)
 {
 	cdsl_arg_node_t* new_node = cdsl_create_arg(expr);
-	if (!list)
+	if (!list) {
 		return new_node;
+	}
 	cdsl_arg_node_t* cur = list;
-	while (cur->next)
+	while (cur->next) {
 		cur = cur->next;
+	}
 	cur->next = new_node;
 	return list;
 }
@@ -129,11 +131,13 @@ cdsl_create_meta_item(char* key, char* value)
 cdsl_meta_item_t*
 cdsl_append_meta(cdsl_meta_item_t* list, cdsl_meta_item_t* item)
 {
-	if (!list)
+	if (!list) {
 		return item;
+	}
 	cdsl_meta_item_t* cur = list;
-	while (cur->next)
+	while (cur->next) {
 		cur = cur->next;
+	}
 	cur->next = item;
 	return list;
 }
@@ -150,11 +154,13 @@ cdsl_create_case(cdsl_expr_node_t* cond, cdsl_action_node_t* action)
 cdsl_case_node_t*
 cdsl_append_case(cdsl_case_node_t* list, cdsl_case_node_t* item)
 {
-	if (!list)
+	if (!list) {
 		return item;
+	}
 	cdsl_case_node_t* cur = list;
-	while (cur->next)
+	while (cur->next) {
 		cur = cur->next;
+	}
 	cur->next = item;
 	return list;
 }
@@ -176,11 +182,13 @@ cdsl_create_metric(char* name,
 cdsl_metric_node_t*
 cdsl_append_metric(cdsl_metric_node_t* list, cdsl_metric_node_t* item)
 {
-	if (!list)
+	if (!list) {
 		return item;
+	}
 	cdsl_metric_node_t* cur = list;
-	while (cur->next)
+	while (cur->next) {
 		cur = cur->next;
+	}
 	cur->next = item;
 	return list;
 }
@@ -213,8 +221,9 @@ char*
 cdsl_meta_get(cdsl_meta_item_t* list, const char* key)
 {
 	for (cdsl_meta_item_t* m = list; m; m = m->next) {
-		if (m->key && strcmp(m->key, key) == 0)
+		if (m->key && strcmp(m->key, key) == 0) {
 			return m->value;
+		}
 	}
 	return NULL;
 }
@@ -222,8 +231,9 @@ cdsl_meta_get(cdsl_meta_item_t* list, const char* key)
 void
 cdsl_free_expr(cdsl_expr_node_t* expr)
 {
-	if (!expr)
+	if (!expr) {
 		return;
+	}
 	switch (expr->type) {
 	case CDSL_EXPR_ID:
 		free(expr->data.id_val);
@@ -262,8 +272,9 @@ cdsl_free_arg(cdsl_arg_node_t* arg)
 void
 cdsl_free_action(cdsl_action_node_t* action)
 {
-	if (!action)
+	if (!action) {
 		return;
+	}
 	free(action->action_name);
 	cdsl_free_arg(action->args);
 	free(action);
@@ -310,8 +321,9 @@ cdsl_free_metric(cdsl_metric_node_t* m)
 void
 cdsl_free_rule(cdsl_rule_t* rule)
 {
-	if (!rule)
+	if (!rule) {
 		return;
+	}
 	free(rule->name);
 	cdsl_free_meta(rule->meta_list);
 	cdsl_free_expr(rule->when_expr);

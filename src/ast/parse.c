@@ -7,7 +7,7 @@
  * @{
  */
 
-#include "ast.h"
+#include "cdsl/ast.h"
 #include <stdlib.h>
 #include <string.h>
 #include <stdio.h>
@@ -24,8 +24,9 @@ int yyparse(yyscan_t scanner, cdsl_rule_t** rule_ptr, int* error_count);
 cdsl_rule_t*
 cdsl_parse_string(const char* dsl_code)
 {
-	if (!dsl_code)
+	if (!dsl_code) {
 		return NULL;
+	}
 	if (strlen(dsl_code) >= CDSL_MAX_INPUT_LENGTH) {
 		fprintf(stderr,
 			"Error: DSL input length (%zu) exceeds maximum allowed (%d)\n",
@@ -35,8 +36,9 @@ cdsl_parse_string(const char* dsl_code)
 	}
 
 	yyscan_t scanner;
-	if (yylex_init(&scanner) != 0)
+	if (yylex_init(&scanner) != 0) {
 		return NULL;
+	}
 
 	cdsl_rule_t* rule = NULL;
 	int error_count = 0;

@@ -7,7 +7,7 @@
  * @{
  */
 
-#include "ast.h"
+#include "cdsl/ast.h"
 #include <stdlib.h>
 #include <string.h>
 #include <stdio.h>
@@ -19,8 +19,9 @@ static cdsl_arg_node_t* copy_arg_list(const cdsl_arg_node_t* list);
 static cdsl_expr_node_t*
 copy_expr(const cdsl_expr_node_t* expr)
 {
-	if (!expr)
+	if (!expr) {
 		return NULL;
+	}
 	cdsl_expr_node_t* c = calloc(1, sizeof(*c));
 	c->type = expr->type;
 	switch (expr->type) {
@@ -78,8 +79,9 @@ copy_arg_list(const cdsl_arg_node_t* list)
 static cdsl_action_node_t*
 copy_action(const cdsl_action_node_t* action)
 {
-	if (!action)
+	if (!action) {
 		return NULL;
+	}
 	cdsl_action_node_t* c = calloc(1, sizeof(*c));
 	c->action_name = strdup(action->action_name);
 	c->args = copy_arg_list(action->args);
@@ -89,23 +91,26 @@ copy_action(const cdsl_action_node_t* action)
 static cdsl_metric_node_t*
 copy_metric_list(cdsl_metric_node_t* src)
 {
-	if (!src)
+	if (!src) {
 		return NULL;
+	}
 	cdsl_metric_node_t* head = NULL;
 	cdsl_metric_node_t* tail = NULL;
 	for (cdsl_metric_node_t* m = src; m; m = m->next) {
 		cdsl_metric_node_t* nm = calloc(1, sizeof(*nm));
 		nm->name = strdup(m->name);
 		nm->meta_list = NULL;
-		for (cdsl_meta_item_t* mi = m->meta_list; mi; mi = mi->next)
-			nm->meta_list = cdsl_append_meta(nm->meta_list,
-							  cdsl_create_meta_item(strdup(mi->key),
-									       strdup(mi->value)));
+		for (cdsl_meta_item_t* mi = m->meta_list; mi; mi = mi->next) {
+			nm->meta_list = cdsl_append_meta(
+			    nm->meta_list,
+			    cdsl_create_meta_item(strdup(mi->key), strdup(mi->value)));
+		}
 		nm->case_list = NULL;
-		for (cdsl_case_node_t* c = m->case_list; c; c = c->next)
-			nm->case_list = cdsl_append_case(nm->case_list,
-							  cdsl_create_case(copy_expr(c->condition),
-									   copy_action(c->action)));
+		for (cdsl_case_node_t* c = m->case_list; c; c = c->next) {
+			nm->case_list = cdsl_append_case(
+			    nm->case_list,
+			    cdsl_create_case(copy_expr(c->condition), copy_action(c->action)));
+		}
 		nm->default_action = copy_action(m->default_action);
 		nm->next = NULL;
 		if (!head) {
@@ -132,8 +137,9 @@ static cdsl_template_entry_t* template_registry = NULL;
 void
 cdsl_template_register(cdsl_rule_t* template_rule)
 {
-	if (!template_rule || !template_rule->name)
+	if (!template_rule || !template_rule->name) {
 		return;
+	}
 	cdsl_template_entry_t* e = calloc(1, sizeof(*e));
 	e->name = strdup(template_rule->name);
 	e->rule = template_rule;
@@ -145,8 +151,9 @@ cdsl_rule_t*
 cdsl_template_get(const char* name)
 {
 	for (cdsl_template_entry_t* e = template_registry; e; e = e->next) {
-		if (strcmp(e->name, name) == 0)
+		if (strcmp(e->name, name) == 0) {
 			return e->rule;
+		}
 	}
 	return NULL;
 }

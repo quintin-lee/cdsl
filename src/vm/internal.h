@@ -15,7 +15,7 @@
 #ifndef CDSL_EXECUTION_INTERNAL_H
 #define CDSL_EXECUTION_INTERNAL_H
 
-#include "execution.h"
+#include "cdsl/execution.h"
 
 /**
  * @brief Recursively evaluate an expression against the context.

@@ -39,15 +39,17 @@ cdsl_hashmap_create(int bucket_count)
 void
 cdsl_hashmap_free(cdsl_hashmap_t* map, cdsl_hashmap_free_fn free_fn)
 {
-	if (!map)
+	if (!map) {
 		return;
+	}
 	for (int i = 0; i < map->bucket_count; i++) {
 		cdsl_hashmap_entry_t* e = map->buckets[i];
 		while (e) {
 			cdsl_hashmap_entry_t* next = e->next;
 			free(e->key);
-			if (free_fn && e->value)
+			if (free_fn && e->value) {
 				free_fn(e->value);
+			}
 			free(e);
 			e = next;
 		}
@@ -59,8 +61,9 @@ cdsl_hashmap_free(cdsl_hashmap_t* map, cdsl_hashmap_free_fn free_fn)
 bool
 cdsl_hashmap_put(cdsl_hashmap_t* map, const char* key, void* value)
 {
-	if (!map || !key)
+	if (!map || !key) {
 		return false;
+	}
 	unsigned int idx = hash_string(key, map->bucket_count);
 	cdsl_hashmap_entry_t* e = map->buckets[idx];
 	while (e) {
@@ -82,13 +85,15 @@ cdsl_hashmap_put(cdsl_hashmap_t* map, const char* key, void* value)
 void*
 cdsl_hashmap_get(cdsl_hashmap_t* map, const char* key)
 {
-	if (!map || !key)
+	if (!map || !key) {
 		return NULL;
+	}
 	unsigned int idx = hash_string(key, map->bucket_count);
 	cdsl_hashmap_entry_t* e = map->buckets[idx];
 	while (e) {
-		if (strcmp(e->key, key) == 0)
+		if (strcmp(e->key, key) == 0) {
 			return e->value;
+		}
 		e = e->next;
 	}
 	return NULL;
@@ -97,8 +102,9 @@ cdsl_hashmap_get(cdsl_hashmap_t* map, const char* key)
 bool
 cdsl_hashmap_remove(cdsl_hashmap_t* map, const char* key, cdsl_hashmap_free_fn free_fn)
 {
-	if (!map || !key)
+	if (!map || !key) {
 		return false;
+	}
 	unsigned int idx = hash_string(key, map->bucket_count);
 	cdsl_hashmap_entry_t** pp = &map->buckets[idx];
 	while (*pp) {
@@ -106,8 +112,9 @@ cdsl_hashmap_remove(cdsl_hashmap_t* map, const char* key, cdsl_hashmap_free_fn f
 			cdsl_hashmap_entry_t* del = *pp;
 			*pp = del->next;
 			free(del->key);
-			if (free_fn && del->value)
+			if (free_fn && del->value) {
 				free_fn(del->value);
+			}
 			free(del);
 			map->size--;
 			return true;
@@ -120,13 +127,15 @@ cdsl_hashmap_remove(cdsl_hashmap_t* map, const char* key, cdsl_hashmap_free_fn f
 bool
 cdsl_hashmap_has(const cdsl_hashmap_t* map, const char* key)
 {
-	if (!map || !key)
+	if (!map || !key) {
 		return false;
+	}
 	unsigned int idx = hash_string(key, map->bucket_count);
 	const cdsl_hashmap_entry_t* e = map->buckets[idx];
 	while (e) {
-		if (strcmp(e->key, key) == 0)
+		if (strcmp(e->key, key) == 0) {
 			return true;
+		}
 		e = e->next;
 	}
 	return false;
@@ -135,8 +144,9 @@ cdsl_hashmap_has(const cdsl_hashmap_t* map, const char* key)
 void
 cdsl_hashmap_iterate(const cdsl_hashmap_t* map, cdsl_hashmap_iter_fn cb, void* user_data)
 {
-	if (!map || !cb)
+	if (!map || !cb) {
 		return;
+	}
 	for (int i = 0; i < map->bucket_count; i++) {
 		const cdsl_hashmap_entry_t* e = map->buckets[i];
 		while (e) {
@@ -149,13 +159,16 @@ cdsl_hashmap_iterate(const cdsl_hashmap_t* map, cdsl_hashmap_iter_fn cb, void* u
 char**
 cdsl_hashmap_keys(const cdsl_hashmap_t* map, int* count)
 {
-	if (count)
+	if (count) {
 		*count = 0;
-	if (!map || map->size == 0)
+	}
+	if (!map || map->size == 0) {
 		return NULL;
+	}
 	char** keys = malloc(sizeof(char*) * (map->size + 1));
-	if (!keys)
+	if (!keys) {
 		return NULL;
+	}
 	int idx = 0;
 	for (int i = 0; i < map->bucket_count; i++) {
 		const cdsl_hashmap_entry_t* e = map->buckets[i];
@@ -165,8 +178,9 @@ cdsl_hashmap_keys(const cdsl_hashmap_t* map, int* count)
 		}
 	}
 	keys[idx] = NULL;
-	if (count)
+	if (count) {
 		*count = idx;
+	}
 	return keys;
 }
 /** @} */

@@ -16,9 +16,9 @@
  * @{
  */
 
-#include "execution.h"
+#include "cdsl/execution.h"
 #include "internal.h"
-#include "ast.h"
+#include "cdsl/ast.h"
 #include <stdlib.h>
 #include <string.h>
 #include <stdio.h>

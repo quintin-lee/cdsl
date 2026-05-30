@@ -13,14 +13,7 @@
  */
 typedef struct cdsl_json_value {
 	char* key;
-	enum {
-		JSON_NULL,
-		JSON_BOOL,
-		JSON_NUMBER,
-		JSON_STRING,
-		JSON_OBJECT,
-		JSON_ARRAY
-	} type;
+	enum { JSON_NULL, JSON_BOOL, JSON_NUMBER, JSON_STRING, JSON_OBJECT, JSON_ARRAY } type;
 	union {
 		int bool_val;
 		double number_val;
