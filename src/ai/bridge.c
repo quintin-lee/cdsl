@@ -29,6 +29,7 @@
 #include <stdio.h>
 #include <ctype.h>
 #include <stdarg.h>
+#include <pthread.h>
 
 /**
  * @brief Minimal JSON string escape for review_stream output.
@@ -234,48 +235,67 @@ static cdsl_ai_provider_t g_default_provider = {
 
 static cdsl_hashmap_t* g_providers = NULL;
 static cdsl_hashmap_t* g_cache_drivers = NULL;
+static pthread_rwlock_t g_ai_registry_lock;
+static int g_ai_registry_lock_initialized = 0;
 
 static void
 init_registries(void)
 {
+	if (!g_ai_registry_lock_initialized) {
+		pthread_rwlock_init(&g_ai_registry_lock, NULL);
+		g_ai_registry_lock_initialized = 1;
+	}
+	pthread_rwlock_wrlock(&g_ai_registry_lock);
 	if (!g_providers) {
 		g_providers = cdsl_hashmap_create(16);
-		cdsl_ai_register_provider("default", &g_default_provider);
+		cdsl_ai_provider_t* copy = malloc(sizeof(*copy));
+		if (copy) {
+			*copy = g_default_provider;
+			cdsl_hashmap_put(g_providers, "default", copy);
+		}
 	}
 	if (!g_cache_drivers) {
 		g_cache_drivers = cdsl_hashmap_create(16);
 	}
+	pthread_rwlock_unlock(&g_ai_registry_lock);
 }
 
 void
 cdsl_ai_register_provider(const char* name, const cdsl_ai_provider_t* provider)
 {
-	if (!g_providers) {
-		g_providers = cdsl_hashmap_create(16);
-	}
+	init_registries();
+	pthread_rwlock_wrlock(&g_ai_registry_lock);
 	cdsl_ai_provider_t* copy = malloc(sizeof(*copy));
-	*copy = *provider;
-	cdsl_hashmap_put(g_providers, name, copy);
+	if (copy) {
+		*copy = *provider;
+		cdsl_hashmap_put(g_providers, name, copy);
+	}
+	pthread_rwlock_unlock(&g_ai_registry_lock);
 }
 
 void
 cdsl_ai_register_cache_driver(const char* name, const cdsl_ai_cache_t* cache)
 {
-	if (!g_cache_drivers) {
-		g_cache_drivers = cdsl_hashmap_create(16);
-	}
+	init_registries();
+	pthread_rwlock_wrlock(&g_ai_registry_lock);
 	cdsl_ai_cache_t* copy = malloc(sizeof(*copy));
-	*copy = *cache;
-	cdsl_hashmap_put(g_cache_drivers, name, copy);
+	if (copy) {
+		*copy = *cache;
+		cdsl_hashmap_put(g_cache_drivers, name, copy);
+	}
+	pthread_rwlock_unlock(&g_ai_registry_lock);
 }
 
 static cdsl_ai_provider_t*
 get_provider(const char* name)
 {
 	init_registries();
+	pthread_rwlock_rdlock(&g_ai_registry_lock);
 	cdsl_ai_provider_t* p =
 	    (cdsl_ai_provider_t*)cdsl_hashmap_get(g_providers, name ? name : "default");
-	return p ? p : &g_default_provider;
+	cdsl_ai_provider_t* result = p ? p : &g_default_provider;
+	pthread_rwlock_unlock(&g_ai_registry_lock);
+	return result;
 }
 
 static cdsl_ai_cache_t*
@@ -286,7 +306,11 @@ get_cache_driver(const cdsl_ai_config_t* cfg)
 	}
 	if (cfg->cache_driver_name) {
 		init_registries();
-		return (cdsl_ai_cache_t*)cdsl_hashmap_get(g_cache_drivers, cfg->cache_driver_name);
+		pthread_rwlock_rdlock(&g_ai_registry_lock);
+		cdsl_ai_cache_t* result =
+		    (cdsl_ai_cache_t*)cdsl_hashmap_get(g_cache_drivers, cfg->cache_driver_name);
+		pthread_rwlock_unlock(&g_ai_registry_lock);
+		return result;
 	}
 	return NULL;
 }

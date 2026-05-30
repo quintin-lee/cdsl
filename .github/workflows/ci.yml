@@ -47,6 +47,38 @@ jobs:
           retention-days: 1
 
   ##########################################################################
+  # Sanitizer Build (AddressSanitizer + UndefinedBehaviorSanitizer)
+  ##########################################################################
+  sanitize:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install dependencies
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq \
+            cmake \
+            gcc \
+            flex \
+            bison \
+            libpthread-stubs0-dev
+
+      - name: Configure with sanitizers
+        run: |
+          cmake -B build \
+            -DCMAKE_BUILD_TYPE=Debug \
+            -DCMAKE_C_FLAGS="-fsanitize=address,undefined -fno-omit-frame-pointer" \
+            -DCMAKE_C_COMPILER=gcc
+
+      - name: Build
+        run: cmake --build build -j$(nproc)
+
+      - name: Test with sanitizers
+        run: ctest --test-dir build --output-on-failure
+
+  ##########################################################################
   # Code Format Check
   ##########################################################################
   format:

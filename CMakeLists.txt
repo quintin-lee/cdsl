@@ -66,7 +66,7 @@ target_include_directories(cdsl_shared PUBLIC
 )
 target_link_libraries(cdsl_shared PUBLIC Threads::Threads)
 if(CURL_FOUND)
-    target_link_libraries(cdsl_shared PRIVATE CURL::libcurl)
+    target_link_libraries(cdsl_shared PUBLIC CURL::libcurl)
 endif()
 
 # 5. Default target alias
@@ -136,7 +136,7 @@ install(FILES "${CMAKE_CURRENT_BINARY_DIR}/cdsl.pc"
 )
 
 # 10. Code formatting (clang-format)
-option(CDSL_FORMAT_ON_BUILD "Run clang-format before every build" ON)
+option(CDSL_FORMAT_ON_BUILD "Run clang-format before every build" OFF)
 
 find_program(CLANG_FORMAT clang-format)
 if(CLANG_FORMAT)
