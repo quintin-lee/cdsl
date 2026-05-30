@@ -227,11 +227,17 @@ cdsl_vm_execute_ruleset_parallel(cdsl_vm_t* vm,
 	for (cdsl_ruleset_entry_t* e = set->entries; e; e = e->next, idx++) {
 		args[idx].rule = e->rule;
 		args[idx].ctx = ctx;
-		args[idx].vm = cdsl_vm_create(vm->schema);
+		/* Use bare calloc instead of cdsl_vm_create: worker VMs share
+		   callbacks and functions pointers from the parent VM, so
+		   registering builtins would allocate entries that are immediately
+		   orphaned when we overwrite functions below. */
+		args[idx].vm = calloc(1, sizeof(cdsl_vm_t));
 		if (!args[idx].vm) {
 			args[idx].result = NULL;
 			continue;
 		}
+		args[idx].vm->schema = vm->schema;
+		args[idx].vm->max_expr_depth = vm->max_expr_depth;
 		args[idx].vm->callbacks = vm->callbacks;
 		args[idx].vm->functions = vm->functions;
 		args[idx].vm->user_data = vm->user_data;
@@ -239,9 +245,10 @@ cdsl_vm_execute_ruleset_parallel(cdsl_vm_t* vm,
 
 		if (pthread_create(&threads[idx], NULL, parallel_worker, &args[idx]) != 0) {
 			args[idx].result = NULL;
+			/* callbacks and functions are shared; set to NULL before free */
 			args[idx].vm->callbacks = NULL;
 			args[idx].vm->functions = NULL;
-			cdsl_vm_free(args[idx].vm);
+			free(args[idx].vm);
 			args[idx].vm = NULL;
 		}
 	}
@@ -278,10 +285,11 @@ cdsl_vm_execute_ruleset_parallel(cdsl_vm_t* vm,
 			    args[i].vm->stats.total_metrics_evaluated;
 			vm->stats.total_time_us += args[i].vm->stats.total_time_us;
 
-			/* Clean up worker VM (but don't free callbacks/functions as they are shared) */
+			/* Worker VM shares callbacks/functions with parent;
+			   detach before freeing to avoid double-free. */
 			args[i].vm->callbacks = NULL;
 			args[i].vm->functions = NULL;
-			cdsl_vm_free(args[i].vm);
+			free(args[i].vm);
 		}
 	}
 
