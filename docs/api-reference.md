@@ -217,6 +217,7 @@ typedef struct cdsl_value {
         double float_val;
         int bool_val;
         char* string_val;
+        time_t date_val;
     } data;
 } cdsl_value_t;
 ```

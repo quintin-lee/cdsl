@@ -287,6 +287,11 @@ cdsl_ruleset_report_t* batch =
     cdsl_vm_execute_ruleset_parallel(vm, set, ctx, 0);
 ```
 
+> **Note**: The context `ctx` is shared read-only across worker threads.
+> Each worker gets its own short-lived VM instance. If your action
+> callbacks modify context variables, create per-thread context copies
+> to avoid data races.
+
 ### 4.4 Dependency Ordering
 
 ```c
@@ -393,6 +398,19 @@ cdsl_value_t my_abs(const char* name, cdsl_arg_node_t* args, void* ud) {
 cdsl_vm_register_function(vm, "strlen", my_strlen);
 cdsl_vm_register_function(vm, "abs", my_abs);
 ```
+
+### 8.1 Built-in Functions
+
+CDSL provides these functions out of the box (auto-registered by `cdsl_vm_create()`):
+
+| Function                | Args      | Return   | Description |
+|-------------------------|-----------|----------|-------------|
+| `strlen(s)`             | STRING    | INT      | Length of string `s` |
+| `contains(haystack, needle)` | STRING, STRING | INT | 1 if `haystack` contains `needle`, else 0 |
+| `now()`                 | —         | DATE     | Current time as `time_t` |
+| `is_before(a, b)`       | DATE, DATE | INT     | 1 if `a < b`, else 0 |
+| `is_after(a, b)`        | DATE, DATE | INT     | 1 if `a > b`, else 0 |
+| `days_between(a, b)`    | DATE, DATE | INT     | Days between `a` and `b` (absolute value) |
 
 DSL usage:
 
@@ -649,5 +667,11 @@ cdsl_error_list_free(errors);
 | Schema (read-only)            | ✅          | Shared across threads             |
 | Rule (read-only)              | ✅          | Shared after parsing              |
 | `cdsl_compile_cache_t`        | ✅          | Internal RWLock protection        |
+| AI provider/cache registry    | ✅          | pthread_once init; RWLock-guarded |
+
+> **Parallel execution**: `cdsl_vm_execute_ruleset_parallel()` shares
+> the context read-only. Stats are aggregated from worker VMs back to
+> the parent VM sequentially — do not call this function concurrently
+> on the same VM instance.
 
 **Recommendation**: Create independent VM and Context instances per thread. Schema and Rule objects can be shared read-only across threads.
