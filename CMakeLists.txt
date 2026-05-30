@@ -13,7 +13,6 @@ find_package(BISON REQUIRED)
 find_package(CURL)
 if(CURL_FOUND)
     message(STATUS "Found libcurl - native AI bridge networking enabled")
-    add_definitions(-DCDSL_USE_CURL)
 else()
     message(WARNING "libcurl not found - AI bridge will fallback to popen(\"curl ...\")")
 endif()
@@ -38,6 +37,7 @@ target_include_directories(cdsl_objects PRIVATE
 )
 if(CURL_FOUND)
     target_link_libraries(cdsl_objects PRIVATE CURL::libcurl)
+    target_compile_definitions(cdsl_objects PRIVATE CDSL_USE_CURL)
 endif()
 
 if(MSVC)
@@ -68,15 +68,20 @@ target_link_libraries(cdsl_shared PUBLIC Threads::Threads)
 if(CURL_FOUND)
     target_link_libraries(cdsl_shared PUBLIC CURL::libcurl)
 endif()
+set_target_properties(cdsl_shared PROPERTIES
+    OUTPUT_NAME cdsl
+    VERSION ${PROJECT_VERSION}
+    SOVERSION 1
+)
 
 # 5. Default target alias
 add_library(cdsl ALIAS cdsl_static)
 
-# 5. Demo
+# 6. Demo
 add_executable(cdsl_demo demo/main.c)
 target_link_libraries(cdsl_demo PRIVATE cdsl_static)
 
-# 6. Tests
+# 7. Tests
 enable_testing()
 file(GLOB TEST_SOURCES CONFIGURE_DEPENDS "tests/test_*.c")
 foreach(test_src ${TEST_SOURCES})
@@ -86,7 +91,7 @@ foreach(test_src ${TEST_SOURCES})
     add_test(NAME ${test_name} COMMAND ${test_name})
 endforeach()
 
-# 7. Install targets
+# 8. Install targets
 include(GNUInstallDirs)
 
 install(TARGETS cdsl_static cdsl_shared
@@ -97,10 +102,10 @@ install(TARGETS cdsl_static cdsl_shared
 )
 
 install(DIRECTORY include/cdsl/ DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/cdsl)
-install(FILES ${CMAKE_CURRENT_BINARY_DIR}/parser.tab.h
-    DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/cdsl)
+# parser.tab.h is internal; installed only for build-time access via
+# BUILD_INTERFACE, not as a public API header
 
-# 8. CMake package config
+# 9. CMake package config
 install(EXPORT cdslTargets
     FILE cdslTargets.cmake
     NAMESPACE cdsl::
@@ -125,7 +130,7 @@ install(FILES
     DESTINATION ${CMAKE_INSTALL_LIBDIR}/cmake/cdsl
 )
 
-# 9. pkg-config
+# 10. pkg-config
 configure_file(
     "${CMAKE_CURRENT_SOURCE_DIR}/cmake/cdsl.pc.in"
     "${CMAKE_CURRENT_BINARY_DIR}/cdsl.pc"
@@ -135,7 +140,7 @@ install(FILES "${CMAKE_CURRENT_BINARY_DIR}/cdsl.pc"
     DESTINATION ${CMAKE_INSTALL_LIBDIR}/pkgconfig
 )
 
-# 10. Code formatting (clang-format)
+# 11. Code formatting (clang-format)
 option(CDSL_FORMAT_ON_BUILD "Run clang-format before every build" OFF)
 
 find_program(CLANG_FORMAT clang-format)
@@ -186,7 +191,7 @@ else()
     message(STATUS "clang-format not found - format targets disabled")
 endif()
 
-# 11. Doxygen documentation
+# 12. Doxygen documentation
 option(CDSL_GENERATE_DOCS "Generate Doxygen API documentation during build" OFF)
 
 find_package(Doxygen QUIET)

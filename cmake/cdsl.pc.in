@@ -7,3 +7,4 @@ Description: C-DSL Rule Engine with AI integration
 Version: @PROJECT_VERSION@
 Cflags: -I${includedir}
 Libs: -L${libdir} -lcdsl
+Libs.private: -lpthread -lcurl
