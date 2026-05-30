@@ -170,9 +170,8 @@ The single monolithic `execution.h` / `execution.c` has been split into 7 specia
 | File                    | Header                    | Responsibility                    |
 |-------------------------|---------------------------|-----------------------------------|
 | `src/vm/context.c`      | `<cdsl/context.h>`        | Context binding, `cdsl_value_t`   |
-| `src/vm/vm.c`           | `<cdsl/vm.h>`             | VM lifecycle, action/function registration, stats |
-| `src/vm/eval.c`         | — (internal)              | Core AST interpreter, `cdsl_vm_execute()` |
-| `src/vm/report.c`       | `<cdsl/report.h>`         | Report creation, printing, JSON serialization |
+| `src/vm/context.c`      | `<cdsl/vm.h>`             | VM lifecycle, action/function registration, stats |
+| `src/vm/eval.c`         | `<cdsl/report.h>`         | Report creation, printing, JSON serialization |
 | `src/vm/cache.c`        | `<cdsl/cache.h>`          | Thread-safe compilation cache     |
 | `src/vm/ruleset.c`      | `<cdsl/ruleset.h>`        | Priority-based batch execution, parallel, hot reload, topological sort |
 | `src/vm/codegen.c`      | `<cdsl/codegen.h>`        | DSL → C code generation           |
@@ -339,7 +338,7 @@ A zero-dependency, recursive-descent JSON parser supporting:
 - Nested structures (arbitrary depth)
 - Used by `cdsl_context_load_json()` to bind context variables
 
-The parser does NOT handle escape sequences (e.g., `\n`, `\"`) — these are passed through literally.
+String literals support JSON escape sequences (`\\n`, `\\t`, `\\r`, `\\"`, `\\\\`) and Unicode escapes (`\\uXXXX`).
 
 ### 5.2 Error Reporting (`<cdsl/util/error.h>` / `src/util/error.c`)
 

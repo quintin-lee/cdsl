@@ -128,14 +128,12 @@ Two verification functions are provided:
 
 ### 2.3 Execution Layer
 
-**Files**: `src/vm/eval.c`, `src/vm/context.c`, `src/vm/vm.c`, `src/vm/cache.c`, `src/vm/ruleset.c`, `src/vm/codegen.c`, `src/vm/visual.c`, `src/vm/report.c`
+**Files**: `src/vm/eval.c`, `src/vm/context.c`, `src/vm/cache.c`, `src/vm/ruleset.c`, `src/vm/codegen.c`, `src/vm/visual.c`
 
 The Execution Layer interprets the verified AST against a runtime context. It has been modularized for better maintainability and thread-safety:
 
-- **vm/context.c**: Manages execution contexts, variable bindings.
-- **vm/vm.c**: VM lifecycle, action/function registration, execution statistics.
-- **vm/eval.c**: Core AST interpreter and rule execution logic (metric and simple rules).
-- **vm/report.c**: Report creation, printing, JSON serialization.
+- **vm/context.c**: Manages execution contexts, variable bindings, VM lifecycle, action/function registration, execution statistics.
+- **vm/eval.c**: Core AST interpreter, rule execution logic (metric and simple rules), report creation, printing, JSON serialization.
 - **vm/cache.c**: Thread-safe compilation cache with robust collision handling.
 - **vm/ruleset.c**: Priority-based batch execution and parallel RuleSet evaluation.
 - **vm/codegen.c**: Translation of DSL rules into standalone C code.

@@ -643,11 +643,11 @@ cdsl_error_list_free(errors);
 
 | Operation                     | Thread Safe | Guidance                          |
 |-------------------------------|-------------|-----------------------------------|
-| `cdsl_parse_string()`         | ❌          | Use mutex or single-threaded      |
+| `cdsl_parse_string()`         | ✅          | Reentrant scanner; thread-local arena |
 | `cdsl_vm_execute()`           | ✅          | One VM per thread                 |
 | `cdsl_context_*()`            | ✅          | One Context per thread            |
 | Schema (read-only)            | ✅          | Shared across threads             |
 | Rule (read-only)              | ✅          | Shared after parsing              |
-| `cdsl_compile_cache_t`        | ❌          | Protect with external mutex       |
+| `cdsl_compile_cache_t`        | ✅          | Internal RWLock protection        |
 
 **Recommendation**: Create independent VM and Context instances per thread. Schema and Rule objects can be shared read-only across threads.

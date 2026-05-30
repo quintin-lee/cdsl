@@ -37,6 +37,10 @@
 | `AND` / `&&`     | Logical AND (short-circuit) | BOOL      |
 | `OR` / `\|\|`   | Logical OR (short-circuit)  | BOOL      |
 | `NOT` / `!`      | Logical NOT              | BOOL        |
+| `+`              | Addition                 | INT/FLOAT   |
+| `-`              | Subtraction / negation   | INT/FLOAT   |
+| `*`              | Multiplication           | INT/FLOAT   |
+| `/`              | Division                 | INT/FLOAT   |
 
 ### 1.3 Literals
 
@@ -46,6 +50,7 @@
 | Float   | `3.14`, `0.5`, `-1.0`    | 64-bit double precision            |
 | Boolean | `true`, `false`          | Case-sensitive                     |
 | String  | `"hello"`, `"reason"`    | Double-quoted; escape not supported|
+| Date    | `@2026-05-30`, `@2026-05-30 14:30:00` | ISO 8601 format; `@` prefix |
 
 ### 1.4 Identifiers
 

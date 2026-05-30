@@ -38,6 +38,7 @@ typedef enum {
     CDSL_TYPE_FLOAT,  /**< 64-bit double-precision float */
     CDSL_TYPE_BOOL,   /**< Boolean (0 or non-zero) */
     CDSL_TYPE_STRING, /**< NUL-terminated string  */
+    CDSL_TYPE_DATE,   /**< time_t date/datetime value */
     CDSL_TYPE_VOID    /**< No value (error or void) */
 } cdsl_type_t;
 ```
@@ -46,9 +47,15 @@ typedef enum {
 
 ```c
 typedef enum {
+    /* Comparison operators */
     CDSL_OP_EQ, CDSL_OP_NE, CDSL_OP_LT, CDSL_OP_GT,
     CDSL_OP_LE, CDSL_OP_GE,
-    CDSL_OP_AND, CDSL_OP_OR, CDSL_OP_NOT
+    /* Logical operators */
+    CDSL_OP_AND, CDSL_OP_OR, CDSL_OP_NOT,
+    /* Arithmetic operators */
+    CDSL_OP_ADD, CDSL_OP_SUB, CDSL_OP_MUL, CDSL_OP_DIV,
+    /* Unary operators */
+    CDSL_OP_NEG
 } cdsl_op_t;
 ```
 
