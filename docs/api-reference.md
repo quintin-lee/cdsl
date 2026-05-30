@@ -381,7 +381,7 @@ Loads variables from a JSON string. Nested objects are flattened with dot notati
 | Function                                                                  | Description                                      |
 |---------------------------------------------------------------------------|--------------------------------------------------|
 | `cdsl_ruleset_create()`                                                   | Create empty ruleset                             |
-| `cdsl_ruleset_free(set)`                                                  | Free ruleset (rules NOT freed)                   |
+| `cdsl_ruleset_free(set)`                                                  | Free ruleset and all contained rules                   |
 | `cdsl_ruleset_add(set, rule, priority)`                                   | Add rule with priority (lower = earlier)         |
 | `cdsl_ruleset_remove(set, rule_name)`                                     | Remove rule by name (returns 1 if found)         |
 | `cdsl_vm_execute_ruleset(vm, set, ctx)`                                   | Execute all rules in priority order              |

@@ -46,6 +46,9 @@ cdsl_schema_free(cdsl_schema_t* schema)
 void
 cdsl_schema_register_var(cdsl_schema_t* schema, const char* name, cdsl_type_t type)
 {
+	if (!schema || !name) {
+		return;
+	}
 	for (cdsl_var_schema_t* cur = schema->vars; cur; cur = cur->next) {
 		if (strcmp(cur->name, name) == 0) {
 			cur->type = type;
@@ -53,7 +56,14 @@ cdsl_schema_register_var(cdsl_schema_t* schema, const char* name, cdsl_type_t ty
 		}
 	}
 	cdsl_var_schema_t* v = calloc(1, sizeof(*v));
+	if (!v) {
+		return;
+	}
 	v->name = strdup(name);
+	if (!v->name) {
+		free(v);
+		return;
+	}
 	v->type = type;
 	v->next = schema->vars;
 	schema->vars = v;

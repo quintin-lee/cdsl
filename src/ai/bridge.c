@@ -236,39 +236,32 @@ static cdsl_ai_provider_t g_default_provider = {
 static cdsl_hashmap_t* g_providers = NULL;
 static cdsl_hashmap_t* g_cache_drivers = NULL;
 static pthread_rwlock_t g_ai_registry_lock;
-static int g_ai_registry_lock_initialized = 0;
+static pthread_once_t g_ai_registry_once = PTHREAD_ONCE_INIT;
 
 static void
 init_registries(void)
 {
-	if (!g_ai_registry_lock_initialized) {
-		pthread_rwlock_init(&g_ai_registry_lock, NULL);
-		g_ai_registry_lock_initialized = 1;
+	pthread_rwlock_init(&g_ai_registry_lock, NULL);
+	g_providers = cdsl_hashmap_create(16);
+	cdsl_ai_provider_t* copy = malloc(sizeof(*copy));
+	if (copy) {
+		*copy = g_default_provider;
+		cdsl_hashmap_put(g_providers, "default", copy);
 	}
-	pthread_rwlock_wrlock(&g_ai_registry_lock);
-	if (!g_providers) {
-		g_providers = cdsl_hashmap_create(16);
-		cdsl_ai_provider_t* copy = malloc(sizeof(*copy));
-		if (copy) {
-			*copy = g_default_provider;
-			cdsl_hashmap_put(g_providers, "default", copy);
-		}
-	}
-	if (!g_cache_drivers) {
-		g_cache_drivers = cdsl_hashmap_create(16);
-	}
-	pthread_rwlock_unlock(&g_ai_registry_lock);
+	g_cache_drivers = cdsl_hashmap_create(16);
 }
 
 void
 cdsl_ai_register_provider(const char* name, const cdsl_ai_provider_t* provider)
 {
-	init_registries();
+	pthread_once(&g_ai_registry_once, init_registries);
 	pthread_rwlock_wrlock(&g_ai_registry_lock);
+	cdsl_ai_provider_t* old = (cdsl_ai_provider_t*)cdsl_hashmap_get(g_providers, name);
 	cdsl_ai_provider_t* copy = malloc(sizeof(*copy));
 	if (copy) {
 		*copy = *provider;
 		cdsl_hashmap_put(g_providers, name, copy);
+		free(old);
 	}
 	pthread_rwlock_unlock(&g_ai_registry_lock);
 }
@@ -276,12 +269,14 @@ cdsl_ai_register_provider(const char* name, const cdsl_ai_provider_t* provider)
 void
 cdsl_ai_register_cache_driver(const char* name, const cdsl_ai_cache_t* cache)
 {
-	init_registries();
+	pthread_once(&g_ai_registry_once, init_registries);
 	pthread_rwlock_wrlock(&g_ai_registry_lock);
+	cdsl_ai_cache_t* old = (cdsl_ai_cache_t*)cdsl_hashmap_get(g_cache_drivers, name);
 	cdsl_ai_cache_t* copy = malloc(sizeof(*copy));
 	if (copy) {
 		*copy = *cache;
 		cdsl_hashmap_put(g_cache_drivers, name, copy);
+		free(old);
 	}
 	pthread_rwlock_unlock(&g_ai_registry_lock);
 }
@@ -289,7 +284,7 @@ cdsl_ai_register_cache_driver(const char* name, const cdsl_ai_cache_t* cache)
 static cdsl_ai_provider_t*
 get_provider(const char* name)
 {
-	init_registries();
+	pthread_once(&g_ai_registry_once, init_registries);
 	pthread_rwlock_rdlock(&g_ai_registry_lock);
 	cdsl_ai_provider_t* p =
 	    (cdsl_ai_provider_t*)cdsl_hashmap_get(g_providers, name ? name : "default");
@@ -305,7 +300,7 @@ get_cache_driver(const cdsl_ai_config_t* cfg)
 		return cfg->cache;
 	}
 	if (cfg->cache_driver_name) {
-		init_registries();
+		pthread_once(&g_ai_registry_once, init_registries);
 		pthread_rwlock_rdlock(&g_ai_registry_lock);
 		cdsl_ai_cache_t* result =
 		    (cdsl_ai_cache_t*)cdsl_hashmap_get(g_cache_drivers, cfg->cache_driver_name);
@@ -1047,12 +1042,17 @@ default_review(void* ctx,
 		int has_critical = (strstr(dsl_code, "is_critical") != NULL);
 
 		int score = 10;
-		char suggestions[1024] = {0};
+		char suggestions[1024];
+		size_t soff = 0;
+		suggestions[0] = '\0';
 
 		if (has_meta) {
 			score += 15;
 		} else {
-			strcat(suggestions, "Add META block with description and thresholds. ");
+			soff +=
+			    (size_t)snprintf(suggestions + soff,
+					     sizeof(suggestions) - soff,
+					     "Add META block with description and thresholds. ");
 		}
 
 		if (has_metric) {
@@ -1060,8 +1060,10 @@ default_review(void* ctx,
 			if (has_case && has_default) {
 				score += 15;
 			} else {
-				strcat(suggestions,
-				       "Add CASE and DEFAULT branches to each METRIC. ");
+				soff += (size_t)snprintf(
+				    suggestions + soff,
+				    sizeof(suggestions) - soff,
+				    "Add CASE and DEFAULT branches to each METRIC. ");
 			}
 		} else if (has_when) {
 			score += 15;
@@ -1070,7 +1072,9 @@ default_review(void* ctx,
 		if (has_critical) {
 			score += 10;
 		} else if (has_metric) {
-			strcat(suggestions, "Mark critical items with is_critical=true. ");
+			soff += (size_t)snprintf(suggestions + soff,
+						 sizeof(suggestions) - soff,
+						 "Mark critical items with is_critical=true. ");
 		}
 
 		if (has_score) {

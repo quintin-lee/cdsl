@@ -126,8 +126,17 @@ cdsl_compile(cdsl_compile_cache_t* cache,
 	}
 
 	existing = calloc(1, sizeof(*existing));
+	if (!existing) {
+		pthread_rwlock_unlock(&cache->lock);
+		return NULL;
+	}
 	existing->rule = rule;
 	existing->dsl_hash = strdup(dsl_code);
+	if (!existing->dsl_hash) {
+		free(existing);
+		pthread_rwlock_unlock(&cache->lock);
+		return NULL;
+	}
 	existing->verified = 1;
 	cdsl_hashmap_put(cache->map, dsl_code, existing);
 

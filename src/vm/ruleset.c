@@ -368,9 +368,14 @@ cdsl_ruleset_load_file(cdsl_ruleset_t* set,
 		fclose(f);
 		return 0;
 	}
-	fread(buf, 1, sz, f);
-	buf[sz] = '\0';
+	size_t nread = fread(buf, 1, sz, f);
+	buf[nread] = '\0';
 	fclose(f);
+
+	if ((long)nread != sz) {
+		free(buf);
+		return 0;
+	}
 
 	int res = cdsl_ruleset_load_string(set, buf, priority, schema, err_buf, err_buf_sz);
 	free(buf);
