@@ -140,6 +140,8 @@ resolve_expr_type(cdsl_expr_node_t* expr,
 		return CDSL_TYPE_BOOL;
 	case CDSL_EXPR_STRING:
 		return CDSL_TYPE_STRING;
+	case CDSL_EXPR_DATE:
+		return CDSL_TYPE_DATE;
 	case CDSL_EXPR_ID: {
 		cdsl_var_schema_t* v = find_var(schema, expr->data.id_val);
 		if (!v) {

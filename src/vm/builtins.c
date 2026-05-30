@@ -80,16 +80,74 @@ builtin_contains(const char* name, cdsl_arg_node_t* args, cdsl_context_t* ctx, c
 static time_t
 parse_iso_date(const char* s)
 {
-	if (!s || strlen(s) < 10) {
+	if (!s) {
 		return 0;
 	}
 	struct tm tm = {0};
-	if (sscanf(s, "%d-%d-%d", &tm.tm_year, &tm.tm_mon, &tm.tm_mday) != 3) {
-		return 0;
+	if (sscanf(s,
+		   "%d-%d-%d %d:%d:%d",
+		   &tm.tm_year,
+		   &tm.tm_mon,
+		   &tm.tm_mday,
+		   &tm.tm_hour,
+		   &tm.tm_min,
+		   &tm.tm_sec) != 6) {
+		if (sscanf(s, "%d-%d-%d", &tm.tm_year, &tm.tm_mon, &tm.tm_mday) != 3) {
+			return 0;
+		}
 	}
 	tm.tm_year -= 1900;
 	tm.tm_mon -= 1;
 	return mktime(&tm);
+}
+
+/**
+ * @brief built-in now(): returns current system time.
+ */
+static cdsl_value_t
+builtin_now(const char* name, cdsl_arg_node_t* args, cdsl_context_t* ctx, cdsl_vm_t* vm)
+{
+	(void)name;
+	(void)args;
+	(void)ctx;
+	(void)vm;
+	cdsl_value_t res = {.type = CDSL_TYPE_DATE, .data = {.date_val = time(NULL)}};
+	return res;
+}
+
+/**
+ * @brief built-in days_between(d1, d2): returns integer difference in days.
+ */
+static cdsl_value_t
+builtin_days_between(const char* name, cdsl_arg_node_t* args, cdsl_context_t* ctx, cdsl_vm_t* vm)
+{
+	(void)name;
+	cdsl_value_t res = {.type = CDSL_TYPE_INT, .data = {.int_val = 0}};
+	if (!args || !args->next || !args->expr || !args->next->expr) {
+		return res;
+	}
+
+	cdsl_value_t v1 = cdsl_eval_expr_internal(args->expr, ctx, vm, 0, 0);
+	cdsl_value_t v2 = cdsl_eval_expr_internal(args->next->expr, ctx, vm, 0, 0);
+
+	time_t t1 = 0, t2 = 0;
+	if (v1.type == CDSL_TYPE_DATE) {
+		t1 = v1.data.date_val;
+	} else if (v1.type == CDSL_TYPE_STRING) {
+		t1 = parse_iso_date(v1.data.string_val);
+	}
+
+	if (v2.type == CDSL_TYPE_DATE) {
+		t2 = v2.data.date_val;
+	} else if (v2.type == CDSL_TYPE_STRING) {
+		t2 = parse_iso_date(v2.data.string_val);
+	}
+
+	if (t1 && t2) {
+		double diff = difftime(t1, t2);
+		res.data.int_val = (int)(diff / (24 * 3600));
+	}
+	return res;
 }
 
 /**
@@ -149,5 +207,7 @@ cdsl_vm_register_builtins(cdsl_vm_t* vm)
 	cdsl_vm_register_function(vm, "contains", builtin_contains);
 	cdsl_vm_register_function(vm, "is_before", builtin_is_before);
 	cdsl_vm_register_function(vm, "is_after", builtin_is_after);
+	cdsl_vm_register_function(vm, "now", builtin_now);
+	cdsl_vm_register_function(vm, "days_between", builtin_days_between);
 }
 /** @} */

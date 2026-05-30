@@ -60,6 +60,16 @@ dot_expr(FILE* f, cdsl_expr_node_t* expr, int* id)
 		    my_id,
 		    expr->data.string_val);
 		break;
+	case CDSL_EXPR_DATE: {
+		char buf[32];
+		struct tm* tm = localtime(&expr->data.date_val);
+		strftime(buf, sizeof(buf), "%Y-%m-%d", tm);
+		fprintf(f,
+			"  n%d [label=\"@%s\",shape=box,style=filled,fillcolor=lightyellow];\n",
+			my_id,
+			buf);
+		break;
+	}
 	case CDSL_EXPR_ID:
 		fprintf(f,
 			"  n%d [label=\"%s\",shape=ellipse,style=filled,fillcolor=lightblue];\n",

@@ -36,6 +36,29 @@ void yyerror(yyscan_t scanner, cdsl_rule_t** rule_ptr, int* error_count, const c
 /* Helper to get line number from scanner */
 extern int yyget_lineno(yyscan_t yyscanner);
 
+static time_t
+parse_date_internal(const char* s)
+{
+	if (!s)
+		return 0;
+	struct tm tm = {0};
+	if (sscanf(s,
+		   "%d-%d-%d %d:%d:%d",
+		   &tm.tm_year,
+		   &tm.tm_mon,
+		   &tm.tm_mday,
+		   &tm.tm_hour,
+		   &tm.tm_min,
+		   &tm.tm_sec) != 6) {
+		if (sscanf(s, "%d-%d-%d", &tm.tm_year, &tm.tm_mon, &tm.tm_mday) != 3) {
+			return 0;
+		}
+	}
+	tm.tm_year -= 1900;
+	tm.tm_mon -= 1;
+	return mktime(&tm);
+}
+
 %}
 
 %define api.pure full
@@ -66,7 +89,7 @@ extern int yyget_lineno(yyscan_t yyscanner);
 %token <int_val> INT_LIT
 %token <float_val> FLOAT_LIT
 %token <bool_val> BOOL_LIT
-%token <string_val> STRING_LIT
+%token <string_val> STRING_LIT DATE_LIT
 
 %left OR
 %left AND
@@ -163,6 +186,7 @@ expression:
     | FLOAT_LIT                         { $$ = cdsl_create_expr_float($1); }
     | BOOL_LIT                          { $$ = cdsl_create_expr_bool($1); }
     | STRING_LIT                        { $$ = cdsl_create_expr_string($1); }
+    | DATE_LIT                          { $$ = cdsl_create_expr_date(parse_date_internal($1)); free($1); }
     | IDENTIFIER LPAREN argument_list RPAREN  { $$ = cdsl_create_expr_call($1, $3); }
     | expression EQ expression          { $$ = cdsl_create_expr_binary(CDSL_OP_EQ, $1, $3); }
     | expression NE expression          { $$ = cdsl_create_expr_binary(CDSL_OP_NE, $1, $3); }

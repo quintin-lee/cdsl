@@ -109,6 +109,15 @@ cdsl_create_expr_string(char* val)
 }
 
 cdsl_expr_node_t*
+cdsl_create_expr_date(time_t val)
+{
+	cdsl_expr_node_t* n = ast_alloc(sizeof(*n));
+	n->type = CDSL_EXPR_DATE;
+	n->data.date_val = val;
+	return n;
+}
+
+cdsl_expr_node_t*
 cdsl_create_expr_binary(cdsl_op_t op, cdsl_expr_node_t* left, cdsl_expr_node_t* right)
 {
 	cdsl_expr_node_t* n = ast_alloc(sizeof(*n));
@@ -351,6 +360,9 @@ cdsl_free_expr(cdsl_expr_node_t* expr)
 		break;
 	case CDSL_EXPR_STRING:
 		free(expr->data.string_val);
+		break;
+	case CDSL_EXPR_DATE:
+		/* time_t is a scalar, no extra free needed */
 		break;
 	case CDSL_EXPR_BINARY:
 		cdsl_free_expr(expr->data.binary.left);

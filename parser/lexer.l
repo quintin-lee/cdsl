@@ -92,6 +92,11 @@
                             return IDENTIFIER;
                         }
 
+@[0-9]{4}-[0-9]{2}-[0-9]{2}([ ]+[0-9]{2}:[0-9]{2}:[0-9]{2})? {
+                            yylval->string_val = strdup(yytext + 1);
+                            return DATE_LIT;
+                        }
+
 "=="                    { return EQ; }
 "!="                    { return NE; }
 "<="                    { return LE; }

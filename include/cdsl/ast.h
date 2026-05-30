@@ -14,6 +14,7 @@
 
 #include "cdsl/util/arena.h"
 #include <stddef.h>
+#include <time.h>
 
 /** @name Safety Limits */
 /** @{ */
@@ -34,6 +35,7 @@ typedef enum {
 	CDSL_TYPE_FLOAT,  /**< 64-bit floating point */
 	CDSL_TYPE_BOOL,	  /**< Boolean (true/false) */
 	CDSL_TYPE_STRING, /**< Null-terminated string */
+	CDSL_TYPE_DATE,	  /**< Date/Time value (ISO 8601) */
 	CDSL_TYPE_VOID	  /**< Void / no value */
 } cdsl_type_t;
 
@@ -71,6 +73,7 @@ typedef enum {
 	CDSL_EXPR_FLOAT,  /**< Float literal */
 	CDSL_EXPR_BOOL,	  /**< Boolean literal (true/false) */
 	CDSL_EXPR_STRING, /**< String literal ("...") */
+	CDSL_EXPR_DATE,	  /**< Date literal (@2026-05-30) */
 	CDSL_EXPR_BINARY, /**< Binary operation (e.g. a + b, x == y) */
 	CDSL_EXPR_UNARY,  /**< Unary operation (e.g. !expr) */
 	CDSL_EXPR_CALL	  /**< Function call (e.g. strlen("hello")) */
@@ -95,6 +98,7 @@ typedef struct cdsl_expr_node {
 		double float_val; /**< Float value (CDSL_EXPR_FLOAT) */
 		int bool_val;	  /**< Boolean value (CDSL_EXPR_BOOL) */
 		char* string_val; /**< String value (CDSL_EXPR_STRING) */
+		time_t date_val;  /**< Date value (CDSL_EXPR_DATE) */
 		struct {
 			cdsl_op_t op;		      /**< Operator */
 			struct cdsl_expr_node* left;  /**< Left operand */
@@ -247,6 +251,13 @@ cdsl_expr_node_t* cdsl_create_expr_bool(int val);
  * @return Newly allocated expression node
  */
 cdsl_expr_node_t* cdsl_create_expr_string(char* val);
+
+/**
+ * @brief Create a date literal expression.
+ * @param val Date value
+ * @return Newly allocated expression node
+ */
+cdsl_expr_node_t* cdsl_create_expr_date(time_t val);
 
 /**
  * @brief Create a binary operation expression (e.g., a + b).

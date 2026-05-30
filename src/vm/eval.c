@@ -95,6 +95,16 @@ cdsl_eval_expr_internal(
 			    stderr, "[TRACE]   literal string: \"%s\"\n", expr->data.string_val);
 		}
 		break;
+	case CDSL_EXPR_DATE:
+		result.type = CDSL_TYPE_DATE;
+		result.data.date_val = expr->data.date_val;
+		if (debug) {
+			char buf[32];
+			struct tm* tm = localtime(&expr->data.date_val);
+			strftime(buf, sizeof(buf), "%Y-%m-%d %H:%M:%S", tm);
+			fprintf(stderr, "[TRACE]   literal date: %s\n", buf);
+		}
+		break;
 	case CDSL_EXPR_ID: {
 		cdsl_context_entry_t* e = cdsl_context_get_entry_internal(ctx, expr->data.id_val);
 		if (e) {
@@ -115,6 +125,13 @@ cdsl_eval_expr_internal(
 				case CDSL_TYPE_STRING:
 					fprintf(stderr, "\"%s\"\n", e->value.data.string_val);
 					break;
+				case CDSL_TYPE_DATE: {
+					char buf[32];
+					struct tm* tm = localtime(&e->value.data.date_val);
+					strftime(buf, sizeof(buf), "%Y-%m-%d %H:%M:%S", tm);
+					fprintf(stderr, "%s\n", buf);
+					break;
+				}
 				default:
 					fprintf(stderr, "?\n");
 					break;
@@ -214,6 +231,36 @@ cdsl_eval_expr_internal(
 			int cmp = strcmp(l.data.string_val ? l.data.string_val : "",
 					 r.data.string_val ? r.data.string_val : "");
 			result.data.bool_val = (op == CDSL_OP_EQ) ? (cmp == 0) : (cmp != 0);
+			break;
+		}
+
+		if (l.type == CDSL_TYPE_DATE && r.type == CDSL_TYPE_DATE) {
+			result.type = CDSL_TYPE_BOOL;
+			time_t t1 = l.data.date_val;
+			time_t t2 = r.data.date_val;
+			switch (op) {
+			case CDSL_OP_EQ:
+				result.data.bool_val = (t1 == t2);
+				break;
+			case CDSL_OP_NE:
+				result.data.bool_val = (t1 != t2);
+				break;
+			case CDSL_OP_LT:
+				result.data.bool_val = (t1 < t2);
+				break;
+			case CDSL_OP_GT:
+				result.data.bool_val = (t1 > t2);
+				break;
+			case CDSL_OP_LE:
+				result.data.bool_val = (t1 <= t2);
+				break;
+			case CDSL_OP_GE:
+				result.data.bool_val = (t1 >= t2);
+				break;
+			default:
+				result.data.bool_val = 0;
+				break;
+			}
 			break;
 		}
 
