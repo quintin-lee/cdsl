@@ -82,6 +82,12 @@ dot_expr(FILE* f, cdsl_expr_node_t* expr, int* id)
 			buf);
 		break;
 	}
+	case CDSL_EXPR_LONG:
+		fprintf(f,
+			"  n%d [label=\"%ldL\",shape=box,style=filled,fillcolor=lightyellow];\n",
+			my_id,
+			(long)expr->data.long_val);
+		break;
 	case CDSL_EXPR_ID:
 		fprintf(f,
 			"  n%d [label=\"%s\",shape=ellipse,style=filled,fillcolor=lightblue];\n",

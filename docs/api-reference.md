@@ -39,6 +39,7 @@ typedef enum {
     CDSL_TYPE_BOOL,   /**< Boolean (0 or non-zero) */
     CDSL_TYPE_STRING, /**< NUL-terminated string  */
     CDSL_TYPE_DATE,   /**< time_t date/datetime value */
+    CDSL_TYPE_LONG,   /**< int64_t signed 64-bit integer */
     CDSL_TYPE_VOID    /**< No value (error or void) */
 } cdsl_type_t;
 ```
@@ -218,6 +219,7 @@ typedef struct cdsl_value {
         int bool_val;
         char* string_val;
         time_t date_val;
+        int64_t long_val;
     } data;
 } cdsl_value_t;
 ```
@@ -321,11 +323,13 @@ typedef struct {
 | `cdsl_context_set_bool(ctx, name, val)`                | Set or update a boolean variable                 |
 | `cdsl_context_set_string(ctx, name, val)`              | Set or update a string variable                  |
 | `cdsl_context_set_date(ctx, name, val)`                | Set or update a date/time variable               |
+| `cdsl_context_set_long(ctx, name, val)`                | Set or update a long integer variable            |
 | `cdsl_context_get_int(ctx, name, default_val)`         | Get integer value (returns default if not found) |
 | `cdsl_context_get_float(ctx, name, default_val)`       | Get float value (returns default if not found)   |
 | `cdsl_context_get_bool(ctx, name, default_val)`        | Get boolean value (returns default if not found) |
 | `cdsl_context_get_string(ctx, name, default_val)`      | Get string value (returns default if not found)  |
 | `cdsl_context_get_date(ctx, name, default_val)`        | Get date value (returns default if not found)    |
+| `cdsl_context_get_long(ctx, name, default_val)`        | Get long value (returns default if not found)    |
 | `cdsl_context_remove(ctx, name)`                       | Remove a variable (returns 1 if found, 0 if not) |
 | `cdsl_context_load_json(ctx, json_str)`                | Load variables from JSON (returns 1 on success)  |
 

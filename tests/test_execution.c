@@ -533,6 +533,65 @@ test_execution_edge_cases(void)
 }
 
 /**
+ * @brief Test CDSL_TYPE_LONG: literal, context binding, arithmetic, comparison.
+ */
+void
+test_long_type(void)
+{
+	TEST_BEGIN("LONG type support");
+	cdsl_schema_t* schema = cdsl_schema_create();
+	cdsl_schema_register_var(schema, "big.id", CDSL_TYPE_LONG);
+	cdsl_schema_register_action(schema, "block", CDSL_TYPE_VOID, 1, CDSL_TYPE_STRING);
+
+	cdsl_context_t* ctx = cdsl_context_create(schema);
+	cdsl_context_set_long(ctx, "big.id", 9999999999LL);
+
+	cdsl_vm_t* vm = cdsl_vm_create(schema);
+	cdsl_vm_register_action(vm, "block", test_action_cb);
+
+	/* LONG literal in expression */
+	cdsl_rule_t* r1 =
+	    cdsl_parse_string("RULE l1 { WHEN 10000000000L > big.id THEN block(\"big\") }");
+	cdsl_rule_report_t* rpt = cdsl_vm_execute(vm, r1, ctx);
+	TEST_ASSERT_INT(rpt->status, CDSL_STATUS_FAILED, "10000000000L > 9999999999 true");
+	cdsl_report_free(rpt);
+	cdsl_free_rule(r1);
+
+	/* LONG arithmetic: LONG + INT → LONG */
+	cdsl_rule_t* r2 =
+	    cdsl_parse_string("RULE l2 { WHEN big.id + 1L == 10000000000L THEN block(\"sum\") }");
+	TEST_ASSERT_NOT_NULL(r2, "long arithmetic");
+	rpt = cdsl_vm_execute(vm, r2, ctx);
+	TEST_ASSERT_INT(rpt->status, CDSL_STATUS_FAILED, "9999999999 + 1 == 10000000000");
+	cdsl_report_free(rpt);
+	cdsl_free_rule(r2);
+
+	/* LONG context variable lookup */
+	cdsl_rule_t* r3 =
+	    cdsl_parse_string("RULE l3 { WHEN big.id >= 5000000000L THEN block(\"large\") }");
+	TEST_ASSERT_NOT_NULL(r3, "long var lookup");
+	rpt = cdsl_vm_execute(vm, r3, ctx);
+	TEST_ASSERT_INT(rpt->status, CDSL_STATUS_FAILED, "big.id >= 5000000000 true");
+	cdsl_report_free(rpt);
+	cdsl_free_rule(r3);
+
+	/* LONG multiplication in metric */
+	cdsl_rule_t* r4 =
+	    cdsl_parse_string("RULE l4 { META { w = \"100\" } METRIC m { CASE 9999999999L * 2L == "
+			      "19999999998L THEN score(100) DEFAULT score(0) } }");
+	TEST_ASSERT_NOT_NULL(r4, "long multiply");
+	rpt = cdsl_vm_execute(vm, r4, ctx);
+	TEST_ASSERT_INT(rpt->status, CDSL_STATUS_PASSED, "9999999999 * 2 == 19999999998");
+	cdsl_report_free(rpt);
+	cdsl_free_rule(r4);
+
+	cdsl_vm_free(vm);
+	cdsl_context_free(ctx);
+	cdsl_schema_free(schema);
+	TEST_END();
+}
+
+/**
  * @brief Main entry: run all execution test cases.
  * @return 0 if all tests passed, 1 otherwise
  */
@@ -556,6 +615,7 @@ main(void)
 	test_vm_lifecycle();
 	test_report_json();
 	test_execution_edge_cases();
+	test_long_type();
 
 	TEST_SUMMARY();
 	TEST_EXIT();

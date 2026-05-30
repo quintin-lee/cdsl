@@ -118,6 +118,15 @@ cdsl_create_expr_date(time_t val)
 }
 
 cdsl_expr_node_t*
+cdsl_create_expr_long(int64_t val)
+{
+	cdsl_expr_node_t* n = ast_alloc(sizeof(*n));
+	n->type = CDSL_EXPR_LONG;
+	n->data.long_val = val;
+	return n;
+}
+
+cdsl_expr_node_t*
 cdsl_create_expr_binary(cdsl_op_t op, cdsl_expr_node_t* left, cdsl_expr_node_t* right)
 {
 	cdsl_expr_node_t* n = ast_alloc(sizeof(*n));

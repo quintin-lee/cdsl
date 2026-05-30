@@ -62,6 +62,7 @@
 "true"                  { yylval->bool_val = 1; return BOOL_LIT; }
 "false"                 { yylval->bool_val = 0; return BOOL_LIT; }
 
+[0-9]+L                 { yylval->long_val = strtoll(yytext, NULL, 10); return LONG_LIT; }
 [0-9]+\.[0-9]+          { yylval->float_val = strtod(yytext, NULL); return FLOAT_LIT; }
 [0-9]+                  { yylval->int_val = (int)strtol(yytext, NULL, 10); return INT_LIT; }
 

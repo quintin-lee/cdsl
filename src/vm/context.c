@@ -227,6 +227,34 @@ cdsl_context_set_date(cdsl_context_t* ctx, const char* name, time_t val)
 	}
 }
 
+void
+cdsl_context_set_long(cdsl_context_t* ctx, const char* name, int64_t val)
+{
+	cdsl_context_entry_t* e = cdsl_context_get_entry_internal(ctx, name);
+	if (e) {
+		if (e->value.type == CDSL_TYPE_STRING) {
+			free(e->value.data.string_val);
+		}
+		e->value.type = CDSL_TYPE_LONG;
+		e->value.data.long_val = val;
+	} else {
+		cdsl_context_entry_t* ne = calloc(1, sizeof(*ne));
+		if (!ne) {
+			return;
+		}
+		ne->name = strdup(name);
+		if (!ne->name) {
+			free(ne);
+			return;
+		}
+		ne->value.type = CDSL_TYPE_LONG;
+		ne->value.data.long_val = val;
+		ne->next = ctx->entries;
+		ctx->entries = ne;
+		cdsl_hashmap_put(ctx->map, name, ne);
+	}
+}
+
 int
 cdsl_context_get_int(const cdsl_context_t* ctx, const char* name, int default_val)
 {
@@ -297,6 +325,19 @@ cdsl_context_get_date(const cdsl_context_t* ctx, const char* name, time_t defaul
 	cdsl_context_entry_t* e = cdsl_context_get_entry_internal((cdsl_context_t*)ctx, name);
 	if (e && e->value.type == CDSL_TYPE_DATE) {
 		return e->value.data.date_val;
+	}
+	return default_val;
+}
+
+int64_t
+cdsl_context_get_long(const cdsl_context_t* ctx, const char* name, int64_t default_val)
+{
+	cdsl_context_entry_t* e = cdsl_context_get_entry_internal((cdsl_context_t*)ctx, name);
+	if (e && e->value.type == CDSL_TYPE_LONG) {
+		return e->value.data.long_val;
+	}
+	if (e && e->value.type == CDSL_TYPE_INT) {
+		return (int64_t)e->value.data.int_val;
 	}
 	return default_val;
 }

@@ -190,6 +190,13 @@ cdsl_eval_expr_internal(
 			fprintf(stderr, "[TRACE]   literal date: %s\n", buf);
 		}
 		break;
+	case CDSL_EXPR_LONG:
+		result.type = CDSL_TYPE_LONG;
+		result.data.long_val = expr->data.long_val;
+		if (debug) {
+			fprintf(stderr, "[TRACE]   literal long: %ld\n", (long)expr->data.long_val);
+		}
+		break;
 	case CDSL_EXPR_ID: {
 		cdsl_context_entry_t* e = cdsl_context_get_entry_internal(ctx, expr->data.id_val);
 		if (e) {
@@ -218,6 +225,9 @@ cdsl_eval_expr_internal(
 					fprintf(stderr, "%s\n", buf);
 					break;
 				}
+				case CDSL_TYPE_LONG:
+					fprintf(stderr, "%ld\n", (long)e->value.data.long_val);
+					break;
 				default:
 					fprintf(stderr, "?\n");
 					break;
@@ -249,6 +259,9 @@ cdsl_eval_expr_internal(
 			} else if (v.type == CDSL_TYPE_FLOAT) {
 				result.type = CDSL_TYPE_FLOAT;
 				result.data.float_val = -v.data.float_val;
+			} else if (v.type == CDSL_TYPE_LONG) {
+				result.type = CDSL_TYPE_LONG;
+				result.data.long_val = -v.data.long_val;
 			} else {
 				result.type = CDSL_TYPE_VOID;
 			}
@@ -350,13 +363,25 @@ cdsl_eval_expr_internal(
 			break;
 		}
 
+		/* Coerce operands to double for comparison; also detect LONG for arithmetic */
+		int has_float = 0;
+		int has_long = 0;
 		double lv, rv;
+		int64_t llv = 0, lrv = 0;
+
 		if (l.type == CDSL_TYPE_INT) {
 			lv = l.data.int_val;
+			llv = l.data.int_val;
 		} else if (l.type == CDSL_TYPE_FLOAT) {
 			lv = l.data.float_val;
+			has_float = 1;
+		} else if (l.type == CDSL_TYPE_LONG) {
+			lv = (double)l.data.long_val;
+			llv = l.data.long_val;
+			has_long = 1;
 		} else if (l.type == CDSL_TYPE_BOOL) {
 			lv = l.data.bool_val;
+			llv = l.data.bool_val;
 		} else {
 			result.type = CDSL_TYPE_BOOL;
 			result.data.bool_val = 0;
@@ -365,10 +390,17 @@ cdsl_eval_expr_internal(
 
 		if (r.type == CDSL_TYPE_INT) {
 			rv = r.data.int_val;
+			lrv = r.data.int_val;
 		} else if (r.type == CDSL_TYPE_FLOAT) {
 			rv = r.data.float_val;
+			has_float = 1;
+		} else if (r.type == CDSL_TYPE_LONG) {
+			rv = (double)r.data.long_val;
+			lrv = r.data.long_val;
+			has_long = 1;
 		} else if (r.type == CDSL_TYPE_BOOL) {
 			rv = r.data.bool_val;
+			lrv = r.data.bool_val;
 		} else {
 			result.type = CDSL_TYPE_BOOL;
 			result.data.bool_val = 0;
@@ -396,33 +428,23 @@ cdsl_eval_expr_internal(
 			result.data.bool_val = lv >= rv;
 			break;
 		case CDSL_OP_ADD:
-			result.type = (l.type == CDSL_TYPE_FLOAT || r.type == CDSL_TYPE_FLOAT)
-					  ? CDSL_TYPE_FLOAT
-					  : CDSL_TYPE_INT;
-			if (result.type == CDSL_TYPE_FLOAT) {
-				result.data.float_val = lv + rv;
-			} else {
-				result.data.int_val = (int)(lv + rv);
-			}
-			break;
 		case CDSL_OP_SUB:
-			result.type = (l.type == CDSL_TYPE_FLOAT || r.type == CDSL_TYPE_FLOAT)
-					  ? CDSL_TYPE_FLOAT
-					  : CDSL_TYPE_INT;
-			if (result.type == CDSL_TYPE_FLOAT) {
-				result.data.float_val = lv - rv;
-			} else {
-				result.data.int_val = (int)(lv - rv);
-			}
-			break;
 		case CDSL_OP_MUL:
-			result.type = (l.type == CDSL_TYPE_FLOAT || r.type == CDSL_TYPE_FLOAT)
-					  ? CDSL_TYPE_FLOAT
-					  : CDSL_TYPE_INT;
-			if (result.type == CDSL_TYPE_FLOAT) {
-				result.data.float_val = lv * rv;
+			if (has_float) {
+				result.type = CDSL_TYPE_FLOAT;
+				result.data.float_val = (op == CDSL_OP_ADD)   ? lv + rv
+							: (op == CDSL_OP_SUB) ? lv - rv
+									      : lv * rv;
+			} else if (has_long) {
+				result.type = CDSL_TYPE_LONG;
+				result.data.long_val = (op == CDSL_OP_ADD)   ? llv + lrv
+						       : (op == CDSL_OP_SUB) ? llv - lrv
+									     : llv * lrv;
 			} else {
-				result.data.int_val = (int)(lv * rv);
+				result.type = CDSL_TYPE_INT;
+				result.data.int_val = (int)((op == CDSL_OP_ADD)	  ? lv + rv
+							    : (op == CDSL_OP_SUB) ? lv - rv
+										  : lv * rv);
 			}
 			break;
 		case CDSL_OP_DIV:
@@ -430,14 +452,17 @@ cdsl_eval_expr_internal(
 				result.type = CDSL_TYPE_VOID;
 				break;
 			}
-			result.type = (l.type == CDSL_TYPE_FLOAT || r.type == CDSL_TYPE_FLOAT)
-					  ? CDSL_TYPE_FLOAT
-					  : CDSL_TYPE_INT;
-			if (result.type == CDSL_TYPE_FLOAT) {
+			if (has_float) {
+				result.type = CDSL_TYPE_FLOAT;
 				result.data.float_val = lv / rv;
+			} else if (has_long) {
+				result.type = CDSL_TYPE_LONG;
+				result.data.long_val = llv / lrv;
 			} else {
+				result.type = CDSL_TYPE_INT;
 				result.data.int_val = (int)(lv / rv);
 			}
+			break;
 			break;
 		default:
 			break;

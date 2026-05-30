@@ -189,7 +189,7 @@ resolve_expr_type(cdsl_expr_node_t* expr,
 			return CDSL_TYPE_BOOL;
 		}
 		if (expr->data.unary.op == CDSL_OP_NEG) {
-			if (t != CDSL_TYPE_INT && t != CDSL_TYPE_FLOAT) {
+			if (t != CDSL_TYPE_INT && t != CDSL_TYPE_FLOAT && t != CDSL_TYPE_LONG) {
 				REPORT_ERR(CDSL_ERR_TYPE,
 					   "Negation operator requires numeric operand",
 					   NULL);
@@ -224,8 +224,10 @@ resolve_expr_type(cdsl_expr_node_t* expr,
 
 		/* Arithmetic operators (+, -, *, /) */
 		if (op >= CDSL_OP_ADD && op <= CDSL_OP_DIV) {
-			if ((lt != CDSL_TYPE_INT && lt != CDSL_TYPE_FLOAT) ||
-			    (rt != CDSL_TYPE_INT && rt != CDSL_TYPE_FLOAT)) {
+			if ((lt != CDSL_TYPE_INT && lt != CDSL_TYPE_FLOAT &&
+			     lt != CDSL_TYPE_LONG) ||
+			    (rt != CDSL_TYPE_INT && rt != CDSL_TYPE_FLOAT &&
+			     rt != CDSL_TYPE_LONG)) {
 				REPORT_ERR(CDSL_ERR_TYPE,
 					   "Arithmetic operators require numeric operands",
 					   NULL);
@@ -236,8 +238,13 @@ resolve_expr_type(cdsl_expr_node_t* expr,
 		}
 
 		/* Comparison operators (==, !=, <, >, <=, >=) */
+		/* Allow mixing INT, FLOAT, LONG for numeric comparisons */
 		if (lt != rt && !(lt == CDSL_TYPE_INT && rt == CDSL_TYPE_FLOAT) &&
-		    !(lt == CDSL_TYPE_FLOAT && rt == CDSL_TYPE_INT)) {
+		    !(lt == CDSL_TYPE_FLOAT && rt == CDSL_TYPE_INT) &&
+		    !(lt == CDSL_TYPE_INT && rt == CDSL_TYPE_LONG) &&
+		    !(lt == CDSL_TYPE_LONG && rt == CDSL_TYPE_INT) &&
+		    !(lt == CDSL_TYPE_FLOAT && rt == CDSL_TYPE_LONG) &&
+		    !(lt == CDSL_TYPE_LONG && rt == CDSL_TYPE_FLOAT)) {
 			REPORT_ERR(
 			    CDSL_ERR_TYPE, "Type mismatch: cannot compare different types", NULL);
 			return CDSL_TYPE_VOID;
@@ -393,7 +400,8 @@ cdsl_verify_rule_detailed(const cdsl_rule_t* rule, const cdsl_schema_t* schema)
 				    resolve_expr_type(c->condition, schema, NULL, 0, errors);
 				if (t != CDSL_TYPE_VOID && t != CDSL_TYPE_BOOL &&
 				    t != CDSL_TYPE_INT && t != CDSL_TYPE_FLOAT &&
-				    t != CDSL_TYPE_STRING) {
+				    t != CDSL_TYPE_STRING && t != CDSL_TYPE_LONG &&
+				    t != CDSL_TYPE_DATE) {
 					cdsl_error_list_add(
 					    errors,
 					    cdsl_error_create(CDSL_ERR_TYPE,

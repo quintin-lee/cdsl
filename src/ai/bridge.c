@@ -658,6 +658,8 @@ type_to_str(cdsl_type_t t)
 		return "STRING";
 	case CDSL_TYPE_DATE:
 		return "DATE";
+	case CDSL_TYPE_LONG:
+		return "LONG";
 	default:
 		return "VOID";
 	}

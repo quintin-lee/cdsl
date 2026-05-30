@@ -22,6 +22,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <stdint.h>
 #include "cdsl/ast.h"
 
 #if defined(__GNUC__) || defined(__clang__)
@@ -70,6 +71,7 @@ parse_date_internal(const char* s)
 %union {
     int int_val;
     double float_val;
+    int64_t long_val;
     int bool_val;
     char* string_val;
     char* id_val;
@@ -87,6 +89,7 @@ parse_date_internal(const char* s)
 %token PLUS MINUS STAR SLASH
 %token <id_val> IDENTIFIER
 %token <int_val> INT_LIT
+%token <long_val> LONG_LIT
 %token <float_val> FLOAT_LIT
 %token <bool_val> BOOL_LIT
 %token <string_val> STRING_LIT DATE_LIT
@@ -183,6 +186,7 @@ case_item:
 expression:
     IDENTIFIER                          { $$ = cdsl_create_expr_id($1); }
     | INT_LIT                           { $$ = cdsl_create_expr_int($1); }
+    | LONG_LIT                          { $$ = cdsl_create_expr_long($1); }
     | FLOAT_LIT                         { $$ = cdsl_create_expr_float($1); }
     | BOOL_LIT                          { $$ = cdsl_create_expr_bool($1); }
     | STRING_LIT                        { $$ = cdsl_create_expr_string($1); }

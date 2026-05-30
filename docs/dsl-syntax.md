@@ -47,6 +47,7 @@
 | Type    | Examples                 | Notes                              |
 |---------|--------------------------|------------------------------------|
 | Integer | `42`, `0`, `-1`          | 32-bit signed integer              |
+| Long    | `123L`, `9999999999L`     | 64-bit signed integer (L suffix)   |
 | Float   | `3.14`, `0.5`, `-1.0`    | 64-bit double precision            |
 | Boolean | `true`, `false`          | Case-sensitive                     |
 | String  | `"hello"`, `"reason"`    | Double-quoted; escape not supported|
