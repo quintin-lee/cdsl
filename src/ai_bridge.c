@@ -1,5 +1,6 @@
 #include "ai_bridge.h"
 #include "cdsl_json.h"
+#include "cdsl_hashmap.h"
 #include <stdlib.h>
 #include <string.h>
 #include <stdio.h>
@@ -132,6 +133,107 @@ escape_json_string(const char* s)
 	return out;
 }
 
+static char* call_llm_api(const char* prompt, const cdsl_ai_config_t* config);
+
+/**
+ * @brief Default built-in AI provider.
+ */
+static char* default_translate(void* ctx,
+			       const char* nl,
+			       const cdsl_schema_t* schema,
+			       const cdsl_ai_config_t* config);
+
+static cdsl_ai_review_t* default_review(void* ctx,
+					const char* dsl,
+					const cdsl_schema_t* schema,
+					const cdsl_ai_config_t* config);
+
+static char* call_llm_api_stream(const char* prompt,
+				 const cdsl_ai_config_t* config,
+				 cdsl_ai_stream_cb_t callback,
+				 void* user_data);
+
+static char* default_translate_stream(void* ctx,
+				      const char* nl,
+				      const cdsl_schema_t* schema,
+				      const cdsl_ai_config_t* config,
+				      cdsl_ai_stream_cb_t callback,
+				      void* user_data);
+
+static char* default_review_stream(void* ctx,
+				   const char* dsl,
+				   const cdsl_schema_t* schema,
+				   const cdsl_ai_config_t* config,
+				   cdsl_ai_stream_cb_t callback,
+				   void* user_data);
+
+static cdsl_ai_provider_t g_default_provider = {
+    .ctx = NULL,
+    .translate = default_translate,
+    .review = default_review,
+    .translate_stream = default_translate_stream,
+    .review_stream = default_review_stream,
+};
+
+static cdsl_hashmap_t* g_providers = NULL;
+static cdsl_hashmap_t* g_cache_drivers = NULL;
+
+static void
+init_registries(void)
+{
+	if (!g_providers) {
+		g_providers = cdsl_hashmap_create(16);
+		cdsl_ai_register_provider("default", &g_default_provider);
+	}
+	if (!g_cache_drivers) {
+		g_cache_drivers = cdsl_hashmap_create(16);
+	}
+}
+
+void
+cdsl_ai_register_provider(const char* name, const cdsl_ai_provider_t* provider)
+{
+	if (!g_providers) {
+		g_providers = cdsl_hashmap_create(16);
+	}
+	cdsl_ai_provider_t* copy = malloc(sizeof(*copy));
+	*copy = *provider;
+	cdsl_hashmap_put(g_providers, name, copy);
+}
+
+void
+cdsl_ai_register_cache_driver(const char* name, const cdsl_ai_cache_t* cache)
+{
+	if (!g_cache_drivers) {
+		g_cache_drivers = cdsl_hashmap_create(16);
+	}
+	cdsl_ai_cache_t* copy = malloc(sizeof(*copy));
+	*copy = *cache;
+	cdsl_hashmap_put(g_cache_drivers, name, copy);
+}
+
+static cdsl_ai_provider_t*
+get_provider(const char* name)
+{
+	init_registries();
+	cdsl_ai_provider_t* p =
+	    (cdsl_ai_provider_t*)cdsl_hashmap_get(g_providers, name ? name : "default");
+	return p ? p : &g_default_provider;
+}
+
+static cdsl_ai_cache_t*
+get_cache_driver(const cdsl_ai_config_t* cfg)
+{
+	if (cfg->cache) {
+		return cfg->cache;
+	}
+	if (cfg->cache_driver_name) {
+		init_registries();
+		return (cdsl_ai_cache_t*)cdsl_hashmap_get(g_cache_drivers, cfg->cache_driver_name);
+	}
+	return NULL;
+}
+
 /**
  * @brief Send a prompt to a remote LLM API via cURL (internal).
  *
@@ -149,8 +251,9 @@ call_llm_api(const char* prompt, const cdsl_ai_config_t* config)
 		return NULL;
 	}
 
-	if (config->cache && config->cache->get) {
-		char* cached = config->cache->get(config->cache->ctx, prompt);
+	cdsl_ai_cache_t* cache = get_cache_driver(config);
+	if (cache && cache->get) {
+		char* cached = cache->get(cache->ctx, prompt);
 		if (cached) {
 			return cached;
 		}
@@ -444,6 +547,8 @@ cdsl_ai_config_default(void)
 	cfg.model = NULL;
 	cfg.business_context = NULL;
 	cfg.cache = NULL;
+	cfg.provider_name = NULL;
+	cfg.cache_driver_name = NULL;
 	return cfg;
 }
 
@@ -716,25 +821,13 @@ mock_translate_generic(const char* natural_language,
 	return strdup(buf);
 }
 
-/**
- * @brief Translate natural language to a DSL rule (blocking).
- *
- * If config->use_mock is set, uses mock_translate_generic().
- * Otherwise, calls the configured LLM API and extracts the DSL
- * from a ```dsl code block.
- *
- * Falls back to mock generation if the API call fails.
- *
- * @param natural_language User description of the desired rule
- * @param schema           Schema for context
- * @param config           AI configuration
- * @return Allocated DSL string (caller frees), or NULL on error
- */
-char*
-cdsl_ai_translate(const char* natural_language,
+static char*
+default_translate(void* ctx,
+		  const char* natural_language,
 		  const cdsl_schema_t* schema,
 		  const cdsl_ai_config_t* config)
 {
+	(void)ctx;
 	if (!natural_language) {
 		return NULL;
 	}
@@ -809,23 +902,34 @@ cdsl_ai_translate(const char* natural_language,
 }
 
 /**
- * @brief Review a DSL rule for safety and quality (blocking).
+ * @brief Translate natural language to C-DSL rule code.
  *
- * In mock mode, performs static analysis on the raw DSL text
- * checking for META, METRIC, CASE, DEFAULT, WHEN, score(), and
- * is_critical patterns. Assigns a score and risk level.
+ * This function acts as a bridge between human descriptions and technical rules.
+ * In mock mode, it uses simple heuristic patterns. In API mode (if compiled with libcurl),
+ * it communicates with an LLM (e.g., OpenAI, Claude) to perform high-fidelity translation
+ * based on the provided schema's variable and action definitions.
  *
- * In API mode, sends the DSL code to the LLM for review and
- * parses the JSON response.
- *
- * @param dsl_code DSL rule text to review
- * @param schema   Schema (used in mock mode for context)
- * @param config   AI configuration
- * @return Review result (caller must free with cdsl_ai_review_free)
+ * @param natural_language User's rule description (e.g., "If age is over 18, allow entry")
+ * @param schema Registered schema providing context for available variables and actions
+ * @param config AI configuration (controls mock mode, API credentials, and model selection)
+ * @return Newly allocated DSL string (must be freed with @c free()), or NULL on network/translation error
  */
-cdsl_ai_review_t*
-cdsl_ai_review(const char* dsl_code, const cdsl_schema_t* schema, const cdsl_ai_config_t* config)
+char*
+cdsl_ai_translate(const char* natural_language,
+		  const cdsl_schema_t* schema,
+		  const cdsl_ai_config_t* config)
 {
+	cdsl_ai_provider_t* p = get_provider(config ? config->provider_name : NULL);
+	return p->translate(p->ctx, natural_language, schema, config);
+}
+
+static cdsl_ai_review_t*
+default_review(void* ctx,
+	       const char* dsl_code,
+	       const cdsl_schema_t* schema,
+	       const cdsl_ai_config_t* config)
+{
+	(void)ctx;
 	(void)schema;
 	if (!dsl_code) {
 		return NULL;
@@ -947,6 +1051,27 @@ cdsl_ai_review(const char* dsl_code, const cdsl_schema_t* schema, const cdsl_ai_
 }
 
 /**
+ * @brief Review a DSL rule for safety, completeness, and logical consistency.
+ *
+ * The AI review engine analyzes the rule structure beyond static verification.
+ * it checks for:
+ * - Logical contradictions (e.g., overlapping CASE ranges)
+ * - Missing mandatory metadata (e.g., weight, is_critical)
+ * - Security risks (e.g., unauthorized action triggers)
+ *
+ * @param dsl_code Raw DSL rule string to analyze
+ * @param schema Registered schema for contextual validation
+ * @param config AI configuration
+ * @return Review result structure containing approval status and risk score (must be freed with cdsl_ai_review_free)
+ */
+cdsl_ai_review_t*
+cdsl_ai_review(const char* dsl_code, const cdsl_schema_t* schema, const cdsl_ai_config_t* config)
+{
+	cdsl_ai_provider_t* p = get_provider(config ? config->provider_name : NULL);
+	return p->review(p->ctx, dsl_code, schema, config);
+}
+
+/**
  * @brief Free an AI review result.
  *
  * @param review Review to free (NULL-safe)
@@ -985,8 +1110,9 @@ call_llm_api_stream(const char* prompt,
 		return NULL;
 	}
 
-	if (config->cache && config->cache->get) {
-		char* cached = config->cache->get(config->cache->ctx, prompt);
+	cdsl_ai_cache_t* cache = get_cache_driver(config);
+	if (cache && cache->get) {
+		char* cached = cache->get(cache->ctx, prompt);
 		if (cached) {
 			if (callback) {
 				callback(cached, user_data);
@@ -1113,33 +1239,22 @@ call_llm_api_stream(const char* prompt,
 	pclose(fp);
 #endif
 
-	if (config->cache && config->cache->put && result) {
-		config->cache->put(config->cache->ctx, prompt, result);
+	if (cache && cache->put && result) {
+		cache->put(cache->ctx, prompt, result);
 	}
 
 	return result;
 }
 
-/**
- * @brief Translate natural language to DSL via streaming LLM call.
- *
- * In mock mode, calls mock_translate_generic() and delivers the
- * full result in one callback invocation.
- *
- * @param natural_language User description
- * @param schema           Schema for context
- * @param config           AI configuration
- * @param callback         Per-chunk callback (may be NULL)
- * @param user_data        Opaque pointer for callback
- * @return Accumulated full DSL result, or NULL on error
- */
-char*
-cdsl_ai_translate_stream(const char* natural_language,
+static char*
+default_translate_stream(void* ctx,
+			 const char* natural_language,
 			 const cdsl_schema_t* schema,
 			 const cdsl_ai_config_t* config,
 			 cdsl_ai_stream_cb_t callback,
 			 void* user_data)
 {
+	(void)ctx;
 	if (!natural_language) {
 		return NULL;
 	}
@@ -1186,25 +1301,35 @@ cdsl_ai_translate_stream(const char* natural_language,
 }
 
 /**
- * @brief Review a DSL rule via streaming LLM call.
+ * @brief Translate natural language to DSL with real-time streaming feedback.
  *
- * In mock mode, constructs the JSON review response directly and
- * delivers it in one callback invocation.
- *
- * @param dsl_code DSL code to review
- * @param schema   Schema (unused in streaming LLM path)
- * @param config   AI configuration
- * @param callback Per-chunk callback (may be NULL)
- * @param user_data Opaque pointer for callback
- * @return Accumulated full JSON review, or NULL on error
+ * @param natural_language User's rule description
+ * @param schema Registered schema
+ * @param config AI configuration
+ * @param callback Callback invoked for each received text chunk
+ * @param user_data User-provided data pointer passed to the callback
+ * @return Full translated DSL string (must be freed with @c free()), or NULL on error
  */
 char*
-cdsl_ai_review_stream(const char* dsl_code,
+cdsl_ai_translate_stream(const char* natural_language,
+			 const cdsl_schema_t* schema,
+			 const cdsl_ai_config_t* config,
+			 cdsl_ai_stream_cb_t callback,
+			 void* user_data)
+{
+	cdsl_ai_provider_t* p = get_provider(config ? config->provider_name : NULL);
+	return p->translate_stream(p->ctx, natural_language, schema, config, callback, user_data);
+}
+
+static char*
+default_review_stream(void* ctx,
+		      const char* dsl_code,
 		      const cdsl_schema_t* schema,
 		      const cdsl_ai_config_t* config,
 		      cdsl_ai_stream_cb_t callback,
 		      void* user_data)
 {
+	(void)ctx;
 	if (!dsl_code) {
 		return NULL;
 	}
@@ -1241,4 +1366,28 @@ cdsl_ai_review_stream(const char* dsl_code,
 		 dsl_code);
 
 	return call_llm_api_stream(review_prompt, config, callback, user_data);
+}
+
+/**
+ * @brief Review a DSL rule with real-time streaming feedback.
+ *
+ * This version returns the raw human-readable analysis from the LLM
+ * rather than a structured cdsl_ai_review_t.
+ *
+ * @param dsl_code DSL rule to review
+ * @param schema Registered schema
+ * @param config AI configuration
+ * @param callback Callback invoked for each received text chunk
+ * @param user_data User-provided data pointer passed to the callback
+ * @return Complete analysis text (must be freed with @c free()), or NULL on error
+ */
+char*
+cdsl_ai_review_stream(const char* dsl_code,
+		      const cdsl_schema_t* schema,
+		      const cdsl_ai_config_t* config,
+		      cdsl_ai_stream_cb_t callback,
+		      void* user_data)
+{
+	cdsl_ai_provider_t* p = get_provider(config ? config->provider_name : NULL);
+	return p->review_stream(p->ctx, dsl_code, schema, config, callback, user_data);
 }

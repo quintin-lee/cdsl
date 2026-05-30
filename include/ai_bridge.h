@@ -42,13 +42,24 @@ typedef struct {
 	void (*put)(void* ctx, const char* key, const char* value);
 } cdsl_ai_cache_t;
 
+typedef struct cdsl_ai_config {
+	int use_mock;		 /**< 1 = use offline mock translation, 0 = use LLM API */
+	char* api_key;		 /**< API key for LLM service (e.g. OpenAI) */
+	char* api_base;		 /**< API base URL (e.g. "https://api.openai.com/v1") */
+	char* model;		 /**< Model name (e.g. "gpt-4o-mini") */
+	char* business_context;	 /**< Optional business context to guide DSL generation */
+	cdsl_ai_cache_t* cache;	 /**< Optional external cache implementation */
+	char* provider_name;	 /**< Provider name (e.g. "default", "langchain") */
+	char* cache_driver_name; /**< Global cache driver name (e.g. "redis") */
+} cdsl_ai_config_t;
+
 /**
  * @brief AI rule safety review result.
  *
  * Returned by cdsl_ai_review() after analyzing a DSL rule for
  * logical contradictions, missing elements, and security risks.
  */
-typedef struct {
+typedef struct cdsl_ai_review {
 	int approved;	   /**< 1 if rule passed review, 0 if rejected */
 	int risk_score;	   /**< Risk score 0-100 (0 = no risk) */
 	char* reason;	   /**< Human-readable explanation */
@@ -56,28 +67,61 @@ typedef struct {
 } cdsl_ai_review_t;
 
 /**
- * @brief AI bridge configuration.
- *
- * Controls whether to use mock mode (offline) or a real LLM API.
- * For API mode, provide api_key, api_base, and model.
- *
- * @code
- * cdsl_ai_config_t cfg = {
- *     .use_mock = 0,
- *     .api_key = getenv("OPENAI_API_KEY"),
- *     .api_base = "https://api.openai.com/v1",
- *     .model = "gpt-4o-mini"
- * };
- * @endcode
+ * @brief External AI provider interface.
  */
 typedef struct {
-	int use_mock;		/**< 1 = use offline mock translation, 0 = use LLM API */
-	char* api_key;		/**< API key for LLM service (e.g. OpenAI) */
-	char* api_base;		/**< API base URL (e.g. "https://api.openai.com/v1") */
-	char* model;		/**< Model name (e.g. "gpt-4o-mini") */
-	char* business_context; /**< Optional business context to guide DSL generation */
-	cdsl_ai_cache_t* cache; /**< Optional external cache implementation */
-} cdsl_ai_config_t;
+	void* ctx; /**< Opaque pointer for the provider's state */
+
+	/**
+	 * @brief Translate natural language to DSL.
+	 */
+	char* (*translate)(void* ctx,
+			   const char* nl,
+			   const cdsl_schema_t* schema,
+			   const cdsl_ai_config_t* cfg);
+
+	/**
+	 * @brief Review a DSL rule for safety.
+	 */
+	cdsl_ai_review_t* (*review)(void* ctx,
+				    const char* dsl,
+				    const cdsl_schema_t* schema,
+				    const cdsl_ai_config_t* cfg);
+
+	/**
+	 * @brief Streaming translation.
+	 */
+	char* (*translate_stream)(void* ctx,
+				  const char* nl,
+				  const cdsl_schema_t* schema,
+				  const cdsl_ai_config_t* cfg,
+				  void (*callback)(const char*, void*),
+				  void* user_data);
+
+	/**
+	 * @brief Streaming review.
+	 */
+	char* (*review_stream)(void* ctx,
+			       const char* dsl,
+			       const cdsl_schema_t* schema,
+			       const cdsl_ai_config_t* cfg,
+			       void (*callback)(const char*, void*),
+			       void* user_data);
+} cdsl_ai_provider_t;
+
+/**
+ * @brief Register a custom AI provider.
+ * @param name Unique name for the provider
+ * @param provider Interface implementation
+ */
+void cdsl_ai_register_provider(const char* name, const cdsl_ai_provider_t* provider);
+
+/**
+ * @brief Register a custom cache driver (singleton-style access).
+ * @param name Unique name for the driver
+ * @param cache Interface implementation
+ */
+void cdsl_ai_register_cache_driver(const char* name, const cdsl_ai_cache_t* cache);
 
 /**
  * @brief Get default AI config (mock mode enabled).
