@@ -513,9 +513,16 @@ static cdsl_rule_report_t*
 execute_metric_rule(cdsl_vm_t* vm, const cdsl_rule_t* rule, cdsl_context_t* ctx)
 {
 	cdsl_rule_report_t* report = calloc(1, sizeof(*report));
+	if (!report) {
+		return NULL;
+	}
 	report->rule_name = strdup(rule->name);
 	char* desc = cdsl_meta_get(rule->meta_list, "description");
 	report->description = desc ? strdup(desc) : strdup("");
+	if (!report->rule_name || !report->description) {
+		cdsl_report_free(report);
+		return NULL;
+	}
 
 	int metric_count = 0;
 	for (cdsl_metric_node_t* m = rule->metrics; m; m = m->next) {
@@ -523,6 +530,10 @@ execute_metric_rule(cdsl_vm_t* vm, const cdsl_rule_t* rule, cdsl_context_t* ctx)
 	}
 	report->metric_count = metric_count;
 	report->metrics = calloc(metric_count, sizeof(cdsl_metric_result_t));
+	if (!report->metrics && metric_count > 0) {
+		cdsl_report_free(report);
+		return NULL;
+	}
 
 	int total_max = 0, total_obtained = 0;
 	int any_critical_failed = 0;
@@ -668,13 +679,28 @@ static cdsl_rule_report_t*
 execute_simple_rule(cdsl_vm_t* vm, const cdsl_rule_t* rule, cdsl_context_t* ctx)
 {
 	cdsl_rule_report_t* report = calloc(1, sizeof(*report));
+	if (!report) {
+		return NULL;
+	}
 	report->rule_name = strdup(rule->name);
 	char* desc = cdsl_meta_get(rule->meta_list, "description");
 	report->description = desc ? strdup(desc) : strdup("");
+	if (!report->rule_name || !report->description) {
+		cdsl_report_free(report);
+		return NULL;
+	}
 	report->metric_count = 1;
 	report->metrics = calloc(1, sizeof(cdsl_metric_result_t));
+	if (!report->metrics) {
+		cdsl_report_free(report);
+		return NULL;
+	}
 	report->metrics[0].metric_name = strdup(rule->name);
 	report->metrics[0].description = strdup(report->description);
+	if (!report->metrics[0].metric_name || !report->metrics[0].description) {
+		cdsl_report_free(report);
+		return NULL;
+	}
 
 	if (vm->debug_enabled) {
 		fprintf(stderr, "[TRACE] Evaluating simple rule '%s'\n", rule->name);

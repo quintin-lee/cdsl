@@ -8,9 +8,8 @@
 #ifndef CDSL_SCHEMA_H
 #define CDSL_SCHEMA_H
 
-#include "ast.h"
+#include "cdsl/ast.h"
 #include "cdsl/util/error.h"
-#include <stdbool.h>
 
 /**
  * @brief Registered variable descriptor.

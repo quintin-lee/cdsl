@@ -81,7 +81,7 @@ static time_t
 parse_iso_date(const char* s)
 {
 	if (!s) {
-		return 0;
+		return (time_t)-1;
 	}
 	struct tm tm = {0};
 	if (sscanf(s,
@@ -93,12 +93,13 @@ parse_iso_date(const char* s)
 		   &tm.tm_min,
 		   &tm.tm_sec) != 6) {
 		if (sscanf(s, "%d-%d-%d", &tm.tm_year, &tm.tm_mon, &tm.tm_mday) != 3) {
-			return 0;
+			return (time_t)-1;
 		}
 	}
 	tm.tm_year -= 1900;
 	tm.tm_mon -= 1;
-	return mktime(&tm);
+	time_t result = mktime(&tm);
+	return result != (time_t)-1 ? result : (time_t)-1;
 }
 
 /**
@@ -143,7 +144,7 @@ builtin_days_between(const char* name, cdsl_arg_node_t* args, cdsl_context_t* ct
 		t2 = parse_iso_date(v2.data.string_val);
 	}
 
-	if (t1 && t2) {
+	if (t1 != (time_t)-1 && t2 != (time_t)-1) {
 		double diff = difftime(t1, t2);
 		res.data.int_val = (int)(diff / (24 * 3600));
 	}
@@ -168,7 +169,7 @@ builtin_is_before(const char* name, cdsl_arg_node_t* args, cdsl_context_t* ctx, 
 	if (t1_val.type == CDSL_TYPE_STRING && t2_val.type == CDSL_TYPE_STRING) {
 		time_t t1 = parse_iso_date(t1_val.data.string_val);
 		time_t t2 = parse_iso_date(t2_val.data.string_val);
-		if (t1 && t2) {
+		if (t1 != (time_t)-1 && t2 != (time_t)-1) {
 			res.data.bool_val = (t1 < t2);
 		}
 	}
@@ -193,7 +194,7 @@ builtin_is_after(const char* name, cdsl_arg_node_t* args, cdsl_context_t* ctx, c
 	if (t1_val.type == CDSL_TYPE_STRING && t2_val.type == CDSL_TYPE_STRING) {
 		time_t t1 = parse_iso_date(t1_val.data.string_val);
 		time_t t2 = parse_iso_date(t2_val.data.string_val);
-		if (t1 && t2) {
+		if (t1 != (time_t)-1 && t2 != (time_t)-1) {
 			res.data.bool_val = (t1 > t2);
 		}
 	}

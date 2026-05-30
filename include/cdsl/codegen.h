@@ -10,6 +10,7 @@
 
 #include "cdsl/ast.h"
 #include "cdsl/schema.h"
+#include "cdsl/ruleset.h"
 
 char* cdsl_codegen_rule_to_c(const cdsl_rule_t* rule, const cdsl_schema_t* schema);
 int

@@ -1,5 +1,5 @@
 /**
- * @file ai_bridge.h
+ * @file cdsl/ai.h
  * @brief AI integration layer: natural language to DSL translation and rule review.
  *
  * Provides functions to translate natural language rule descriptions into
@@ -10,8 +10,8 @@
  * @{
  */
 
-#ifndef CDSL_AI_BRIDGE_H
-#define CDSL_AI_BRIDGE_H
+#ifndef CDSL_AI_H
+#define CDSL_AI_H
 
 #include "cdsl/schema.h"
 

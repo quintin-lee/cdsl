@@ -18,6 +18,23 @@
 #include <stdlib.h>
 #include <string.h>
 #include <stdio.h>
+#include <ctype.h>
+
+static void
+sanitize_identifier(char* buf, size_t bufsize, const char* src)
+{
+	size_t j = 0;
+	for (size_t i = 0; src[i] && j + 1 < bufsize; i++) {
+		if (isalnum((unsigned char)src[i]) || src[i] == '_') {
+			buf[j++] = src[i];
+		} else {
+			if (j + 1 < bufsize) {
+				buf[j++] = '_';
+			}
+		}
+	}
+	buf[j] = '\0';
+}
 
 /**
  * @brief Recursively emit a C expression from an AST node (internal).
@@ -292,8 +309,10 @@ cdsl_codegen_ruleset_to_h(const cdsl_ruleset_t* set,
 		return NULL;
 	}
 
-	char guard[256];
-	snprintf(guard, sizeof(guard), "CDSL_GENERATED_%s_H", module_name);
+	char guard[512];
+	char safe_name[256];
+	sanitize_identifier(safe_name, sizeof(safe_name), module_name);
+	snprintf(guard, sizeof(guard), "CDSL_GENERATED_%s_H", safe_name);
 	for (int i = 0; guard[i]; i++) {
 		if (guard[i] >= 'a' && guard[i] <= 'z') {
 			guard[i] -= 32;

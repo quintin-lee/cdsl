@@ -15,8 +15,6 @@
 struct cdsl_vm;
 struct cdsl_context;
 
-#define CDSL_MAX_EXPR_DEPTH 64
-
 /**
  * @brief Action callback function type.
  */
