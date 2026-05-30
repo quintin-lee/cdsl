@@ -296,12 +296,18 @@ test_ruleset_dependency_management()
 	int valid = cdsl_ruleset_validate_deps(ruleset, err, sizeof(err));
 	TEST_ASSERT(valid == 1, "Dependencies should be valid");
 
-	// Test topological sorting (stubbed; ensure function returns success)
+	// Test topological sorting
 	int topo_ok = cdsl_ruleset_topo_sort(ruleset);
 	TEST_ASSERT(topo_ok == 1, "Topological sort should succeed");
 	TEST_ASSERT(ruleset->count == 3, "Ruleset should still contain 3 rules");
-	// Order may be unchanged in stub implementation; verify presence instead of exact order
-	TEST_ASSERT(ruleset->entries != NULL, "Ruleset should have entries");
+
+	// Verify exact order: rule1, rule2, rule3
+	cdsl_ruleset_entry_t* it = ruleset->entries;
+	TEST_ASSERT(strcmp(it->rule->name, "rule1") == 0, "First rule should be rule1");
+	it = it->next;
+	TEST_ASSERT(strcmp(it->rule->name, "rule2") == 0, "Second rule should be rule2");
+	it = it->next;
+	TEST_ASSERT(strcmp(it->rule->name, "rule3") == 0, "Third rule should be rule3");
 
 	// Clean up
 	cdsl_schema_free(schema);
@@ -310,7 +316,40 @@ test_ruleset_dependency_management()
 	TEST_RULESET_END();
 }
 
-// Test 8: Ruleset error handling
+// Test 8: Circular dependency detection
+static void
+test_ruleset_dependency_cycle()
+{
+	TEST_RULESET_BEGIN("Ruleset dependency cycle detection");
+
+	cdsl_ruleset_t* ruleset = cdsl_ruleset_create();
+	cdsl_schema_t* schema = cdsl_schema_create();
+
+	// Create rules with circular dependency: rule1 -> rule2 -> rule1
+	const char* dsl1 =
+	    "RULE rule1 { META { depends_on = \"rule2\" } WHEN true THEN block(\"1\") }";
+	const char* dsl2 =
+	    "RULE rule2 { META { depends_on = \"rule1\" } WHEN true THEN block(\"2\") }";
+
+	cdsl_ruleset_add(ruleset, cdsl_parse_string(dsl1), 1);
+	cdsl_ruleset_add(ruleset, cdsl_parse_string(dsl2), 2);
+
+	char err[512] = {0};
+	int valid = cdsl_ruleset_validate_deps(ruleset, err, sizeof(err));
+	TEST_ASSERT(valid == 0, "Circular dependency should be detected");
+	TEST_ASSERT(strstr(err, "cycle") != NULL, "Error message should mention cycle");
+
+	// Topological sort should also fail
+	int topo_ok = cdsl_ruleset_topo_sort(ruleset);
+	TEST_ASSERT(topo_ok == 0, "Topological sort should fail on cycle");
+
+	cdsl_schema_free(schema);
+	cdsl_ruleset_free(ruleset);
+
+	TEST_RULESET_END();
+}
+
+// Test 9: Ruleset error handling
 static void
 test_ruleset_error_handling()
 {
@@ -482,6 +521,7 @@ main()
 	test_ruleset_parallel_execution();
 	test_ruleset_hot_reload();
 	test_ruleset_dependency_management();
+	test_ruleset_dependency_cycle();
 	test_ruleset_error_handling();
 	test_complex_ruleset();
 	test_ruleset_performance();

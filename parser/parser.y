@@ -70,10 +70,11 @@ extern int yyget_lineno(yyscan_t yyscanner);
 
 %left OR
 %left AND
+%left EQ NE
+%left LT GT LE GE
 %left PLUS MINUS
 %left STAR SLASH
 %right NOT UMINUS
-%nonassoc EQ NE LT GT LE GE
 
 %type <rule> program rule_declaration template_declaration
 %type <meta_list> meta_block meta_list meta_item

@@ -98,6 +98,20 @@ cdsl_ruleset_remove(cdsl_ruleset_t* set, const char* rule_name)
 	return 0;
 }
 
+static cdsl_ruleset_entry_t*
+find_entry_by_name(cdsl_ruleset_t* set, const char* name)
+{
+	if (!set || !name) {
+		return NULL;
+	}
+	for (cdsl_ruleset_entry_t* e = set->entries; e; e = e->next) {
+		if (e->rule && e->rule->name && strcmp(e->rule->name, name) == 0) {
+			return e;
+		}
+	}
+	return NULL;
+}
+
 cdsl_ruleset_report_t*
 cdsl_vm_execute_ruleset(cdsl_vm_t* vm, cdsl_ruleset_t* set, cdsl_context_t* ctx)
 {
@@ -357,21 +371,186 @@ cdsl_ruleset_reload_file(cdsl_ruleset_t* set,
 	return cdsl_ruleset_load_file(set, filepath, 0, schema, err_buf, err_buf_sz);
 }
 
+static int
+validate_deps_recursive(cdsl_ruleset_t* set,
+			cdsl_ruleset_entry_t* entry,
+			int* states,
+			cdsl_ruleset_entry_t** entries_arr,
+			char* err_buf,
+			int err_buf_sz)
+{
+	int idx = -1;
+	for (int i = 0; i < set->count; i++) {
+		if (entries_arr[i] == entry) {
+			idx = i;
+			break;
+		}
+	}
+	if (idx == -1) {
+		return 1;
+	}
+
+	if (states[idx] == 1) {
+		if (err_buf) {
+			snprintf(err_buf,
+				 err_buf_sz,
+				 "Dependency cycle detected involving rule '%s'",
+				 entry->rule->name);
+		}
+		return 0;
+	}
+	if (states[idx] == 2) {
+		return 1;
+	}
+
+	states[idx] = 1;
+	char* deps = cdsl_meta_get(entry->rule->meta_list, "depends_on");
+	if (deps) {
+		char* dep_buf = strdup(deps);
+		char* token = strtok(dep_buf, ",");
+		while (token) {
+			while (*token == ' ') {
+				token++;
+			}
+			cdsl_ruleset_entry_t* dep_entry = find_entry_by_name(set, token);
+			if (!dep_entry) {
+				if (err_buf) {
+					snprintf(err_buf,
+						 err_buf_sz,
+						 "Missing dependency '%s' for rule '%s'",
+						 token,
+						 entry->rule->name);
+				}
+				free(dep_buf);
+				return 0;
+			}
+			if (!validate_deps_recursive(
+				set, dep_entry, states, entries_arr, err_buf, err_buf_sz)) {
+				free(dep_buf);
+				return 0;
+			}
+			token = strtok(NULL, ",");
+		}
+		free(dep_buf);
+	}
+	states[idx] = 2;
+	return 1;
+}
+
 int
 cdsl_ruleset_validate_deps(const cdsl_ruleset_t* set, char* err_buf, int err_buf_sz)
 {
-	(void)set;
-	(void)err_buf;
-	(void)err_buf_sz;
-	/* TODO: Implement dependency cycle detection */
-	return 1;
+	if (!set || set->count == 0) {
+		return 1;
+	}
+	int* states = calloc(set->count, sizeof(int));
+	cdsl_ruleset_entry_t** entries_arr = malloc(set->count * sizeof(cdsl_ruleset_entry_t*));
+	int i = 0;
+	for (cdsl_ruleset_entry_t* e = set->entries; e; e = e->next) {
+		entries_arr[i++] = e;
+	}
+
+	int ok = 1;
+	for (i = 0; i < set->count; i++) {
+		if (states[i] == 0) {
+			if (!validate_deps_recursive((cdsl_ruleset_t*)set,
+						     entries_arr[i],
+						     states,
+						     entries_arr,
+						     err_buf,
+						     err_buf_sz)) {
+				ok = 0;
+				break;
+			}
+		}
+	}
+	free(states);
+	free(entries_arr);
+	return ok;
+}
+
+static void
+topo_sort_recursive(cdsl_ruleset_t* set,
+		    cdsl_ruleset_entry_t* entry,
+		    int* visited,
+		    cdsl_ruleset_entry_t** entries_arr,
+		    cdsl_ruleset_entry_t*** output_ptr)
+{
+	int idx = -1;
+	for (int i = 0; i < set->count; i++) {
+		if (entries_arr[i] == entry) {
+			idx = i;
+			break;
+		}
+	}
+	if (idx == -1 || visited[idx]) {
+		return;
+	}
+
+	visited[idx] = 1;
+
+	char* deps = cdsl_meta_get(entry->rule->meta_list, "depends_on");
+	if (deps) {
+		char* dep_buf = strdup(deps);
+		char* token = strtok(dep_buf, ",");
+		while (token) {
+			while (*token == ' ') {
+				token++;
+			}
+			cdsl_ruleset_entry_t* dep_entry = find_entry_by_name(set, token);
+			if (dep_entry) {
+				topo_sort_recursive(
+				    set, dep_entry, visited, entries_arr, output_ptr);
+			}
+			token = strtok(NULL, ",");
+		}
+		free(dep_buf);
+	}
+
+	**output_ptr = entry;
+	(*output_ptr)++;
 }
 
 int
 cdsl_ruleset_topo_sort(cdsl_ruleset_t* set)
 {
-	(void)set;
-	/* TODO: Implement topological sort based on depends_on */
+	if (!set || set->count <= 1) {
+		return 1;
+	}
+
+	/* First, check for cycles. Topo sort only works on DAGs. */
+	if (!cdsl_ruleset_validate_deps(set, NULL, 0)) {
+		return 0;
+	}
+
+	int* visited = calloc(set->count, sizeof(int));
+	cdsl_ruleset_entry_t** entries_arr = malloc(set->count * sizeof(cdsl_ruleset_entry_t*));
+	cdsl_ruleset_entry_t** sorted_arr = malloc(set->count * sizeof(cdsl_ruleset_entry_t*));
+	cdsl_ruleset_entry_t** output_ptr = sorted_arr;
+
+	int i = 0;
+	for (cdsl_ruleset_entry_t* e = set->entries; e; e = e->next) {
+		entries_arr[i++] = e;
+	}
+
+	for (i = 0; i < set->count; i++) {
+		if (!visited[i]) {
+			topo_sort_recursive(set, entries_arr[i], visited, entries_arr, &output_ptr);
+		}
+	}
+
+	/* Rebuild the linked list based on sorted order */
+	set->entries = sorted_arr[0];
+	cdsl_ruleset_entry_t* cur = set->entries;
+	for (i = 1; i < set->count; i++) {
+		cur->next = sorted_arr[i];
+		cur = cur->next;
+	}
+	cur->next = NULL;
+
+	free(visited);
+	free(entries_arr);
+	free(sorted_arr);
 	return 1;
 }
 /** @} */

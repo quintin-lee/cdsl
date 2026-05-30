@@ -142,7 +142,8 @@ resolve_expr_type(cdsl_expr_node_t* expr, const cdsl_schema_t* schema, char* err
 			snprintf(err, errsz, "Invalid type in expression");
 			return CDSL_TYPE_VOID;
 		}
-		if (expr->data.binary.op >= CDSL_OP_AND) {
+		cdsl_op_t op = expr->data.binary.op;
+		if (op >= CDSL_OP_AND && op <= CDSL_OP_OR) {
 			return CDSL_TYPE_BOOL;
 		}
 		if (lt != rt && !(lt == CDSL_TYPE_INT && rt == CDSL_TYPE_FLOAT) &&
@@ -151,10 +152,14 @@ resolve_expr_type(cdsl_expr_node_t* expr, const cdsl_schema_t* schema, char* err
 			return CDSL_TYPE_VOID;
 		}
 
-		if (lt == CDSL_TYPE_STRING && expr->data.binary.op != CDSL_OP_EQ &&
-		    expr->data.binary.op != CDSL_OP_NE) {
+		if (lt == CDSL_TYPE_STRING && op != CDSL_OP_EQ && op != CDSL_OP_NE) {
 			snprintf(err, errsz, "String only supports equality comparisons");
 			return CDSL_TYPE_VOID;
+		}
+
+		if (op >= CDSL_OP_ADD && op <= CDSL_OP_DIV) {
+			return (lt == CDSL_TYPE_FLOAT || rt == CDSL_TYPE_FLOAT) ? CDSL_TYPE_FLOAT
+										: CDSL_TYPE_INT;
 		}
 
 		return CDSL_TYPE_BOOL;
