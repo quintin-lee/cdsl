@@ -23,7 +23,7 @@
 
 #include "ai_bridge.h"
 #include "cdsl_json.h"
-#include "cdsl_hashmap.h"
+#include "cdsl/util/hashmap.h"
 #include <stdlib.h>
 #include <string.h>
 #include <stdio.h>

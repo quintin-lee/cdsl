@@ -15,7 +15,7 @@
 
 #include "ast.h"
 #include "abstract.h"
-#include "cdsl_hashmap.h"
+#include "cdsl/util/hashmap.h"
 #include <pthread.h>
 
 /* Forward declarations */

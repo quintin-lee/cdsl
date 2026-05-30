@@ -1,14 +1,14 @@
 /**
- * @file cdsl_hashmap.h
+ * @file cdsl/util/hashmap.h
  * @brief Hash map implementation for O(1) key-value lookups.
  *
- * @defgroup hashmap Hash Map
+ * @defgroup cdsl_hashmap Hash Map
  * @{
  */
+#ifndef CDSL_UTIL_HASHMAP_H
+#define CDSL_UTIL_HASHMAP_H
 
-#ifndef CDSL_HASHMAP_H
-#define CDSL_HASHMAP_H
-
+#include <stdbool.h>
 #include <stddef.h>
 
 /**
@@ -22,16 +22,6 @@ typedef struct cdsl_hashmap_entry {
 
 /**
  * @brief Hash map with separate chaining.
- *
- * Provides O(1) average-case lookup, insertion, and deletion.
- * Keys are strings; values are opaque pointers.
- *
- * @code
- * cdsl_hashmap_t* map = cdsl_hashmap_create(64);
- * cdsl_hashmap_put(map, "user.age", &age_val);
- * int* p = cdsl_hashmap_get(map, "user.age");
- * cdsl_hashmap_free(map, NULL);
- * @endcode
  */
 typedef struct cdsl_hashmap {
 	cdsl_hashmap_entry_t** buckets; /**< Bucket array */
@@ -40,8 +30,7 @@ typedef struct cdsl_hashmap {
 } cdsl_hashmap_t;
 
 /**
- * @brief Value destructor callback type for cdsl_hashmap_free.
- * @param value Value pointer to free
+ * @brief Value destructor callback type.
  */
 typedef void (*cdsl_hashmap_free_fn)(void* value);
 
@@ -50,6 +39,7 @@ typedef void (*cdsl_hashmap_free_fn)(void* value);
  * @param bucket_count Number of buckets (0 for default 64)
  * @return Newly allocated hash map
  */
+[[nodiscard]]
 cdsl_hashmap_t* cdsl_hashmap_create(int bucket_count);
 
 /**
@@ -64,9 +54,9 @@ void cdsl_hashmap_free(cdsl_hashmap_t* map, cdsl_hashmap_free_fn free_fn);
  * @param map Target hash map
  * @param key Key string (duplicated internally)
  * @param value Value pointer (not owned by the map)
- * @return 1 on success
+ * @return true on success
  */
-int cdsl_hashmap_put(cdsl_hashmap_t* map, const char* key, void* value);
+bool cdsl_hashmap_put(cdsl_hashmap_t* map, const char* key, void* value);
 
 /**
  * @brief Look up a value by key.
@@ -74,6 +64,7 @@ int cdsl_hashmap_put(cdsl_hashmap_t* map, const char* key, void* value);
  * @param key Key to search for
  * @return Value pointer, or NULL if not found
  */
+[[nodiscard]]
 void* cdsl_hashmap_get(cdsl_hashmap_t* map, const char* key);
 
 /**
@@ -81,17 +72,17 @@ void* cdsl_hashmap_get(cdsl_hashmap_t* map, const char* key);
  * @param map Target hash map
  * @param key Key to remove
  * @param free_fn Optional destructor for the removed value (may be NULL)
- * @return 1 if removed, 0 if not found
+ * @return true if removed, false if not found
  */
-int cdsl_hashmap_remove(cdsl_hashmap_t* map, const char* key, cdsl_hashmap_free_fn free_fn);
+bool cdsl_hashmap_remove(cdsl_hashmap_t* map, const char* key, cdsl_hashmap_free_fn free_fn);
 
 /**
  * @brief Check if a key exists in the map.
  * @param map Target map
  * @param key Key to search for
- * @return 1 if key exists, 0 otherwise
+ * @return true if key exists
  */
-int cdsl_hashmap_has(const cdsl_hashmap_t* map, const char* key);
+bool cdsl_hashmap_has(const cdsl_hashmap_t* map, const char* key);
 
 /**
  * @brief Callback iterator function type.
@@ -101,22 +92,22 @@ typedef void (*cdsl_hashmap_iter_fn)(const char* key, void* value, void* user_da
 /**
  * @brief Iterate over all entries in the map.
  * @param map Target map
- * @param cb  Callback function (called for each entry)
+ * @param cb Callback function (called for each entry)
  * @param user_data Opaque pointer passed to callback
  */
 void cdsl_hashmap_iterate(const cdsl_hashmap_t* map, cdsl_hashmap_iter_fn cb, void* user_data);
 
 /**
- * @brief Get all keys in the map.
+ * @brief Get all keys in the map as a NULL-terminated array.
  *
- * Allocates and returns an array of keys (NULL-terminated).
- * Both the array and individual key strings are allocated on heap;
+ * Both the array and individual key strings are heap-allocated;
  * caller must free them.
  *
- * @param map   Target map
- * @param count Optional output for the key count (may be NULL)
- * @return Allocated NULL-terminated array of duplicated key strings, or NULL if empty
+ * @param map Target map
+ * @param count Optional output for key count (may be NULL)
+ * @return Allocated array of duplicated key strings, or NULL if empty
  */
+[[nodiscard]]
 char** cdsl_hashmap_keys(const cdsl_hashmap_t* map, int* count);
 
 #endif
