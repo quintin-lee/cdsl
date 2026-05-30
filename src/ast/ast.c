@@ -362,7 +362,6 @@ cdsl_free_expr(cdsl_expr_node_t* expr)
 		free(expr->data.string_val);
 		break;
 	case CDSL_EXPR_DATE:
-		/* time_t is a scalar, no extra free needed */
 		break;
 	case CDSL_EXPR_BINARY:
 		cdsl_free_expr(expr->data.binary.left);

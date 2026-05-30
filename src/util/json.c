@@ -36,32 +36,57 @@ parse_string_raw(json_parser_t* p)
 	size_t cap = 64;
 	size_t len = 0;
 	char* s = malloc(cap);
+	if (!s) {
+		return NULL;
+	}
+
+#define JSON_STR_ENSURE(n)                                                                         \
+	do {                                                                                       \
+		if (len + (n) + 1 > cap) {                                                         \
+			cap = (len + (n) + 1) * 2;                                                 \
+			char* ns = realloc(s, cap);                                                \
+			if (!ns) {                                                                 \
+				free(s);                                                           \
+				return NULL;                                                       \
+			}                                                                          \
+			s = ns;                                                                    \
+		}                                                                                  \
+	} while (0)
+
 	while (p->src[p->pos] && p->src[p->pos] != '"') {
 		if (p->src[p->pos] == '\\') {
 			p->pos++;
 			switch (p->src[p->pos]) {
 			case '"':
+				JSON_STR_ENSURE(1);
 				s[len++] = '"';
 				break;
 			case '\\':
+				JSON_STR_ENSURE(1);
 				s[len++] = '\\';
 				break;
 			case '/':
+				JSON_STR_ENSURE(1);
 				s[len++] = '/';
 				break;
 			case 'b':
+				JSON_STR_ENSURE(1);
 				s[len++] = '\b';
 				break;
 			case 'f':
+				JSON_STR_ENSURE(1);
 				s[len++] = '\f';
 				break;
 			case 'n':
+				JSON_STR_ENSURE(1);
 				s[len++] = '\n';
 				break;
 			case 'r':
+				JSON_STR_ENSURE(1);
 				s[len++] = '\r';
 				break;
 			case 't':
+				JSON_STR_ENSURE(1);
 				s[len++] = '\t';
 				break;
 			case 'u': {
@@ -82,11 +107,14 @@ parse_string_raw(json_parser_t* p)
 					}
 				}
 				if (code < 128) {
+					JSON_STR_ENSURE(1);
 					s[len++] = (char)code;
 				} else if (code < 0x800) {
+					JSON_STR_ENSURE(2);
 					s[len++] = 0xC0 | (code >> 6);
 					s[len++] = 0x80 | (code & 0x3F);
 				} else {
+					JSON_STR_ENSURE(3);
 					s[len++] = 0xE0 | (code >> 12);
 					s[len++] = 0x80 | ((code >> 6) & 0x3F);
 					s[len++] = 0x80 | (code & 0x3F);
@@ -94,23 +122,17 @@ parse_string_raw(json_parser_t* p)
 				break;
 			}
 			default:
+				JSON_STR_ENSURE(1);
 				s[len++] = p->src[p->pos];
 				break;
 			}
 			p->pos++;
 		} else {
-			if (len + 1 >= cap) {
-				cap *= 2;
-				char* ns = realloc(s, cap);
-				if (!ns) {
-					free(s);
-					return NULL;
-				}
-				s = ns;
-			}
+			JSON_STR_ENSURE(1);
 			s[len++] = p->src[p->pos++];
 		}
 	}
+#undef JSON_STR_ENSURE
 	if (p->src[p->pos] == '"') {
 		p->pos++;
 	}
@@ -259,20 +281,40 @@ parse_value(json_parser_t* p)
 		v->value.string_val = s;
 		return v;
 	}
-	if (c == 't' || c == 'f') {
-		cdsl_json_value_t* v = calloc(1, sizeof(*v));
-		v->type = JSON_BOOL;
-		if (strncmp(p->src + p->pos, "true", 4) == 0) {
-			v->value.bool_val = 1;
-			p->pos += 4;
-		} else {
-			v->value.bool_val = 0;
-			p->pos += 5;
+	if (c == 't') {
+		if (strncmp(p->src + p->pos, "true", 4) != 0) {
+			return NULL;
 		}
+		cdsl_json_value_t* v = calloc(1, sizeof(*v));
+		if (!v) {
+			return NULL;
+		}
+		v->type = JSON_BOOL;
+		v->value.bool_val = 1;
+		p->pos += 4;
+		return v;
+	}
+	if (c == 'f') {
+		if (strncmp(p->src + p->pos, "false", 5) != 0) {
+			return NULL;
+		}
+		cdsl_json_value_t* v = calloc(1, sizeof(*v));
+		if (!v) {
+			return NULL;
+		}
+		v->type = JSON_BOOL;
+		v->value.bool_val = 0;
+		p->pos += 5;
 		return v;
 	}
 	if (c == 'n') {
+		if (strncmp(p->src + p->pos, "null", 4) != 0) {
+			return NULL;
+		}
 		cdsl_json_value_t* v = calloc(1, sizeof(*v));
+		if (!v) {
+			return NULL;
+		}
 		v->type = JSON_NULL;
 		p->pos += 4;
 		return v;

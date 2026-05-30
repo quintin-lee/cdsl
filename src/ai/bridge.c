@@ -306,11 +306,18 @@ call_llm_api(const char* prompt, const cdsl_ai_config_t* config)
 	}
 
 	char* body = malloc(strlen(config->model) + strlen(escaped_prompt) + 128);
-	sprintf(body,
-		"{\"model\":\"%s\",\"messages\":[{\"role\":\"user\",\"content\":\"%s\"}],"
-		"\"temperature\":0.1}",
-		config->model,
-		escaped_prompt);
+	if (!body) {
+		free(escaped_prompt);
+		curl_slist_free_all(headers);
+		curl_easy_cleanup(curl);
+		return NULL;
+	}
+	snprintf(body,
+		 strlen(config->model) + strlen(escaped_prompt) + 128,
+		 "{\"model\":\"%s\",\"messages\":[{\"role\":\"user\",\"content\":\"%s\"}],"
+		 "\"temperature\":0.1}",
+		 config->model,
+		 escaped_prompt);
 	free(escaped_prompt);
 
 	struct curl_mem_buffer chunk;
@@ -1172,11 +1179,18 @@ call_llm_api_stream(const char* prompt,
 	headers = curl_slist_append(headers, auth_header);
 
 	char* body = malloc(strlen(config->model) + strlen(escaped_prompt) + 128);
-	sprintf(body,
-		"{\"model\":\"%s\",\"messages\":[{\"role\":\"user\",\"content\":\"%s\"}],"
-		"\"temperature\":0.1,\"stream\":true}",
-		config->model,
-		escaped_prompt);
+	if (!body) {
+		free(escaped_prompt);
+		curl_slist_free_all(headers);
+		curl_easy_cleanup(curl);
+		return NULL;
+	}
+	snprintf(body,
+		 strlen(config->model) + strlen(escaped_prompt) + 128,
+		 "{\"model\":\"%s\",\"messages\":[{\"role\":\"user\",\"content\":\"%s\"}],"
+		 "\"temperature\":0.1,\"stream\":true}",
+		 config->model,
+		 escaped_prompt);
 	free(escaped_prompt);
 
 	struct curl_stream_ctx ctx;

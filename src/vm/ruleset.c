@@ -190,34 +190,53 @@ cdsl_vm_execute_ruleset_parallel(cdsl_vm_t* vm,
 	}
 
 	cdsl_ruleset_report_t* batch = calloc(1, sizeof(*batch));
+	if (!batch) {
+		return NULL;
+	}
 	batch->rule_reports = calloc(set->count, sizeof(cdsl_rule_report_t*));
+	if (!batch->rule_reports) {
+		free(batch);
+		return NULL;
+	}
 	batch->rule_count = set->count;
 
 	parallel_worker_arg_t* args = calloc(set->count, sizeof(parallel_worker_arg_t));
 	pthread_t* threads = calloc(set->count, sizeof(pthread_t));
-
-	/* Note: In a real system, we'd use a thread pool. Here we spawn one per rule
-	 * up to set->count, which is simple but not efficient for huge rulesets.
-	 * Also, each thread needs its own VM if they share state, but our VMs
-	 * are mostly read-only except for stats. For safety, we should clones VMs.
-	 */
+	if (!args || !threads) {
+		free(args);
+		free(threads);
+		free(batch->rule_reports);
+		free(batch);
+		return NULL;
+	}
 
 	int idx = 0;
 	for (cdsl_ruleset_entry_t* e = set->entries; e; e = e->next, idx++) {
 		args[idx].rule = e->rule;
 		args[idx].ctx = ctx;
-		/* Simple VM clone for thread safety */
 		args[idx].vm = cdsl_vm_create(vm->schema);
+		if (!args[idx].vm) {
+			args[idx].result = NULL;
+			continue;
+		}
 		args[idx].vm->callbacks = vm->callbacks;
 		args[idx].vm->functions = vm->functions;
 		args[idx].vm->user_data = vm->user_data;
 		args[idx].vm->debug_enabled = vm->debug_enabled;
 
-		pthread_create(&threads[idx], NULL, parallel_worker, &args[idx]);
+		if (pthread_create(&threads[idx], NULL, parallel_worker, &args[idx]) != 0) {
+			args[idx].result = NULL;
+			args[idx].vm->callbacks = NULL;
+			args[idx].vm->functions = NULL;
+			cdsl_vm_free(args[idx].vm);
+			args[idx].vm = NULL;
+		}
 	}
 
 	for (int i = 0; i < set->count; i++) {
-		pthread_join(threads[i], NULL);
+		if (args[i].vm) {
+			pthread_join(threads[i], NULL);
+		}
 		batch->rule_reports[i] = args[i].result;
 		if (batch->rule_reports[i]) {
 			cdsl_rule_report_t* r = batch->rule_reports[i];
@@ -239,15 +258,18 @@ cdsl_vm_execute_ruleset_parallel(cdsl_vm_t* vm,
 			}
 		}
 		/* Update main VM stats from worker VM */
-		vm->stats.total_executions += args[i].vm->stats.total_executions;
-		vm->stats.total_rules_executed += args[i].vm->stats.total_rules_executed;
-		vm->stats.total_metrics_evaluated += args[i].vm->stats.total_metrics_evaluated;
-		vm->stats.total_time_us += args[i].vm->stats.total_time_us;
+		if (args[i].vm) {
+			vm->stats.total_executions += args[i].vm->stats.total_executions;
+			vm->stats.total_rules_executed += args[i].vm->stats.total_rules_executed;
+			vm->stats.total_metrics_evaluated +=
+			    args[i].vm->stats.total_metrics_evaluated;
+			vm->stats.total_time_us += args[i].vm->stats.total_time_us;
 
-		/* Clean up worker VM (but don't free callbacks/functions as they are shared) */
-		args[i].vm->callbacks = NULL;
-		args[i].vm->functions = NULL;
-		cdsl_vm_free(args[i].vm);
+			/* Clean up worker VM (but don't free callbacks/functions as they are shared) */
+			args[i].vm->callbacks = NULL;
+			args[i].vm->functions = NULL;
+			cdsl_vm_free(args[i].vm);
+		}
 	}
 
 	free(args);

@@ -44,10 +44,17 @@ cdsl_error_create(
     cdsl_error_kind_t kind, int line, int column, const char* message, const char* hint)
 {
 	cdsl_error_t* e = calloc(1, sizeof(*e));
+	if (!e) {
+		return NULL;
+	}
 	e->kind = kind;
 	e->line = line;
 	e->column = column;
 	e->message = message ? strdup(message) : strdup("");
+	if (!e->message) {
+		free(e);
+		return NULL;
+	}
 	e->hint = hint ? strdup(hint) : NULL;
 	return e;
 }
@@ -96,8 +103,15 @@ cdsl_error_list_t*
 cdsl_error_list_create(void)
 {
 	cdsl_error_list_t* list = calloc(1, sizeof(*list));
+	if (!list) {
+		return NULL;
+	}
 	list->capacity = 16;
 	list->errors = malloc(sizeof(cdsl_error_t*) * list->capacity);
+	if (!list->errors) {
+		free(list);
+		return NULL;
+	}
 	return list;
 }
 
@@ -127,8 +141,13 @@ cdsl_error_list_add(cdsl_error_list_t* list, cdsl_error_t* err)
 		return;
 	}
 	if (list->count >= list->capacity) {
-		list->capacity *= 2;
-		list->errors = realloc(list->errors, sizeof(cdsl_error_t*) * list->capacity);
+		int new_cap = list->capacity * 2;
+		cdsl_error_t** new_errors = realloc(list->errors, sizeof(cdsl_error_t*) * new_cap);
+		if (!new_errors) {
+			return;
+		}
+		list->errors = new_errors;
+		list->capacity = new_cap;
 	}
 	list->errors[list->count++] = err;
 }

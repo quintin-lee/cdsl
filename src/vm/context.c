@@ -50,8 +50,15 @@ cdsl_context_t*
 cdsl_context_create(const cdsl_schema_t* schema)
 {
 	cdsl_context_t* ctx = calloc(1, sizeof(*ctx));
+	if (!ctx) {
+		return NULL;
+	}
 	ctx->schema = schema;
 	ctx->map = cdsl_hashmap_create(64);
+	if (!ctx->map) {
+		free(ctx);
+		return NULL;
+	}
 	return ctx;
 }
 
@@ -87,7 +94,14 @@ cdsl_context_set_int(cdsl_context_t* ctx, const char* name, int val)
 		e->value.data.int_val = val;
 	} else {
 		cdsl_context_entry_t* ne = calloc(1, sizeof(*ne));
+		if (!ne) {
+			return;
+		}
 		ne->name = strdup(name);
+		if (!ne->name) {
+			free(ne);
+			return;
+		}
 		ne->value.type = CDSL_TYPE_INT;
 		ne->value.data.int_val = val;
 		ne->next = ctx->entries;
@@ -108,7 +122,14 @@ cdsl_context_set_float(cdsl_context_t* ctx, const char* name, double val)
 		e->value.data.float_val = val;
 	} else {
 		cdsl_context_entry_t* ne = calloc(1, sizeof(*ne));
+		if (!ne) {
+			return;
+		}
 		ne->name = strdup(name);
+		if (!ne->name) {
+			free(ne);
+			return;
+		}
 		ne->value.type = CDSL_TYPE_FLOAT;
 		ne->value.data.float_val = val;
 		ne->next = ctx->entries;
@@ -129,7 +150,14 @@ cdsl_context_set_bool(cdsl_context_t* ctx, const char* name, int val)
 		e->value.data.bool_val = val;
 	} else {
 		cdsl_context_entry_t* ne = calloc(1, sizeof(*ne));
+		if (!ne) {
+			return;
+		}
 		ne->name = strdup(name);
+		if (!ne->name) {
+			free(ne);
+			return;
+		}
 		ne->value.type = CDSL_TYPE_BOOL;
 		ne->value.data.bool_val = val;
 		ne->next = ctx->entries;
@@ -150,9 +178,21 @@ cdsl_context_set_string(cdsl_context_t* ctx, const char* name, const char* val)
 		e->value.data.string_val = strdup(val);
 	} else {
 		cdsl_context_entry_t* ne = calloc(1, sizeof(*ne));
+		if (!ne) {
+			return;
+		}
 		ne->name = strdup(name);
+		if (!ne->name) {
+			free(ne);
+			return;
+		}
 		ne->value.type = CDSL_TYPE_STRING;
 		ne->value.data.string_val = strdup(val);
+		if (!ne->value.data.string_val) {
+			free(ne->name);
+			free(ne);
+			return;
+		}
 		ne->next = ctx->entries;
 		ctx->entries = ne;
 		cdsl_hashmap_put(ctx->map, name, ne);
@@ -171,7 +211,14 @@ cdsl_context_set_date(cdsl_context_t* ctx, const char* name, time_t val)
 		e->value.data.date_val = val;
 	} else {
 		cdsl_context_entry_t* ne = calloc(1, sizeof(*ne));
+		if (!ne) {
+			return;
+		}
 		ne->name = strdup(name);
+		if (!ne->name) {
+			free(ne);
+			return;
+		}
 		ne->value.type = CDSL_TYPE_DATE;
 		ne->value.data.date_val = val;
 		ne->next = ctx->entries;
@@ -338,6 +385,9 @@ cdsl_vm_t*
 cdsl_vm_create(const cdsl_schema_t* schema)
 {
 	cdsl_vm_t* vm = calloc(1, sizeof(*vm));
+	if (!vm) {
+		return NULL;
+	}
 	vm->schema = schema;
 	vm->debug_enabled = 0;
 	vm->max_expr_depth = CDSL_MAX_EXPR_DEPTH;
@@ -374,6 +424,9 @@ cdsl_vm_get_stats(const cdsl_vm_t* vm)
 		return NULL;
 	}
 	cdsl_stats_t* s = malloc(sizeof(cdsl_stats_t));
+	if (!s) {
+		return NULL;
+	}
 	*s = vm->stats;
 	if (s->total_executions > 0) {
 		s->avg_time_us = s->total_time_us / s->total_executions;
@@ -415,8 +468,18 @@ cdsl_vm_free(cdsl_vm_t* vm)
 void
 cdsl_vm_register_action(cdsl_vm_t* vm, const char* action_name, cdsl_action_cb_t cb)
 {
+	if (!vm || !action_name || !cb) {
+		return;
+	}
 	cdsl_action_cb_entry_t* e = calloc(1, sizeof(*e));
+	if (!e) {
+		return;
+	}
 	e->action_name = strdup(action_name);
+	if (!e->action_name) {
+		free(e);
+		return;
+	}
 	e->cb = cb;
 	e->next = vm->callbacks;
 	vm->callbacks = e;
@@ -429,7 +492,14 @@ cdsl_vm_register_function(cdsl_vm_t* vm, const char* func_name, cdsl_func_cb_t c
 		return;
 	}
 	cdsl_func_entry_t* e = calloc(1, sizeof(*e));
+	if (!e) {
+		return;
+	}
 	e->func_name = strdup(func_name);
+	if (!e->func_name) {
+		free(e);
+		return;
+	}
 	e->cb = cb;
 	e->next = vm->functions;
 	vm->functions = e;

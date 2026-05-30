@@ -21,8 +21,19 @@
 #include <string.h>
 #include <stdio.h>
 
-/** @brief Sequential ID counter for DOT graph nodes (internal). */
-static int dot_id = 0;
+#if defined(__STDC_VERSION__) && __STDC_VERSION__ >= 201112L
+#include <threads.h>
+#define THREAD_LOCAL _Thread_local
+#elif defined(__GNUC__) || defined(__clang__)
+#define THREAD_LOCAL __thread
+#elif defined(_MSC_VER)
+#define THREAD_LOCAL __declspec(thread)
+#else
+#define THREAD_LOCAL
+#endif
+
+/** @brief Sequential ID counter for DOT graph nodes (internal, thread-local). */
+static THREAD_LOCAL int dot_id = 0;
 
 /**
  * @brief Recursively emit a DOT subgraph for an expression (internal).
@@ -62,8 +73,9 @@ dot_expr(FILE* f, cdsl_expr_node_t* expr, int* id)
 		break;
 	case CDSL_EXPR_DATE: {
 		char buf[32];
-		struct tm* tm = localtime(&expr->data.date_val);
-		strftime(buf, sizeof(buf), "%Y-%m-%d", tm);
+		struct tm tm_buf;
+		localtime_r(&expr->data.date_val, &tm_buf);
+		strftime(buf, sizeof(buf), "%Y-%m-%d", &tm_buf);
 		fprintf(f,
 			"  n%d [label=\"@%s\",shape=box,style=filled,fillcolor=lightyellow];\n",
 			my_id,

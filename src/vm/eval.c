@@ -26,6 +26,90 @@
 #include <stdio.h>
 #include <math.h>
 
+static size_t
+json_escape_len(const char* s)
+{
+	size_t len = 0;
+	for (const char* p = s; *p; p++) {
+		switch (*p) {
+		case '"':
+		case '\\':
+			len += 2;
+			break;
+		case '\n':
+			len += 2;
+			break;
+		case '\r':
+			len += 2;
+			break;
+		case '\t':
+			len += 2;
+			break;
+		case '\b':
+			len += 2;
+			break;
+		case '\f':
+			len += 2;
+			break;
+		default:
+			if ((unsigned char)*p < 0x20) {
+				len += 6;
+			} else {
+				len++;
+			}
+			break;
+		}
+	}
+	return len;
+}
+
+static size_t
+json_escape_buf(char* dst, const char* src)
+{
+	char* out = dst;
+	for (const char* p = src; *p; p++) {
+		switch (*p) {
+		case '"':
+			*out++ = '\\';
+			*out++ = '"';
+			break;
+		case '\\':
+			*out++ = '\\';
+			*out++ = '\\';
+			break;
+		case '\n':
+			*out++ = '\\';
+			*out++ = 'n';
+			break;
+		case '\r':
+			*out++ = '\\';
+			*out++ = 'r';
+			break;
+		case '\t':
+			*out++ = '\\';
+			*out++ = 't';
+			break;
+		case '\b':
+			*out++ = '\\';
+			*out++ = 'b';
+			break;
+		case '\f':
+			*out++ = '\\';
+			*out++ = 'f';
+			break;
+		default:
+			if ((unsigned char)*p < 0x20) {
+				out += snprintf(out, 7, "\\u%04x", (unsigned char)*p);
+			} else {
+				*out++ = *p;
+			}
+			break;
+		}
+	}
+	*out = '\0';
+	return (size_t)(out - dst);
+}
+
 /**
  * @brief Convert a tri-state rule status to a human-readable string.
  *
@@ -100,8 +184,9 @@ cdsl_eval_expr_internal(
 		result.data.date_val = expr->data.date_val;
 		if (debug) {
 			char buf[32];
-			struct tm* tm = localtime(&expr->data.date_val);
-			strftime(buf, sizeof(buf), "%Y-%m-%d %H:%M:%S", tm);
+			struct tm tm_buf;
+			localtime_r(&expr->data.date_val, &tm_buf);
+			strftime(buf, sizeof(buf), "%Y-%m-%d %H:%M:%S", &tm_buf);
 			fprintf(stderr, "[TRACE]   literal date: %s\n", buf);
 		}
 		break;
@@ -127,8 +212,9 @@ cdsl_eval_expr_internal(
 					break;
 				case CDSL_TYPE_DATE: {
 					char buf[32];
-					struct tm* tm = localtime(&e->value.data.date_val);
-					strftime(buf, sizeof(buf), "%Y-%m-%d %H:%M:%S", tm);
+					struct tm tm_buf;
+					localtime_r(&e->value.data.date_val, &tm_buf);
+					strftime(buf, sizeof(buf), "%Y-%m-%d %H:%M:%S", &tm_buf);
 					fprintf(stderr, "%s\n", buf);
 					break;
 				}
@@ -717,55 +803,77 @@ cdsl_report_to_json(const cdsl_rule_report_t* report)
 
 	size_t off = 0;
 
-#define JSON_CHECK_CAP(needed)                                                                     \
+	size_t rn_esc_len = json_escape_len(report->rule_name ? report->rule_name : "");
+	size_t desc_esc_len = json_escape_len(report->description ? report->description : "");
+	size_t ds_esc_len =
+	    json_escape_len(report->decision_summary ? report->decision_summary : "");
+
+	size_t needed = 256 + rn_esc_len + desc_esc_len + ds_esc_len;
+	if (needed > cap) {
+		cap = needed * 2;
+		char* new_json = realloc(json, cap);
+		if (!new_json) {
+			free(json);
+			return NULL;
+		}
+		json = new_json;
+	}
+
+#define JSON_CHECK_CAP(n)                                                                          \
 	do {                                                                                       \
-		if (off + (needed) + 1 > cap) {                                                    \
-			cap = off + (needed) + 1024;                                               \
-			char* new_json = realloc(json, cap);                                       \
-			if (!new_json) {                                                           \
+		if (off + (n) + 1 > cap) {                                                         \
+			cap = (off + (n) + 1) * 2;                                                 \
+			char* new_j = realloc(json, cap);                                          \
+			if (!new_j) {                                                              \
 				free(json);                                                        \
 				return NULL;                                                       \
 			}                                                                          \
-			json = new_json;                                                           \
+			json = new_j;                                                              \
 		}                                                                                  \
 	} while (0)
 
-	JSON_CHECK_CAP(512);
+	off += snprintf(json + off, cap - off, "{\"rule_name\":\"");
+	off += json_escape_buf(json + off, report->rule_name ? report->rule_name : "");
+	off += snprintf(json + off, cap - off, "\",\"description\":\"");
+	off += json_escape_buf(json + off, report->description ? report->description : "");
 	off += snprintf(json + off,
 			cap - off,
-			"{\"rule_name\":\"%s\",\"description\":\"%s\","
-			"\"status\":\"%s\",\"total_max_score\":%d,\"total_obtained_score\":%d,"
-			"\"decision_summary\":\"%s\",\"metrics\":[",
-			report->rule_name ? report->rule_name : "",
-			report->description ? report->description : "",
+			"\",\"status\":\"%s\",\"total_max_score\":%d,\"total_obtained_score\":%d,"
+			"\"decision_summary\":\"",
 			cdsl_status_str_internal(report->status),
 			report->total_max_score,
-			report->total_obtained_score,
-			report->decision_summary ? report->decision_summary : "");
+			report->total_obtained_score);
+	off +=
+	    json_escape_buf(json + off, report->decision_summary ? report->decision_summary : "");
+	off += snprintf(json + off, cap - off, "\",\"metrics\":[");
 
 	for (int i = 0; i < report->metric_count; i++) {
 		cdsl_metric_result_t* m = &report->metrics[i];
-		JSON_CHECK_CAP(512 + (m->violation_reason ? strlen(m->violation_reason) : 0));
+		size_t mn_esc = json_escape_len(m->metric_name ? m->metric_name : "");
+		size_t md_esc = json_escape_len(m->description ? m->description : "");
+		size_t vr_esc = m->violation_reason ? json_escape_len(m->violation_reason) : 0;
+
+		JSON_CHECK_CAP(256 + mn_esc + md_esc + vr_esc);
 
 		if (i > 0) {
 			off += snprintf(json + off, cap - off, ",");
 		}
-		off += snprintf(
-		    json + off,
-		    cap - off,
-		    "{\"metric_name\":\"%s\",\"description\":\"%s\","
-		    "\"max_weight\":%d,\"score_obtained\":%d,\"is_critical\":%d,\"is_passed\":%d",
-		    m->metric_name ? m->metric_name : "",
-		    m->description ? m->description : "",
-		    m->max_weight,
-		    m->score_obtained,
-		    m->is_critical,
-		    m->is_passed);
+		off += snprintf(json + off, cap - off, "{\"metric_name\":\"");
+		off += json_escape_buf(json + off, m->metric_name ? m->metric_name : "");
+		off += snprintf(json + off, cap - off, "\",\"description\":\"");
+		off += json_escape_buf(json + off, m->description ? m->description : "");
+		off += snprintf(json + off,
+				cap - off,
+				"\",\"max_weight\":%d,\"score_obtained\":%d,\"is_critical\":%d,"
+				"\"is_passed\":%d",
+				m->max_weight,
+				m->score_obtained,
+				m->is_critical,
+				m->is_passed);
 		if (m->violation_reason) {
-			off += snprintf(json + off,
-					cap - off,
-					",\"violation_reason\":\"%s\"",
-					m->violation_reason);
+			off += snprintf(json + off, cap - off, ",\"violation_reason\":\"");
+			off += json_escape_buf(json + off, m->violation_reason);
+			off += snprintf(json + off, cap - off, "\"");
 		}
 		off += snprintf(json + off, cap - off, "}");
 	}

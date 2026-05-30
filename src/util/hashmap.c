@@ -31,8 +31,15 @@ cdsl_hashmap_t*
 cdsl_hashmap_create(int bucket_count)
 {
 	cdsl_hashmap_t* m = calloc(1, sizeof(*m));
+	if (!m) {
+		return NULL;
+	}
 	m->bucket_count = bucket_count > 0 ? bucket_count : 64;
 	m->buckets = calloc(m->bucket_count, sizeof(cdsl_hashmap_entry_t*));
+	if (!m->buckets) {
+		free(m);
+		return NULL;
+	}
 	return m;
 }
 
@@ -74,7 +81,14 @@ cdsl_hashmap_put(cdsl_hashmap_t* map, const char* key, void* value)
 		e = e->next;
 	}
 	e = calloc(1, sizeof(*e));
+	if (!e) {
+		return false;
+	}
 	e->key = strdup(key);
+	if (!e->key) {
+		free(e);
+		return false;
+	}
 	e->value = value;
 	e->next = map->buckets[idx];
 	map->buckets[idx] = e;
