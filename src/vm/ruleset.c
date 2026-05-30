@@ -119,7 +119,14 @@ cdsl_vm_execute_ruleset(cdsl_vm_t* vm, cdsl_ruleset_t* set, cdsl_context_t* ctx)
 		return NULL;
 	}
 	cdsl_ruleset_report_t* batch = calloc(1, sizeof(*batch));
+	if (!batch) {
+		return NULL;
+	}
 	batch->rule_reports = calloc(set->count, sizeof(cdsl_rule_report_t*));
+	if (!batch->rule_reports) {
+		free(batch);
+		return NULL;
+	}
 	batch->rule_count = set->count;
 
 	int idx = 0;
@@ -343,6 +350,10 @@ cdsl_ruleset_load_file(cdsl_ruleset_t* set,
 	long sz = ftell(f);
 	fseek(f, 0, SEEK_SET);
 	char* buf = malloc(sz + 1);
+	if (!buf) {
+		fclose(f);
+		return 0;
+	}
 	fread(buf, 1, sz, f);
 	buf[sz] = '\0';
 	fclose(f);

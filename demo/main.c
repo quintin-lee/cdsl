@@ -53,7 +53,8 @@ action_callback(const char* action_name, cdsl_arg_node_t* args, void* user_data)
 				printf("%s", a->expr->data.bool_val ? "true" : "false");
 				break;
 			case CDSL_EXPR_STRING:
-				printf("\"%s\"", a->expr->data.string_val);
+				printf("\"%s\"",
+				       a->expr->data.string_val ? a->expr->data.string_val : "");
 				break;
 			default:
 				printf("?");
@@ -96,15 +97,24 @@ demo_supplier_audit(cdsl_schema_t* schema, cdsl_ai_config_t* ai_cfg)
 
 	printf("[Step 1] AI translating NL to DSL...\n");
 	char* dsl_code = cdsl_ai_translate(nl, schema, ai_cfg);
+	if (!dsl_code) {
+		printf("  [ERROR] AI translation returned NULL\n");
+		return;
+	}
 	printf("Generated DSL:\n%s\n", dsl_code);
 
 	printf("[Step 2] AI reviewing DSL for safety...\n");
 	cdsl_ai_review_t* review = cdsl_ai_review(dsl_code, schema, ai_cfg);
+	if (!review) {
+		printf("  [ERROR] AI review returned NULL\n");
+		free(dsl_code);
+		return;
+	}
 	printf("  Approved: %s (Risk Score: %d/100)\n",
 	       review->approved ? "YES" : "NO",
 	       review->risk_score);
-	printf("  Reason: %s\n", review->reason);
-	if (review->suggestions[0]) {
+	printf("  Reason: %s\n", review->reason ? review->reason : "");
+	if (review->suggestions && review->suggestions[0]) {
 		printf("  Suggestions: %s\n", review->suggestions);
 	}
 
@@ -189,9 +199,18 @@ demo_doc_audit(cdsl_schema_t* schema, cdsl_ai_config_t* ai_cfg)
 	printf("User NL request: \"%s\"\n\n", nl);
 
 	char* dsl_code = cdsl_ai_translate(nl, schema, ai_cfg);
+	if (!dsl_code) {
+		printf("[ERROR] AI translation returned NULL\n");
+		return;
+	}
 	printf("[AI Generated DSL]:\n%s\n", dsl_code);
 
 	cdsl_ai_review_t* review = cdsl_ai_review(dsl_code, schema, ai_cfg);
+	if (!review) {
+		printf("[ERROR] AI review returned NULL\n");
+		free(dsl_code);
+		return;
+	}
 	printf("[AI Review] Approved: %s (Risk: %d)\n",
 	       review->approved ? "YES" : "NO",
 	       review->risk_score);
@@ -267,9 +286,18 @@ demo_content_audit(cdsl_schema_t* schema, cdsl_ai_config_t* ai_cfg)
 	printf("User NL request: \"%s\"\n\n", nl);
 
 	char* dsl_code = cdsl_ai_translate(nl, schema, ai_cfg);
+	if (!dsl_code) {
+		printf("[ERROR] AI translation returned NULL\n");
+		return;
+	}
 	printf("[AI Generated DSL]:\n%s\n", dsl_code);
 
 	cdsl_ai_review_t* review = cdsl_ai_review(dsl_code, schema, ai_cfg);
+	if (!review) {
+		printf("[ERROR] AI review returned NULL\n");
+		free(dsl_code);
+		return;
+	}
 	printf("[AI Review] Approved: %s (Risk: %d)\n",
 	       review->approved ? "YES" : "NO",
 	       review->risk_score);

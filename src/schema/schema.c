@@ -64,11 +64,23 @@ cdsl_schema_register_action(
     cdsl_schema_t* schema, const char* name, cdsl_type_t ret_type, int arg_count, ...)
 {
 	cdsl_action_schema_t* a = calloc(1, sizeof(*a));
+	if (!a) {
+		return;
+	}
 	a->name = strdup(name);
+	if (!a->name) {
+		free(a);
+		return;
+	}
 	a->return_type = ret_type;
 	a->arg_count = arg_count;
 	if (arg_count > 0) {
 		a->arg_types = malloc(sizeof(cdsl_type_t) * arg_count);
+		if (!a->arg_types) {
+			free(a->name);
+			free(a);
+			return;
+		}
 		va_list ap;
 		va_start(ap, arg_count);
 		for (int i = 0; i < arg_count; i++) {

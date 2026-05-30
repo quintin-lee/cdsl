@@ -28,7 +28,14 @@ arena_new_block(cdsl_arena_t* arena, size_t min_size)
 		cap = min_size;
 	}
 	cdsl_arena_block_t* b = calloc(1, sizeof(*b));
+	if (!b) {
+		return NULL;
+	}
 	b->data = malloc(cap);
+	if (!b->data) {
+		free(b);
+		return NULL;
+	}
 	b->capacity = cap;
 	b->used = 0;
 	b->next = arena->blocks;
@@ -46,6 +53,9 @@ cdsl_arena_t*
 cdsl_arena_create(size_t block_size)
 {
 	cdsl_arena_t* a = calloc(1, sizeof(*a));
+	if (!a) {
+		return NULL;
+	}
 	a->block_size = block_size > 0 ? block_size : CDSL_ARENA_DEFAULT_BLOCK_SIZE;
 	return a;
 }
@@ -65,6 +75,9 @@ cdsl_arena_alloc(cdsl_arena_t* arena, size_t size)
 	cdsl_arena_block_t* b = arena->blocks;
 	if (!b || b->used + size > b->capacity) {
 		b = arena_new_block(arena, size);
+		if (!b) {
+			return NULL;
+		}
 	}
 	void* ptr = b->data + b->used;
 	b->used += size;

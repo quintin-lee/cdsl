@@ -30,6 +30,39 @@
 #include <ctype.h>
 
 /**
+ * @brief Minimal JSON string escape for review_stream output.
+ *
+ * Replaces \", \\, and control characters with escape sequences.
+ * Writes at most dst_size - 1 characters, always NUL-terminates.
+ */
+static void
+json_escape_small(char* dst, size_t dst_size, const char* src)
+{
+	size_t j = 0;
+	for (size_t i = 0; src[i] && j + 2 < dst_size; i++) {
+		char c = src[i];
+		if (c == '"' || c == '\\') {
+			dst[j++] = '\\';
+			dst[j++] = c;
+		} else if (c == '\n') {
+			dst[j++] = '\\';
+			dst[j++] = 'n';
+		} else if (c == '\r') {
+			dst[j++] = '\\';
+			dst[j++] = 'r';
+		} else if (c == '\t') {
+			dst[j++] = '\\';
+			dst[j++] = 't';
+		} else if ((unsigned char)c < 0x20) {
+			/* Skip unprintable control characters */
+		} else {
+			dst[j++] = c;
+		}
+	}
+	dst[j] = '\0';
+}
+
+/**
  * @brief Find a child JSON value by key in a JSON object (internal).
  * @param obj JSON object value
  * @param key Key to find
@@ -400,6 +433,10 @@ call_llm_api(const char* prompt, const cdsl_ai_config_t* config)
 
 	size_t cap = 8192;
 	char* result = malloc(cap);
+	if (!result) {
+		pclose(fp);
+		return NULL;
+	}
 	size_t total = 0;
 	size_t n;
 	while ((n = fread(result + total, 1, cap - total - 1, fp)) > 0) {
@@ -1373,15 +1410,25 @@ default_review_stream(void* ctx,
 
 	if (config && config->use_mock) {
 		cdsl_ai_review_t* rev = cdsl_ai_review(dsl_code, schema, config);
-		char* json = malloc(1024);
+		char esc_reason[512];
+		char esc_suggestions[512];
+		json_escape_small(esc_reason, sizeof(esc_reason), rev->reason ? rev->reason : "");
+		json_escape_small(esc_suggestions,
+				  sizeof(esc_suggestions),
+				  rev->suggestions ? rev->suggestions : "");
+		char* json = malloc(2048);
+		if (!json) {
+			cdsl_ai_review_free(rev);
+			return NULL;
+		}
 		snprintf(
 		    json,
-		    1024,
+		    2048,
 		    "{\"approved\":%s,\"risk_score\":%d,\"reason\":\"%s\",\"suggestions\":\"%s\"}",
 		    rev->approved ? "true" : "false",
 		    rev->risk_score,
-		    rev->reason,
-		    rev->suggestions);
+		    esc_reason,
+		    esc_suggestions);
 		cdsl_ai_review_free(rev);
 		if (callback) {
 			callback(json, user_data);

@@ -47,7 +47,14 @@ cdsl_compile_cache_t*
 cdsl_compile_cache_create(int capacity)
 {
 	cdsl_compile_cache_t* c = calloc(1, sizeof(*c));
+	if (!c) {
+		return NULL;
+	}
 	c->map = cdsl_hashmap_create(capacity > 0 ? capacity : 64);
+	if (!c->map) {
+		free(c);
+		return NULL;
+	}
 	pthread_rwlock_init(&c->lock, NULL);
 	return c;
 }

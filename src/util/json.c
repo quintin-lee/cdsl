@@ -277,6 +277,10 @@ parse_value(json_parser_t* p)
 	if (c == '"') {
 		char* s = parse_string_raw(p);
 		cdsl_json_value_t* v = calloc(1, sizeof(*v));
+		if (!v) {
+			free(s);
+			return NULL;
+		}
 		v->type = JSON_STRING;
 		v->value.string_val = s;
 		return v;
@@ -321,6 +325,9 @@ parse_value(json_parser_t* p)
 	}
 	if (c == '-' || isdigit((unsigned char)c)) {
 		cdsl_json_value_t* v = calloc(1, sizeof(*v));
+		if (!v) {
+			return NULL;
+		}
 		v->type = JSON_NUMBER;
 		char* end;
 		v->value.number_val = strtod(p->src + p->pos, &end);

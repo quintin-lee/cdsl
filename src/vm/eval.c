@@ -491,7 +491,7 @@ cdsl_eval_expr_internal(
 void
 cdsl_trigger_action_internal(cdsl_vm_t* vm, cdsl_action_node_t* action)
 {
-	if (!action) {
+	if (!vm || !action) {
 		return;
 	}
 	for (cdsl_action_cb_entry_t* cb = vm->callbacks; cb; cb = cb->next) {
@@ -516,7 +516,7 @@ execute_metric_rule(cdsl_vm_t* vm, const cdsl_rule_t* rule, cdsl_context_t* ctx)
 	if (!report) {
 		return NULL;
 	}
-	report->rule_name = strdup(rule->name);
+	report->rule_name = rule->name ? strdup(rule->name) : strdup("");
 	char* desc = cdsl_meta_get(rule->meta_list, "description");
 	report->description = desc ? strdup(desc) : strdup("");
 	if (!report->rule_name || !report->description) {
@@ -608,7 +608,7 @@ execute_metric_rule(cdsl_vm_t* vm, const cdsl_rule_t* rule, cdsl_context_t* ctx)
 					    vm,
 					    vm->debug_enabled,
 					    0);
-					if (rv.type == CDSL_TYPE_STRING) {
+					if (rv.type == CDSL_TYPE_STRING && rv.data.string_val) {
 						mr->violation_reason = strdup(rv.data.string_val);
 					}
 				}
@@ -695,8 +695,9 @@ execute_simple_rule(cdsl_vm_t* vm, const cdsl_rule_t* rule, cdsl_context_t* ctx)
 		cdsl_report_free(report);
 		return NULL;
 	}
-	report->metrics[0].metric_name = strdup(rule->name);
-	report->metrics[0].description = strdup(report->description);
+	report->metrics[0].metric_name = rule->name ? strdup(rule->name) : strdup("");
+	report->metrics[0].description =
+	    report->description ? strdup(report->description) : strdup("");
 	if (!report->metrics[0].metric_name || !report->metrics[0].description) {
 		cdsl_report_free(report);
 		return NULL;
