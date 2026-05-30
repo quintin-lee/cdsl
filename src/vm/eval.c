@@ -333,6 +333,33 @@ cdsl_eval_expr_internal(
 			break;
 		}
 
+		/* DATE arithmetic: DATE +/- INT/LONG → DATE, DATE - DATE → INT */
+		if (l.type == CDSL_TYPE_DATE &&
+		    (r.type == CDSL_TYPE_INT || r.type == CDSL_TYPE_LONG) &&
+		    (op == CDSL_OP_ADD || op == CDSL_OP_SUB)) {
+			int64_t days =
+			    (r.type == CDSL_TYPE_LONG) ? r.data.long_val : (int64_t)r.data.int_val;
+			result.type = CDSL_TYPE_DATE;
+			result.data.date_val = (op == CDSL_OP_ADD)
+						   ? l.data.date_val + (time_t)(days * 86400)
+						   : l.data.date_val - (time_t)(days * 86400);
+			break;
+		}
+		if ((l.type == CDSL_TYPE_INT || l.type == CDSL_TYPE_LONG) &&
+		    r.type == CDSL_TYPE_DATE && op == CDSL_OP_ADD) {
+			int64_t days =
+			    (l.type == CDSL_TYPE_LONG) ? l.data.long_val : (int64_t)l.data.int_val;
+			result.type = CDSL_TYPE_DATE;
+			result.data.date_val = r.data.date_val + (time_t)(days * 86400);
+			break;
+		}
+		if (l.type == CDSL_TYPE_DATE && r.type == CDSL_TYPE_DATE && op == CDSL_OP_SUB) {
+			double diff = difftime(l.data.date_val, r.data.date_val);
+			result.type = CDSL_TYPE_INT;
+			result.data.int_val = (int)(diff / 86400);
+			break;
+		}
+
 		if (l.type == CDSL_TYPE_DATE && r.type == CDSL_TYPE_DATE) {
 			result.type = CDSL_TYPE_BOOL;
 			time_t t1 = l.data.date_val;

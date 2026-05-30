@@ -14,6 +14,11 @@
 #include <stdio.h>
 #include <time.h>
 
+static void test_date_parsing(void);
+static void test_date_comparison(void);
+static void test_date_builtins(void);
+static void test_date_arithmetic(void);
+
 static void
 test_date_parsing()
 {
@@ -100,6 +105,50 @@ main()
 	test_date_parsing();
 	test_date_comparison();
 	test_date_builtins();
+	test_date_arithmetic();
 	TEST_SUMMARY();
 	TEST_EXIT();
+}
+
+void
+test_date_arithmetic(void)
+{
+	TEST_BEGIN("date arithmetic in expressions");
+	cdsl_schema_t* schema = cdsl_schema_create();
+	cdsl_schema_register_var(schema, "start", CDSL_TYPE_DATE);
+	cdsl_schema_register_action(schema, "block", CDSL_TYPE_VOID, 1, CDSL_TYPE_STRING);
+
+	cdsl_context_t* ctx = cdsl_context_create(schema);
+	cdsl_context_set_date(ctx, "start", (time_t)1704067200);
+
+	cdsl_vm_t* vm = cdsl_vm_create(schema);
+
+	/* DATE + INT: 2024-01-01 + 30 → 2024-01-31 */
+	cdsl_rule_t* r1 =
+	    cdsl_parse_string("RULE da1 { WHEN start + 30 > @2024-01-30 THEN block(\"ok\") }");
+	cdsl_rule_report_t* rpt = cdsl_vm_execute(vm, r1, ctx);
+	TEST_ASSERT_INT(rpt->status, CDSL_STATUS_FAILED, "DATE + 30 works");
+	cdsl_report_free(rpt);
+	cdsl_free_rule(r1);
+
+	/* DATE - INT: 2024-01-01 - 30 */
+	cdsl_rule_t* r2 =
+	    cdsl_parse_string("RULE da2 { WHEN start - 30 < @2024-01-01 THEN block(\"ok\") }");
+	rpt = cdsl_vm_execute(vm, r2, ctx);
+	TEST_ASSERT_INT(rpt->status, CDSL_STATUS_FAILED, "DATE - 30 works");
+	cdsl_report_free(rpt);
+	cdsl_free_rule(r2);
+
+	/* DATE - DATE → INT (days): use simple rule to verify */
+	cdsl_rule_t* r3 = cdsl_parse_string(
+	    "RULE da3 { WHEN @2024-01-10 - @2024-01-01 == 9 THEN block(\"ok\") }");
+	rpt = cdsl_vm_execute(vm, r3, ctx);
+	TEST_ASSERT_INT(rpt->status, CDSL_STATUS_FAILED, "DATE - DATE = 9 days");
+	cdsl_report_free(rpt);
+	cdsl_free_rule(r3);
+
+	cdsl_vm_free(vm);
+	cdsl_context_free(ctx);
+	cdsl_schema_free(schema);
+	TEST_END();
 }

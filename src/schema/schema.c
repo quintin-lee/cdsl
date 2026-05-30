@@ -229,6 +229,35 @@ resolve_expr_type(cdsl_expr_node_t* expr,
 
 		/* Arithmetic operators (+, -, *, /) */
 		if (op >= CDSL_OP_ADD && op <= CDSL_OP_DIV) {
+			/* DATE arithmetic: DATE +/- INT/LONG → DATE, DATE - DATE → INT */
+			if (lt == CDSL_TYPE_DATE) {
+				if (op == CDSL_OP_SUB && rt == CDSL_TYPE_DATE) {
+					return CDSL_TYPE_INT;
+				}
+				if ((op == CDSL_OP_ADD || op == CDSL_OP_SUB) &&
+				    (rt == CDSL_TYPE_INT || rt == CDSL_TYPE_LONG ||
+				     rt == CDSL_TYPE_FLOAT)) {
+					return CDSL_TYPE_DATE;
+				}
+				REPORT_ERR(CDSL_ERR_TYPE,
+					   "DATE arithmetic requires INT/LONG or DATE operand",
+					   NULL);
+				return CDSL_TYPE_VOID;
+			}
+			if (rt == CDSL_TYPE_DATE && op == CDSL_OP_ADD &&
+			    (lt == CDSL_TYPE_INT || lt == CDSL_TYPE_LONG ||
+			     lt == CDSL_TYPE_FLOAT)) {
+				return CDSL_TYPE_DATE;
+			}
+			/* MUL/DIV are numeric-only */
+			if (op == CDSL_OP_MUL || op == CDSL_OP_DIV) {
+				if (lt == CDSL_TYPE_DATE || rt == CDSL_TYPE_DATE) {
+					REPORT_ERR(CDSL_ERR_TYPE,
+						   "DATE does not support multiplication/division",
+						   NULL);
+					return CDSL_TYPE_VOID;
+				}
+			}
 			if ((lt != CDSL_TYPE_INT && lt != CDSL_TYPE_FLOAT &&
 			     lt != CDSL_TYPE_LONG) ||
 			    (rt != CDSL_TYPE_INT && rt != CDSL_TYPE_FLOAT &&
