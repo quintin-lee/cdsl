@@ -12,6 +12,7 @@
 #ifndef CDSL_AST_H
 #define CDSL_AST_H
 
+#include "cdsl/util/arena.h"
 #include <stddef.h>
 
 /** @name Safety Limits */
@@ -190,7 +191,24 @@ typedef struct cdsl_rule {
 	cdsl_expr_node_t* when_expr;	 /**< WHEN expression (simple rules only) */
 	cdsl_action_node_t* then_action; /**< THEN action (simple rules only) */
 	cdsl_metric_node_t* metrics;	 /**< METRIC list (metric rules only, NULL for simple) */
+	cdsl_arena_t* arena;		 /**< Arena for AST memory management (if any) */
 } cdsl_rule_t;
+
+/** @name AST Context Management */
+/** @{ */
+
+/**
+ * @brief Set the current arena for AST node allocation.
+ * @param arena Arena to use (NULL to use standard heap)
+ */
+void cdsl_ast_set_current_arena(cdsl_arena_t* arena);
+
+/**
+ * @brief Get the current arena for AST node allocation.
+ * @return Current arena or NULL
+ */
+cdsl_arena_t* cdsl_ast_get_current_arena(void);
+/** @} */
 
 /** @name Expression Constructors */
 /** @{ */

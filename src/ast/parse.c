@@ -42,14 +42,24 @@ cdsl_parse_string(const char* dsl_code)
 
 	cdsl_rule_t* rule = NULL;
 	int error_count = 0;
+
+	/* Create arena for AST node allocations during parsing */
+	cdsl_arena_t* arena = cdsl_arena_create(8192);
+	cdsl_ast_set_current_arena(arena);
+
 	struct yy_buffer_state* buf = yy_scan_string(dsl_code, scanner);
 
 	if (yyparse(scanner, &rule, &error_count) != 0 || error_count > 0) {
 		if (rule) {
 			cdsl_free_rule(rule);
 			rule = NULL;
+		} else {
+			cdsl_arena_free(arena);
 		}
 	}
+
+	/* Reset arena context */
+	cdsl_ast_set_current_arena(NULL);
 
 	yy_delete_buffer(buf, scanner);
 	yylex_destroy(scanner);
