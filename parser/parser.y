@@ -99,8 +99,11 @@ rule_declaration:
     | RULE IDENTIFIER LBRACE meta_block metric_list RBRACE {
         $$ = cdsl_create_metric_rule($2, $4, $5);
     }
+    | RULE IDENTIFIER EXTENDS IDENTIFIER LBRACE meta_block metric_list RBRACE {
+        $$ = cdsl_create_extends_rule($2, $4, $6, $7);
+    }
     | RULE IDENTIFIER EXTENDS IDENTIFIER LBRACE meta_block RBRACE {
-        $$ = cdsl_create_extends_rule($2, $4, $6);
+        $$ = cdsl_create_extends_rule($2, $4, $6, NULL);
     }
     | error { (*error_count)++; yyerrok; yyclearin; $$ = NULL; }
     ;

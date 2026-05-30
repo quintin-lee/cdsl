@@ -150,6 +150,13 @@ resolve_expr_type(cdsl_expr_node_t* expr, const cdsl_schema_t* schema, char* err
 			snprintf(err, errsz, "Type mismatch: cannot compare different types");
 			return CDSL_TYPE_VOID;
 		}
+
+		if (lt == CDSL_TYPE_STRING && expr->data.binary.op != CDSL_OP_EQ &&
+		    expr->data.binary.op != CDSL_OP_NE) {
+			snprintf(err, errsz, "String only supports equality comparisons");
+			return CDSL_TYPE_VOID;
+		}
+
 		return CDSL_TYPE_BOOL;
 	}
 	default:

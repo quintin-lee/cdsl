@@ -172,7 +172,10 @@ cdsl_template_clear(void)
 }
 
 cdsl_rule_t*
-cdsl_create_extends_rule(char* name, char* template_name, cdsl_meta_item_t* meta)
+cdsl_create_extends_rule(char* name,
+			 char* template_name,
+			 cdsl_meta_item_t* meta,
+			 cdsl_metric_node_t* metrics)
 {
 	cdsl_rule_t* tpl = cdsl_template_get(template_name);
 	if (!tpl) {
@@ -180,12 +183,21 @@ cdsl_create_extends_rule(char* name, char* template_name, cdsl_meta_item_t* meta
 		free(name);
 		free(template_name);
 		cdsl_free_meta(meta);
+		if (metrics) {
+			cdsl_free_metric(metrics);
+		}
 		return NULL;
 	}
 	cdsl_rule_t* rule = calloc(1, sizeof(*rule));
 	rule->name = name;
 	rule->meta_list = meta;
 	rule->metrics = copy_metric_list(tpl->metrics);
+
+	// Append additional metrics if any
+	if (metrics) {
+		rule->metrics = cdsl_append_metric(rule->metrics, metrics);
+	}
+
 	free(template_name);
 	return rule;
 }

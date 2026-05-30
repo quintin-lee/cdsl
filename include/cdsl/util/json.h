@@ -30,7 +30,6 @@ typedef struct cdsl_json_value {
 	struct cdsl_json_value* next;
 } cdsl_json_value_t;
 
-
 /**
  * @brief Parse a JSON string into a value tree.
  * @param json Null-terminated JSON string

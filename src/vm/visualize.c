@@ -201,6 +201,16 @@ cdsl_rule_to_dot(const cdsl_rule_t* rule)
 		int expr_id = dot_id++;
 		dot_expr(f, rule->when_expr, &expr_id);
 		fprintf(f, "  when_%s -> n%d;\n", rule->name, expr_id - 1);
+
+		if (rule->then_action) {
+			fprintf(f,
+				"  then_%s [label=\"THEN: "
+				"%s()\",shape=box,style=filled,fillcolor=lightpink];\n",
+				rule->name,
+				rule->then_action->action_name);
+			fprintf(f, "  rule_%s -> then_%s;\n", rule->name, rule->name);
+		}
+
 		fprintf(
 		    f,
 		    "  pass_%s [label=\"PASSED\",shape=box,style=filled,fillcolor=lightgreen];\n",
@@ -260,13 +270,15 @@ cdsl_ruleset_to_dot(const cdsl_ruleset_t* set)
 		if (!e->rule) {
 			continue;
 		}
-		fprintf(
-		    f,
-		    "  rule_%s "
-		    "[label=\"%s\\npriority=%d\",shape=box,style=filled,fillcolor=lightblue];\n",
-		    e->rule->name,
-		    e->rule->name,
-		    e->priority);
+		fprintf(f,
+			"  rule_%s "
+			"[label=\"%s\\npriority=%d\\n(vars: %s, action: "
+			"%s)\",shape=box,style=filled,fillcolor=lightblue];\n",
+			e->rule->name,
+			e->rule->name,
+			e->priority,
+			e->rule->when_expr ? "present" : "metrics",
+			e->rule->then_action ? e->rule->then_action->action_name : "multiple");
 		char* deps = cdsl_meta_get(e->rule->meta_list, "depends_on");
 		if (deps) {
 			char dep_buf[1024];

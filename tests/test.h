@@ -27,6 +27,8 @@
 static int _test_pass = 0;
 /** @brief Global test failure counter. */
 static int _test_fail = 0;
+/** @brief Track failure count at start of current test. */
+static int _test_fail_start = 0;
 
 /**
  * @brief Assert that a condition is true.
@@ -70,6 +72,7 @@ static int _test_fail = 0;
 #define TEST_BEGIN(name)                                                                           \
 	do {                                                                                       \
 		printf("  [TEST] %s ... ", name);                                                  \
+		_test_fail_start = _test_fail;                                                     \
 	} while (0)
 
 /**
@@ -77,7 +80,7 @@ static int _test_fail = 0;
  */
 #define TEST_END()                                                                                 \
 	do {                                                                                       \
-		if (_test_fail == 0) {                                                             \
+		if (_test_fail == _test_fail_start) {                                              \
 			printf("OK\n");                                                            \
 		} else {                                                                           \
 			printf("FAILED\n");                                                        \

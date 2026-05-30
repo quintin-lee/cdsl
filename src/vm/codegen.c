@@ -124,8 +124,7 @@ codegen_action(FILE* f, cdsl_action_node_t* action, const char* indent)
 char*
 cdsl_codegen_rule_to_c(const cdsl_rule_t* rule, const cdsl_schema_t* schema)
 {
-	(void)schema;
-	if (!rule) {
+	if (!rule || !schema) {
 		return NULL;
 	}
 	char* buf = NULL;
@@ -135,18 +134,26 @@ cdsl_codegen_rule_to_c(const cdsl_rule_t* rule, const cdsl_schema_t* schema)
 		return NULL;
 	}
 
-	fprintf(f, "/* Auto-generated C code from DSL rule: %s */\n", rule->name);
+	const char* rname = rule->name ? rule->name : "unnamed_rule";
+	fprintf(f, "/* Auto-generated C code from DSL rule: %s */\n", rname);
 	fprintf(f, "#include <stdio.h>\n#include <string.h>\n\n");
 
 	if (rule->metrics) {
+		const char* p_thresh = cdsl_meta_get(rule->meta_list, "pass_threshold");
+		const char* pa_thresh = cdsl_meta_get(rule->meta_list, "partial_threshold");
 		fprintf(f,
-			"int evaluate_%s(int (*get_int)(void* ctx, const char* name),\n",
+			"/* Meta: pass_threshold=%s, partial_threshold=%s */\n",
+			p_thresh ? p_thresh : "100",
+			pa_thresh ? pa_thresh : "50");
+
+		fprintf(f,
+			"int cdsl_eval_rule_%s(int (*get_int)(void* ctx, const char* name),\n",
 			rule->name);
 		fprintf(f,
 			"                 void (*action)(const char* name, int score, const char* "
 			"reason, void* ud),\n");
 		fprintf(f, "                 void* ctx, void* ud) {\n");
-		fprintf(f, "    int total = 0;\n");
+		fprintf(f, "    int total_score = 0;\n");
 		for (cdsl_metric_node_t* m = rule->metrics; m; m = m->next) {
 			const char* w_meta = cdsl_meta_get(m->meta_list, "weight");
 			int weight = atoi(w_meta ? w_meta : "0");
@@ -156,35 +163,45 @@ cdsl_codegen_rule_to_c(const cdsl_rule_t* rule, const cdsl_schema_t* schema)
 				"    /* Metric: %s (weight=%d%s) */\n",
 				m->name,
 				weight,
-				critical ? ", critical" : "");
+				critical ? ", is_critical=true" : "");
 			for (cdsl_case_node_t* c = m->case_list; c; c = c->next) {
 				fprintf(f, "    if (");
 				codegen_expr(f, c->condition, "        ");
 				fprintf(f, ") {\n");
-				if (c->action && strcmp(c->action->action_name, "score") == 0 &&
-				    c->action->args) {
-					fprintf(f, "        total += ");
-					codegen_expr(f, c->action->args->expr, "            ");
-					fprintf(f, ";\n");
+				if (c->action) {
+					if (strcmp(c->action->action_name, "score") == 0 &&
+					    c->action->args) {
+						fprintf(f, "        total_score += ");
+						codegen_expr(
+						    f, c->action->args->expr, "            ");
+						fprintf(f, ";\n");
+					} else {
+						codegen_action(f, c->action, "        ");
+					}
 				}
 				fprintf(f, "        goto next_metric_%s;\n", m->name);
 				fprintf(f, "    }\n");
 			}
 			fprintf(f, "    /* DEFAULT */\n");
-			if (m->default_action &&
-			    strcmp(m->default_action->action_name, "fail_metric") == 0) {
-				fprintf(f, "    action(\"fail_metric\", 0, \"default\", ud);\n");
-				if (critical) {
-					fprintf(f, "    return -1; /* critical veto */\n");
+			if (m->default_action) {
+				if (strcmp(m->default_action->action_name, "fail_metric") == 0) {
+					fprintf(
+					    f,
+					    "    action(\"fail_metric\", 0, \"default\", ud);\n");
+					if (critical) {
+						fprintf(f, "    return -1; /* critical veto */\n");
+					}
+				} else {
+					codegen_action(f, m->default_action, "    ");
 				}
 			}
 			fprintf(f, "    next_metric_%s: ;\n", m->name);
 		}
-		fprintf(f, "    return total;\n");
+		fprintf(f, "    return total_score;\n");
 		fprintf(f, "}\n");
 	} else {
 		fprintf(f,
-			"int evaluate_%s(int (*get_int)(void* ctx, const char* name),\n",
+			"int cdsl_eval_rule_%s(int (*get_int)(void* ctx, const char* name),\n",
 			rule->name);
 		fprintf(f, "                 void (*action)(const char* name, void* ud),\n");
 		fprintf(f, "                 void* ctx, void* ud) {\n");

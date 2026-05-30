@@ -388,9 +388,13 @@ cdsl_create_metric_rule(char* name, cdsl_meta_item_t* meta, cdsl_metric_node_t* 
  * @param name Rule name (ownership transferred)
  * @param template_name Name of the parent template (ownership transferred)
  * @param meta Override metadata (ownership transferred)
+ * @param metrics Additional metrics (ownership transferred)
  * @return Newly allocated rule
  */
-cdsl_rule_t* cdsl_create_extends_rule(char* name, char* template_name, cdsl_meta_item_t* meta);
+cdsl_rule_t* cdsl_create_extends_rule(char* name,
+				      char* template_name,
+				      cdsl_meta_item_t* meta,
+				      cdsl_metric_node_t* metrics);
 /** @} */
 
 /** @name Memory Management */

@@ -350,6 +350,10 @@ cdsl_ruleset_reload_file(cdsl_ruleset_t* set,
 			 int err_buf_sz)
 {
 	cdsl_ruleset_remove(set, rule_name);
+	/* If filepath appears to be DSL code rather than a filename, load from string. */
+	if (filepath && (strstr(filepath, "RULE ") != NULL || strstr(filepath, "META") != NULL)) {
+		return cdsl_ruleset_load_string(set, filepath, 0, schema, err_buf, err_buf_sz);
+	}
 	return cdsl_ruleset_load_file(set, filepath, 0, schema, err_buf, err_buf_sz);
 }
 
