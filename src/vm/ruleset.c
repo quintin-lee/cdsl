@@ -56,6 +56,12 @@ cdsl_ruleset_add(cdsl_ruleset_t* set, cdsl_rule_t* rule, int priority)
 		return;
 	}
 	cdsl_ruleset_entry_t* e = calloc(1, sizeof(*e));
+	if (!e) {
+		/* Out of memory: caller has already yielded ownership of rule,
+		 * so we must free it here to avoid a leak. */
+		cdsl_free_rule(rule);
+		return;
+	}
 	e->rule = rule;
 	e->priority = priority;
 	if (!set->entries || priority < set->entries->priority) {

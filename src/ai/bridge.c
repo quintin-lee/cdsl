@@ -28,6 +28,7 @@
 #include <string.h>
 #include <stdio.h>
 #include <ctype.h>
+#include <stdarg.h>
 
 /**
  * @brief Minimal JSON string escape for review_stream output.
@@ -636,6 +637,8 @@ type_to_str(cdsl_type_t t)
 		return "BOOL";
 	case CDSL_TYPE_STRING:
 		return "STRING";
+	case CDSL_TYPE_DATE:
+		return "DATE";
 	default:
 		return "VOID";
 	}
@@ -662,30 +665,41 @@ count_schema_vars(const cdsl_schema_t* schema)
  * @param sz     Buffer size
  * @param schema Schema to describe
  */
+/**
+ * @brief Safe append to a buffer with overflow protection.
+ * @return New string length, capped at sz-1
+ */
+static size_t
+safe_append(char* buf, size_t sz, size_t pos, const char* fmt, ...)
+{
+	if (pos >= sz - 1) {
+		return pos;
+	}
+	va_list ap;
+	va_start(ap, fmt);
+	int n = vsnprintf(buf + pos, sz - pos, fmt, ap);
+	va_end(ap);
+	return (n > 0) ? pos + (size_t)n : pos;
+}
+
 static void
 build_schema_prompt(char* buf, size_t sz, const cdsl_schema_t* schema)
 {
 	size_t pos = strlen(buf);
-	snprintf(buf + pos, sz - pos, "Available variables:\n");
+	pos = safe_append(buf, sz, pos, "Available variables:\n");
 	for (cdsl_var_schema_t* v = schema ? schema->vars : NULL; v; v = v->next) {
-		pos = strlen(buf);
-		snprintf(buf + pos, sz - pos, "  - %s (%s)\n", v->name, type_to_str(v->type));
+		pos = safe_append(buf, sz, pos, "  - %s (%s)\n", v->name, type_to_str(v->type));
 	}
-	pos = strlen(buf);
-	snprintf(buf + pos, sz - pos, "\nAvailable actions:\n");
+	pos = safe_append(buf, sz, pos, "\nAvailable actions:\n");
 	for (cdsl_action_schema_t* a = schema ? schema->actions : NULL; a; a = a->next) {
-		pos = strlen(buf);
-		snprintf(buf + pos, sz - pos, "  - %s(", a->name);
+		pos = safe_append(buf, sz, pos, "  - %s(", a->name);
 		for (int i = 0; i < a->arg_count; i++) {
 			if (i > 0) {
-				pos = strlen(buf);
-				snprintf(buf + pos, sz - pos, ", ");
+				pos = safe_append(buf, sz, pos, ", ");
 			}
-			pos = strlen(buf);
-			snprintf(buf + pos, sz - pos, "%s", type_to_str(a->arg_types[i]));
+			pos = safe_append(buf, sz, pos, "%s", type_to_str(a->arg_types[i]));
 		}
-		pos = strlen(buf);
-		snprintf(buf + pos, sz - pos, ") -> %s\n", type_to_str(a->return_type));
+		pos = safe_append(buf, sz, pos, ") -> %s\n", type_to_str(a->return_type));
 	}
 }
 
@@ -772,12 +786,9 @@ mock_translate_generic(const char* natural_language,
 	}
 
 	char desc[256];
-	snprintf(desc, sizeof(desc), "%s", natural_language);
+	size_t dpos = safe_append(desc, sizeof(desc), 0, "%s", natural_language);
 	if (business_context) {
-		snprintf(desc + strlen(desc),
-			 sizeof(desc) - strlen(desc),
-			 " | context: %s",
-			 business_context);
+		safe_append(desc, sizeof(desc), dpos, " | context: %s", business_context);
 	}
 
 	if (is_simple && n_vars >= 1) {

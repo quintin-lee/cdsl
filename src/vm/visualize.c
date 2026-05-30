@@ -161,7 +161,8 @@ cdsl_rule_to_dot(const cdsl_rule_t* rule)
 	}
 
 	dot_id = 0;
-	fprintf(f, "digraph rule_%s {\n", rule->name);
+	const char* rule_name = rule->name ? rule->name : "anonymous";
+	fprintf(f, "digraph rule_%s {\n", rule_name);
 	fprintf(f, "  rankdir=TB;\n");
 	fprintf(f, "  node [fontname=\"Helvetica\"];\n\n");
 
@@ -169,8 +170,8 @@ cdsl_rule_to_dot(const cdsl_rule_t* rule)
 		fprintf(f,
 			"  rule_%s [label=\"%s\\n(Metric "
 			"Rule)\",shape=box,style=filled,fillcolor=gray];\n\n",
-			rule->name,
-			rule->name);
+			rule_name,
+			rule_name);
 		for (cdsl_metric_node_t* m = rule->metrics; m; m = m->next) {
 			const char* w_meta = cdsl_meta_get(m->meta_list, "weight");
 			int weight = atoi(w_meta ? w_meta : "0");
