@@ -1,7 +1,7 @@
 cmake_minimum_required(VERSION 3.14)
 project(cdsl VERSION 1.0.0 LANGUAGES C)
 
-set(CMAKE_C_STANDARD 99)
+set(CMAKE_C_STANDARD 23)
 set(CMAKE_C_STANDARD_REQUIRED ON)
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
@@ -22,7 +22,7 @@ bison_target(MyParser parser/parser.y ${CMAKE_CURRENT_BINARY_DIR}/parser.tab.c)
 flex_target(MyLexer parser/lexer.l ${CMAKE_CURRENT_BINARY_DIR}/lexer.c)
 add_flex_bison_dependency(MyLexer MyParser)
 
-file(GLOB CDSL_SOURCES CONFIGURE_DEPENDS "src/*.c")
+file(GLOB_RECURSE CDSL_SOURCES CONFIGURE_DEPENDS "src/*.c")
 list(APPEND CDSL_SOURCES
     ${BISON_MyParser_OUTPUTS}
     ${FLEX_MyLexer_OUTPUTS}
@@ -96,7 +96,7 @@ install(TARGETS cdsl_static cdsl_shared
     RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
 )
 
-install(DIRECTORY include/ DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/cdsl)
+install(DIRECTORY include/cdsl/ DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/cdsl)
 install(FILES ${CMAKE_CURRENT_BINARY_DIR}/parser.tab.h
     DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/cdsl)
 
@@ -142,8 +142,12 @@ find_program(CLANG_FORMAT clang-format)
 if(CLANG_FORMAT)
     file(GLOB_RECURSE CDSL_FORMAT_FILES CONFIGURE_DEPENDS
         "include/*.h"
+        "include/*/*.h"
+        "include/*/*/*.h"
         "src/*.c"
         "src/*.h"
+        "src/*/*.c"
+        "src/*/*.h"
         "demo/*.c"
         "tests/*.c"
         "tests/*.h"
