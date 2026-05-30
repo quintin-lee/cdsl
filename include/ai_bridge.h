@@ -13,7 +13,7 @@
 #ifndef CDSL_AI_BRIDGE_H
 #define CDSL_AI_BRIDGE_H
 
-#include "abstract.h"
+#include "cdsl/schema.h"
 
 /**
  * @brief External cache interface for AI responses.

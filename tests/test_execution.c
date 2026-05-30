@@ -15,7 +15,7 @@
 
 #include "test.h"
 #include "ast.h"
-#include "abstract.h"
+#include "cdsl/schema.h"
 #include "execution.h"
 
 /** @brief Whether the most recent action callback was invoked. */

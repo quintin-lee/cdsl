@@ -18,7 +18,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include "ast.h"
-#include "abstract.h"
+#include "cdsl/schema.h"
 #include "execution.h"
 #include "ai_bridge.h"
 

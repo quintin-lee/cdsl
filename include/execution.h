@@ -14,7 +14,7 @@
 #define CDSL_EXECUTION_H
 
 #include "ast.h"
-#include "abstract.h"
+#include "cdsl/schema.h"
 #include "cdsl/util/hashmap.h"
 #include <pthread.h>
 

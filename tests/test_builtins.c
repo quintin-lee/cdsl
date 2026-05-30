@@ -8,7 +8,7 @@
 
 #include "test.h"
 #include "ast.h"
-#include "abstract.h"
+#include "cdsl/schema.h"
 #include "execution.h"
 #include <stdlib.h>
 #include <string.h>
