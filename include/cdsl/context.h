@@ -51,7 +51,8 @@ void cdsl_context_set_string(cdsl_context_t* ctx, const char* name, const char* 
 int cdsl_context_get_int(const cdsl_context_t* ctx, const char* name, int default_val);
 double cdsl_context_get_float(const cdsl_context_t* ctx, const char* name, double default_val);
 int cdsl_context_get_bool(const cdsl_context_t* ctx, const char* name, int default_val);
-const char* cdsl_context_get_string(const cdsl_context_t* ctx, const char* name, const char* default_val);
+const char*
+cdsl_context_get_string(const cdsl_context_t* ctx, const char* name, const char* default_val);
 int cdsl_context_remove(cdsl_context_t* ctx, const char* name);
 int cdsl_context_load_json(cdsl_context_t* ctx, const char* json_str);
 
