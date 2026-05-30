@@ -1,3 +1,24 @@
+/**
+ * @file vm_eval.c
+ * @brief Core expression evaluator and rule execution engine.
+ *
+ * Implements the heart of the C-DSL runtime: recursive expression
+ * evaluation, simple rule (WHEN/THEN) execution, metric-based scoring
+ * rule execution, tri-state reporting, and JSON report serialization.
+ *
+ * Key features:
+ * - Recursive expression tree walker with depth limit protection
+ * - Short-circuit evaluation for AND/OR boolean operators
+ * - String-aware comparison operators (==, !=)
+ * - Metric scoring with weighted CASE/DEFAULT evaluation
+ * - Critical-rule veto (any critical metric failing → FAILED)
+ * - Threshold-based tri-state decisions (PASSED/PARTIAL/FAILED)
+ * - Debug trace output for all evaluation steps
+ *
+ * @defgroup eval Expression Evaluator & Rule Execution
+ * @{
+ */
+
 #include "execution.h"
 #include "execution_internal.h"
 #include <stdlib.h>
@@ -5,6 +26,12 @@
 #include <stdio.h>
 #include <math.h>
 
+/**
+ * @brief Convert a tri-state rule status to a human-readable string.
+ *
+ * @param s Status enum value
+ * @return Static string: "PASSED", "PARTIALLY PASSED", "FAILED", or "ERROR"
+ */
 const char*
 cdsl_status_str_internal(cdsl_rule_status_t s)
 {
@@ -703,3 +730,4 @@ cdsl_report_to_json(const cdsl_rule_report_t* report)
 
 	return json;
 }
+/** @} */

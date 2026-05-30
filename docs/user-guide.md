@@ -6,21 +6,23 @@
 
 ## Table of Contents
 
-- [Quick Start](#1-quick-start)
-- [Core API Usage](#2-core-api-usage)
-- [Scoring Rules](#3-scoring-rules)
-- [RuleSet Batch Execution](#4-ruleset-batch-execution)
-- [Debug Trace Mode](#5-debug-trace-mode)
-- [Performance Monitoring](#6-performance-monitoring)
-- [Compilation Cache](#7-compilation-cache)
-- [Custom Functions](#8-custom-functions)
-- [Templates & Inheritance](#9-templates--inheritance)
-- [Code Generation](#10-code-generation-dsl--c)
-- [Visualization](#11-visualization-graphviz-dot)
-- [AI Integration](#12-ai-integration)
-- [Custom Actions](#13-custom-actions)
-- [Error Handling](#14-error-handling)
-- [Thread Safety](#15-thread-safety-notes)
+- Quick Start (1)
+- Core API Usage (2)
+- Scoring Rules (3)
+- RuleSet Batch Execution (4)
+- Debug Trace Mode (5)
+- Performance Monitoring (6)
+- Compilation Cache (7)
+- Custom Functions (8)
+- Templates & Inheritance (9)
+- Code Generation (10)
+- Visualization (11)
+- AI Integration (12)
+- Custom AI Providers (13)
+- Custom Cache Drivers (14)
+- Custom Actions (15)
+- Error Handling (16)
+- Thread Safety (17)
 
 ---
 
@@ -518,7 +520,47 @@ char* dsl = cdsl_ai_translate(
     "check if transaction amount exceeds limit", schema, &cfg);
 ```
 
-### 12.3 Streaming (SSE Callback)
+### 12.3 Custom AI Providers
+
+Register a custom AI provider to replace the built-in LLM or mock backends:
+
+```c
+#include "ai_bridge.h"
+
+cdsl_ai_provider_t my_prov = {
+    .ctx = my_state,
+    .translate = my_translate_fn,
+    .review = my_review_fn,
+    .translate_stream = NULL,
+    .review_stream = NULL,
+};
+cdsl_ai_register_provider("my_provider", &my_prov);
+
+cdsl_ai_config_t cfg = cdsl_ai_config_default();
+cfg.provider_name = "my_provider";
+cfg.use_mock = 0;
+
+char* dsl = cdsl_ai_translate("check transaction limit", schema, &cfg);
+// → calls my_translate_fn(...)
+```
+
+### 12.4 Custom Cache Drivers
+
+Avoid redundant LLM calls by registering or injecting an external cache:
+
+```c
+// Option 1: Register a named cache driver
+cdsl_ai_cache_t redis_cache = { .ctx = redis_conn, .get = redis_get, .put = redis_set };
+cdsl_ai_register_cache_driver("redis", &redis_cache);
+
+cfg.cache_driver_name = "redis";  // Dispatch via registry
+
+// Option 2: Inject a cache instance directly
+cdsl_ai_cache_t file_cache = { .ctx = NULL, .get = file_get, .put = file_set };
+cfg.cache = &file_cache;  // Bypasses the registry
+```
+
+### 12.5 Streaming (SSE Callback)
 
 ```c
 void on_chunk(const char* chunk, void* ud) {
@@ -540,7 +582,7 @@ free(review);
 
 ---
 
-## 13. Custom Actions
+## 15. Custom Actions
 
 Register any C function as an action callback:
 
@@ -568,9 +610,9 @@ RULE alert_rule {
 
 ---
 
-## 14. Error Handling
+## 16. Error Handling
 
-### 14.1 Parse Errors
+### 16.1 Parse Errors
 
 ```c
 cdsl_rule_t* rule = cdsl_parse_string("INVALID DSL CODE");
@@ -579,7 +621,7 @@ if (!rule) {
 }
 ```
 
-### 14.2 Verification Errors
+### 16.2 Verification Errors
 
 ```c
 cdsl_error_list_t* errors = cdsl_verify_rule_detailed(rule, schema);
@@ -597,7 +639,7 @@ cdsl_error_list_free(errors);
 
 ---
 
-## 15. Thread Safety Notes
+## 17. Thread Safety Notes
 
 | Operation                     | Thread Safe | Guidance                          |
 |-------------------------------|-------------|-----------------------------------|

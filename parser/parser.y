@@ -1,3 +1,22 @@
+/**
+ * @file parser.y
+ * @brief Bison grammar for the C-DSL rule language.
+ *
+ * This file defines the complete grammar for the C-DSL rule language,
+ * supporting two rule types:
+ * - Simple rules: RULE name { META { ... } WHEN expr THEN action }
+ * - Metric rules: RULE name { META { ... } METRIC m { ... CASE ... DEFAULT ... } }
+ * - Template definitions: TEMPLATE name { META { ... } METRIC m { ... } }
+ * - Rule inheritance: RULE name EXTENDS template_name { META { ... } }
+ *
+ * The parser uses a reentrant (thread-safe) API compatible with the
+ * Flex reentrant scanner. All AST nodes are constructed using the
+ * factory functions defined in ast.c/ast.h.
+ *
+ * @defgroup parser DSL Parser
+ * @{
+ */
+
 %{
 #define _POSIX_C_SOURCE 200809L
 #include <stdio.h>
@@ -176,8 +195,18 @@ argument_list_nonempty:
 
 %%
 
+/**
+ * @brief Error handler called by Bison on parse errors.
+ *
+ * @param scanner Reentrant scanner handle
+ * @param rule_ptr Output rule pointer (unused in error recovery)
+ * @param error_count Error counter to increment
+ * @param s Error message from Bison
+ */
 void yyerror(yyscan_t scanner, cdsl_rule_t** rule_ptr, int* error_count, const char *s) {
     (void)rule_ptr;
     fprintf(stderr, "Syntax error at line %d: %s\n", yyget_lineno(scanner), s);
     (*error_count)++;
 }
+
+/** @} */

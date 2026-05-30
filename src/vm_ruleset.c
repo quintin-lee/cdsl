@@ -1,3 +1,20 @@
+/**
+ * @file vm_ruleset.c
+ * @brief RuleSet batch and parallel execution implementation.
+ *
+ * Implements the RuleSet abstraction for managing and executing
+ * collections of DSL rules as a batch. Supports:
+ * - Priority-ordered rule insertion
+ * - Rule removal by name
+ * - Sequential batch execution with aggregate reporting
+ * - Parallel execution with per-thread VM cloning
+ * - File-based rule loading and hot reload
+ * - Topological sorting and dependency validation (stubs)
+ *
+ * @defgroup ruleset RuleSet Batch Execution
+ * @{
+ */
+
 #include "execution.h"
 #include "execution_internal.h"
 #include <stdlib.h>
@@ -5,6 +22,11 @@
 #include <stdio.h>
 #include <pthread.h>
 
+/**
+ * @brief Create an empty ruleset.
+ *
+ * @return Newly allocated ruleset (must be freed with cdsl_ruleset_free)
+ */
 cdsl_ruleset_t*
 cdsl_ruleset_create(void)
 {
@@ -348,3 +370,4 @@ cdsl_ruleset_topo_sort(cdsl_ruleset_t* set)
 	/* TODO: Implement topological sort based on depends_on */
 	return 1;
 }
+/** @} */

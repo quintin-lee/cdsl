@@ -46,4 +46,3 @@ GENERATE_LATEX         = NO
 
 # Graphs (optional, disable if graphviz not installed)
 HAVE_DOT               = NO
-CLASS_DIAGRAMS         = NO

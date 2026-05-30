@@ -1,3 +1,23 @@
+/**
+ * @file lexer.l
+ * @brief Flex lexical analyzer for the C-DSL language.
+ *
+ * This lexer tokenizes C-DSL source input for the Bison-generated parser.
+ * It supports:
+ * - C-style block comments (slash-asterisk ... asterisk-slash) and line comments (// ...)
+ * - DSL keywords: RULE, META, WHEN, THEN, METRIC, CASE, DEFAULT,
+ *   TEMPLATE, EXTENDS
+ * - Logical operators: AND (&&), OR (||), NOT (!)
+ * - Boolean literals: true, false
+ * - Numeric literals: integers and floats
+ * - String literals with escape sequence processing (\\n, \\t, \\r, \\", \\\\)
+ * - Identifiers with dots (e.g. "user.age")
+ * - All comparison and arithmetic operators
+ *
+ * Uses a reentrant (thread-safe) scanner mode for compatibility
+ * with concurrent rule parsing.
+ */
+
 %{
 #include "ast.h"
 #include "parser.tab.h"

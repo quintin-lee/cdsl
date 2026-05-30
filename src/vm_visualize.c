@@ -1,3 +1,20 @@
+/**
+ * @file vm_visualize.c
+ * @brief Graphviz DOT graph generation for rule visualization.
+ *
+ * Generates DOT (Graphviz) representations of:
+ * - Individual rule ASTs (expressions, metrics, cases, actions)
+ * - RuleSet dependency and priority graphs
+ *
+ * Visual output distinguishes node types by shape and color:
+ * - Expressions: box (literals), ellipse (identifiers), diamond (operators)
+ * - Metrics: rounded boxes colored by criticality
+ * - RuleSet: LR layout with priority labels and dashed dependency edges
+ *
+ * @defgroup visualize Graphviz Visualization
+ * @{
+ */
+
 #include "execution.h"
 #include "execution_internal.h"
 #include <stdlib.h>
@@ -295,3 +312,4 @@ cdsl_ruleset_to_dot_file(const cdsl_ruleset_t* set, const char* filepath)
 	free(dot);
 	return 1;
 }
+/** @} */

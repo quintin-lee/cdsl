@@ -1,3 +1,17 @@
+/**
+ * @file abstract.c
+ * @brief Schema verification and type resolution implementation.
+ *
+ * Implements the Abstract Layer of the rule engine: schema creation,
+ * variable/action registration, single-pass expression type resolution,
+ * and rule verification against the schema. Supports two verification
+ * modes: simple string-based (first error) and detailed structured
+ * (collects all errors into a cdsl_error_list_t).
+ *
+ * @defgroup abstract_impl Abstract Layer Implementation
+ * @{
+ */
+
 #include "abstract.h"
 #include <stdlib.h>
 #include <string.h>
@@ -482,3 +496,4 @@ cdsl_verify_rule_detailed(const cdsl_rule_t* rule, const cdsl_schema_t* schema)
 
 	return errors;
 }
+/** @} */

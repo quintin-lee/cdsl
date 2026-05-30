@@ -1,3 +1,11 @@
+/**
+ * @file test_builtins.c
+ * @brief Unit tests for built-in DSL functions.
+ *
+ * Tests the strlen, contains, is_before, and is_after built-in
+ * functions using simple WHEN/THEN rules.
+ */
+
 #include "test.h"
 #include "ast.h"
 #include "abstract.h"
@@ -5,6 +13,9 @@
 #include <stdlib.h>
 #include <string.h>
 
+/**
+ * @brief Test the strlen built-in function.
+ */
 void
 test_builtin_strlen(void)
 {
@@ -13,7 +24,6 @@ test_builtin_strlen(void)
 	cdsl_vm_t* vm = cdsl_vm_create(schema);
 	cdsl_context_t* ctx = cdsl_context_create(schema);
 
-	/* RULE test { WHEN strlen("hello") == 5 THEN ... } */
 	cdsl_rule_t* rule =
 	    cdsl_parse_string("RULE test { WHEN strlen(\"hello\") == 5 THEN block(\"ok\") }");
 	TEST_ASSERT_NOT_NULL(rule, "rule parse ok");
@@ -32,6 +42,9 @@ test_builtin_strlen(void)
 	TEST_END();
 }
 
+/**
+ * @brief Test the contains built-in function.
+ */
 void
 test_builtin_contains(void)
 {
@@ -54,6 +67,9 @@ test_builtin_contains(void)
 	TEST_END();
 }
 
+/**
+ * @brief Test the is_before and is_after date comparison functions.
+ */
 void
 test_builtin_date_cmp(void)
 {
@@ -62,13 +78,11 @@ test_builtin_date_cmp(void)
 	cdsl_vm_t* vm = cdsl_vm_create(schema);
 	cdsl_context_t* ctx = cdsl_context_create(schema);
 
-	/* is_before */
 	cdsl_rule_t* r1 = cdsl_parse_string(
 	    "RULE r1 { WHEN is_before(\"2023-01-01\", \"2024-01-01\") THEN block(\"ok\") }");
 	cdsl_rule_report_t* rpt1 = cdsl_vm_execute(vm, r1, ctx);
 	TEST_ASSERT_INT(rpt1->status, CDSL_STATUS_FAILED, "2023 is before 2024");
 
-	/* is_after */
 	cdsl_rule_t* r2 = cdsl_parse_string(
 	    "RULE r2 { WHEN is_after(\"2025-05-29\", \"2024-01-01\") THEN block(\"ok\") }");
 	cdsl_rule_report_t* rpt2 = cdsl_vm_execute(vm, r2, ctx);
@@ -84,6 +98,10 @@ test_builtin_date_cmp(void)
 	TEST_END();
 }
 
+/**
+ * @brief Main entry: run all built-in function test cases.
+ * @return 0 if all tests passed, 1 otherwise
+ */
 int
 main(void)
 {

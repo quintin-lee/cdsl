@@ -1,3 +1,18 @@
+/**
+ * @file vm_context.c
+ * @brief Execution context and VM lifecycle implementation.
+ *
+ * Implements the runtime context for variable bindings, the Virtual
+ * Machine lifecycle (create/destroy), action and function registration,
+ * and JSON-based context loading with automatic type inference.
+ *
+ * The context uses a dual-index structure: a linked list for iteration
+ * and a hash map for O(1) variable lookups during expression evaluation.
+ *
+ * @defgroup context Execution Context & VM
+ * @{
+ */
+
 #include "execution.h"
 #include "execution_internal.h"
 #include "cdsl_json.h"
@@ -6,6 +21,14 @@
 #include <stdio.h>
 #include <time.h>
 
+/**
+ * @brief Get a high-resolution timestamp in microseconds.
+ *
+ * Uses CLOCK_MONOTONIC for elapsed time measurements that are
+ * immune to system clock adjustments.
+ *
+ * @return Current timestamp in microseconds
+ */
 double
 cdsl_get_time_us_internal(void)
 {
@@ -380,3 +403,4 @@ cdsl_vm_register_function(cdsl_vm_t* vm, const char* func_name, cdsl_func_cb_t c
 	e->next = vm->functions;
 	vm->functions = e;
 }
+/** @} */

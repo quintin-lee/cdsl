@@ -1,7 +1,27 @@
+/**
+ * @file cdsl_arena.c
+ * @brief Arena (bump) allocator implementation.
+ *
+ * Provides fast O(1) allocation by bumping a pointer within pre-allocated
+ * blocks. All memory is freed at once when the arena is destroyed,
+ * making it ideal for AST nodes, parser temporaries, and other
+ * batch-lifetime allocations. No individual free is required.
+ *
+ * Each arena manages a linked list of fixed-size blocks. When the current
+ * block is exhausted, a new block (doubling or sized to fit the request)
+ * is allocated and added to the list.
+ */
+
 #include "cdsl_arena.h"
 #include <stdlib.h>
 #include <string.h>
 
+/**
+ * @brief Default block size for arena allocations.
+ *
+ * 64 KB provides a good balance between memory overhead and allocation
+ * frequency for typical DSL rule ASTs.
+ */
 #define ARENA_DEFAULT_BLOCK_SIZE (64 * 1024)
 
 /**

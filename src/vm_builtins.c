@@ -1,3 +1,20 @@
+/**
+ * @file vm_builtins.c
+ * @brief Built-in function implementations for the DSL VM.
+ *
+ * Provides standard library functions available in DSL expressions:
+ * - strlen(str): Returns the length of a string
+ * - contains(haystack, needle): Checks if a string contains a substring
+ * - is_before(date1, date2): Compares ISO 8601 dates
+ * - is_after(date1, date2): Compares ISO 8601 dates
+ *
+ * All built-in functions are auto-registered in every VM via
+ * cdsl_vm_register_builtins(), called during cdsl_vm_create().
+ *
+ * @defgroup builtins Built-in Functions
+ * @{
+ */
+
 #include "execution.h"
 #include "execution_internal.h"
 #include <string.h>
@@ -6,7 +23,13 @@
 #include <time.h>
 
 /**
- * @brief built-in strlen(str)
+ * @brief Built-in strlen: returns the length of a string.
+ *
+ * @param name Function name ("strlen")
+ * @param args Argument list (expects 1 argument)
+ * @param ctx Execution context (for evaluating the argument expression)
+ * @param vm VM instance
+ * @return Integer value with the string length
  */
 static cdsl_value_t
 builtin_strlen(const char* name, cdsl_arg_node_t* args, cdsl_context_t* ctx, cdsl_vm_t* vm)
@@ -127,3 +150,4 @@ cdsl_vm_register_builtins(cdsl_vm_t* vm)
 	cdsl_vm_register_function(vm, "is_before", builtin_is_before);
 	cdsl_vm_register_function(vm, "is_after", builtin_is_after);
 }
+/** @} */

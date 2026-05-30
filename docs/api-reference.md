@@ -8,14 +8,14 @@
 
 | Module                                            | Header               | Description                         |
 |---------------------------------------------------|----------------------|-------------------------------------|
-| [AST](#1-ast-module)                              | `ast.h`              | Abstract syntax tree construction   |
-| [Abstract](#2-abstract-module)                    | `abstract.h`         | Schema verification                 |
-| [Execution](#3-execution-module)                  | `execution.h`        | VM, context, reports, RuleSet       |
-| [AI Bridge](#4-ai-bridge-module)                  | `ai_bridge.h`        | AI integration (mock + LLM)         |
-| [Error](#5-error-module)                          | `cdsl_error.h`       | Error reporting                     |
-| [Arena](#6-arena-module)                          | `cdsl_arena.h`       | Arena memory allocator              |
-| [Hashmap](#7-hashmap-module)                      | `cdsl_hashmap.h`     | Hash table                          |
-| [JSON](#8-json-module)                            | `cdsl_json.h`        | JSON parser                         |
+| AST (1)                                            | `ast.h`              | Abstract syntax tree construction   |
+| Abstract (2)                                       | `abstract.h`         | Schema verification                 |
+| Execution (3)                                      | `execution.h`        | VM, context, reports, RuleSet       |
+| AI Bridge (4)                                      | `ai_bridge.h`        | AI integration (mock + LLM)         |
+| Error (5)                                          | `cdsl_error.h`       | Error reporting                     |
+| Arena (6)                                          | `cdsl_arena.h`       | Arena memory allocator              |
+| Hashmap (7)                                        | `cdsl_hashmap.h`     | Hash table                          |
+| JSON (8)                                           | `cdsl_json.h`        | JSON parser                         |
 
 ---
 
@@ -395,6 +395,9 @@ typedef struct {
     char* api_base;         /**< API base URL (e.g. "https://api.openai.com/v1") */
     char* model;            /**< Model name (e.g. "gpt-4o-mini") */
     char* business_context; /**< Optional business info to guide DSL generation */
+    cdsl_ai_cache_t* cache; /**< Optional external cache implementation */
+    char* provider_name;    /**< Provider name (e.g. "default", "langchain") */
+    char* cache_driver_name;/**< Global cache driver name (e.g. "redis") */
 } cdsl_ai_config_t;
 ```
 
@@ -409,7 +412,41 @@ typedef struct {
 } cdsl_ai_review_t;
 ```
 
-#### Callback Type
+#### External Cache Interface
+
+```c
+typedef struct {
+    void* ctx;
+    char* (*get)(void* ctx, const char* key);
+    void (*put)(void* ctx, const char* key, const char* value);
+} cdsl_ai_cache_t;
+```
+
+### External Provider Interface
+
+```c
+typedef struct {
+    void* ctx;
+    char* (*translate)(void* ctx, const char* nl,
+                       const cdsl_schema_t* schema,
+                       const cdsl_ai_config_t* cfg);
+    cdsl_ai_review_t* (*review)(void* ctx, const char* dsl,
+                                const cdsl_schema_t* schema,
+                                const cdsl_ai_config_t* cfg);
+    char* (*translate_stream)(void* ctx, const char* nl,
+                              const cdsl_schema_t* schema,
+                              const cdsl_ai_config_t* cfg,
+                              void (*callback)(const char*, void*),
+                              void* user_data);
+    char* (*review_stream)(void* ctx, const char* dsl,
+                           const cdsl_schema_t* schema,
+                           const cdsl_ai_config_t* cfg,
+                           void (*callback)(const char*, void*),
+                           void* user_data);
+} cdsl_ai_provider_t;
+```
+
+### Callback Type
 
 ```c
 typedef void (*cdsl_ai_stream_cb_t)(const char* chunk, void* user_data);
@@ -420,6 +457,8 @@ typedef void (*cdsl_ai_stream_cb_t)(const char* chunk, void* user_data);
 | Function                                                          | Description                                        |
 |-------------------------------------------------------------------|----------------------------------------------------|
 | `cdsl_ai_config_default()`                                        | Return config with mock mode enabled               |
+| `cdsl_ai_register_provider(name, provider)`                       | Register a custom AI provider by name              |
+| `cdsl_ai_register_cache_driver(name, cache)`                      | Register a custom cache driver by name             |
 | `cdsl_ai_translate(nl, schema, config)`                           | NL to DSL translation (caller frees result)        |
 | `cdsl_ai_review(dsl_code, schema, config)`                        | DSL safety review (caller frees result)            |
 | `cdsl_ai_review_free(review)`                                     | Free review result                                 |

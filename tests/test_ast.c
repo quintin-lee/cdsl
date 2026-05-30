@@ -1,7 +1,19 @@
+/**
+ * @file test_ast.c
+ * @brief Unit tests for the C-DSL AST construction and parsing.
+ *
+ * Tests expression constructors (int, string, binary), action creation,
+ * metadata list management, simple rule creation, and DSL input length
+ * limit enforcement.
+ */
+
 #include "test.h"
 #include "ast.h"
 #include <stdlib.h>
 
+/**
+ * @brief Test integer literal expression creation.
+ */
 void
 test_ast_create_expr(void)
 {
@@ -14,6 +26,9 @@ test_ast_create_expr(void)
 	TEST_END();
 }
 
+/**
+ * @brief Test string literal expression creation.
+ */
 void
 test_ast_create_string(void)
 {
@@ -25,6 +40,9 @@ test_ast_create_string(void)
 	TEST_END();
 }
 
+/**
+ * @brief Test binary operation expression creation (GT comparison).
+ */
 void
 test_ast_create_binary(void)
 {
@@ -39,6 +57,9 @@ test_ast_create_binary(void)
 	TEST_END();
 }
 
+/**
+ * @brief Test action node creation with arguments.
+ */
 void
 test_ast_create_action(void)
 {
@@ -53,6 +74,9 @@ test_ast_create_action(void)
 	TEST_END();
 }
 
+/**
+ * @brief Test metadata list creation and lookup.
+ */
 void
 test_ast_create_meta(void)
 {
@@ -68,6 +92,9 @@ test_ast_create_meta(void)
 	TEST_END();
 }
 
+/**
+ * @brief Test simple rule creation and field verification.
+ */
 void
 test_ast_create_rule(void)
 {
@@ -83,6 +110,9 @@ test_ast_create_rule(void)
 	TEST_END();
 }
 
+/**
+ * @brief Test that overly long DSL input is rejected.
+ */
 void
 test_ast_parse_limit(void)
 {
@@ -99,6 +129,10 @@ test_ast_parse_limit(void)
 	TEST_END();
 }
 
+/**
+ * @brief Main entry: run all AST test cases.
+ * @return 0 if all tests passed, 1 otherwise
+ */
 int
 main(void)
 {

@@ -1,13 +1,25 @@
+/**
+ * @file test_ai_extensions.c
+ * @brief Unit tests for the AI provider and cache driver registries.
+ *
+ * Tests that custom AI providers and cache drivers can be registered
+ * and dispatched correctly through the AI bridge layer.
+ */
+
 #include "test.h"
 #include "ai_bridge.h"
 #include "cdsl_hashmap.h"
 #include <stdlib.h>
 #include <string.h>
 
+/** @brief Whether the mock provider's translate was called. */
 static int provider_called = 0;
+/** @brief Whether the mock cache driver's get was called. */
 static int cache_driver_called = 0;
 
-/* Mock Provider */
+/**
+ * @brief Mock provider translate: returns a fixed DSL string.
+ */
 static char*
 mock_provider_translate(void* ctx,
 			const char* nl,
@@ -22,6 +34,9 @@ mock_provider_translate(void* ctx,
 	return strdup("RULE mock_provider { WHEN true THEN block() }");
 }
 
+/**
+ * @brief Mock provider review: returns an approved review.
+ */
 static cdsl_ai_review_t*
 mock_provider_review(void* ctx,
 		     const char* dsl,
@@ -39,7 +54,9 @@ mock_provider_review(void* ctx,
 	return rev;
 }
 
-/* Mock Cache Driver */
+/**
+ * @brief Mock cache driver get: returns NULL (cache miss).
+ */
 static char*
 mock_cache_get(void* ctx, const char* key)
 {
@@ -49,6 +66,9 @@ mock_cache_get(void* ctx, const char* key)
 	return NULL;
 }
 
+/**
+ * @brief Mock cache driver put: no-op.
+ */
 static void
 mock_cache_put(void* ctx, const char* key, const char* value)
 {
@@ -57,6 +77,9 @@ mock_cache_put(void* ctx, const char* key, const char* value)
 	(void)value;
 }
 
+/**
+ * @brief Test AI extension registry: provider and cache driver dispatch.
+ */
 void
 test_ai_extension_system(void)
 {
@@ -104,6 +127,10 @@ test_ai_extension_system(void)
 	TEST_END();
 }
 
+/**
+ * @brief Main entry: run all AI extension test cases.
+ * @return 0 if all tests passed, 1 otherwise
+ */
 int
 main(void)
 {

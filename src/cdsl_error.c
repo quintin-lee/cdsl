@@ -1,3 +1,16 @@
+/**
+ * @file cdsl_error.c
+ * @brief Structured error reporting implementation.
+ *
+ * Provides typed error instances with source location, human-readable
+ * messages, optional fix hints, and collectable error lists. Used by
+ * the verification engine (cdsl_verify_rule_detailed) and parser for
+ * comprehensive error reporting.
+ *
+ * Error categories include syntax, type, semantic, and runtime errors.
+ * Error lists use a growable array pattern for efficient collection.
+ */
+
 #include "cdsl_error.h"
 #include <stdlib.h>
 #include <string.h>

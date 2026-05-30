@@ -1,3 +1,18 @@
+/**
+ * @file vm_codegen.c
+ * @brief DSL-to-C code generation implementation.
+ *
+ * Translates parsed DSL rule ASTs into compilable C source code.
+ * Generates evaluate_*() functions with appropriate signatures for
+ * both simple (WHEN/THEN) and metric-based (scoring) rules.
+ *
+ * The generated C code uses callback function pointers for variable
+ * access and action dispatch, making it portable across applications.
+ *
+ * @defgroup codegen Code Generation
+ * @{
+ */
+
 #include "execution.h"
 #include "execution_internal.h"
 #include <stdlib.h>
@@ -6,6 +21,10 @@
 
 /**
  * @brief Recursively emit a C expression from an AST node (internal).
+ *
+ * @param f Output file stream
+ * @param expr Expression node to translate
+ * @param indent Current indentation string
  */
 static void
 codegen_expr(FILE* f, cdsl_expr_node_t* expr, const char* indent)
@@ -204,3 +223,4 @@ cdsl_codegen_to_file(const cdsl_rule_t* rule, const cdsl_schema_t* schema, const
 	free(code);
 	return 1;
 }
+/** @} */

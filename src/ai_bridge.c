@@ -1,3 +1,26 @@
+/**
+ * @file ai_bridge.c
+ * @brief AI bridge implementation: NL-to-DSL translation and rule review.
+ *
+ * Implements the AI integration layer for translating natural language
+ * rule descriptions into C-DSL syntax and reviewing DSL rules for
+ * safety, completeness, and logical consistency.
+ *
+ * Key components:
+ * - Mock translator: heuristic-based DSL generation from NL input
+ * - LLM translator: OpenAI-compatible API calls (cURL or subprocess)
+ * - Safety reviewer: mock scoring or LLM-based analysis
+ * - Streaming API: SSE-based real-time translation/review
+ * - Provider registry: pluggable AI backends
+ * - Cache driver registry: pluggable response caching (Redis, etc.)
+ *
+ * When CDSL_USE_CURL is defined, libcurl is used for HTTP requests.
+ * Otherwise, the system curl command is invoked via popen().
+ *
+ * @defgroup ai_bridge_impl AI Bridge Implementation
+ * @{
+ */
+
 #include "ai_bridge.h"
 #include "cdsl_json.h"
 #include "cdsl_hashmap.h"
@@ -1391,3 +1414,4 @@ cdsl_ai_review_stream(const char* dsl_code,
 	cdsl_ai_provider_t* p = get_provider(config ? config->provider_name : NULL);
 	return p->review_stream(p->ctx, dsl_code, schema, config, callback, user_data);
 }
+/** @} */

@@ -1,3 +1,21 @@
+/**
+ * @file vm_cache.c
+ * @brief Compilation cache implementation.
+ *
+ * Provides thread-safe caching of parsed and verified DSL rules. The
+ * cache uses a reader-writer lock for concurrent access and stores
+ * compiled rule ASTs indexed by their DSL source text (used as key).
+ *
+ * Thread-safe design:
+ * - Read lock for cache lookups (fast path, multiple readers)
+ * - Release lock during parse/verify (slow path, no lock held)
+ * - Write lock for cache insertion (single writer)
+ * - Double-check pattern to avoid redundant compilation
+ *
+ * @defgroup cache Compilation Cache
+ * @{
+ */
+
 #include "execution.h"
 #include "execution_internal.h"
 #include "ast.h"
@@ -8,6 +26,11 @@
 
 /**
  * @brief Helper to free a compiled rule entry (internal).
+ *
+ * Frees the cached rule AST, hash string, and the entry itself.
+ * Used as the value destructor callback for the hash map.
+ *
+ * @param val Pointer to a cdsl_compiled_rule_t to free
  */
 static void
 free_compiled_rule(void* val)
@@ -113,3 +136,4 @@ cdsl_vm_execute_compiled(cdsl_vm_t* vm, cdsl_compiled_rule_t* compiled, cdsl_con
 	}
 	return cdsl_vm_execute(vm, compiled->rule, ctx);
 }
+/** @} */

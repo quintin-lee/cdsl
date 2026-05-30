@@ -1,18 +1,47 @@
+/**
+ * @file test_execution.c
+ * @brief Unit tests for the C-DSL execution engine.
+ *
+ * Comprehensive test suite covering:
+ * - Context variable set/get/remove with type conversion
+ * - JSON context loading
+ * - Simple WHEN/THEN rule pass and fail scenarios
+ * - Metric-based scoring rules (full pass, partial pass)
+ * - Critical metric veto behavior
+ * - String comparison in expressions
+ * - RuleSet batch execution
+ * - Detailed verification error reporting
+ */
+
 #include "test.h"
 #include "ast.h"
 #include "abstract.h"
 #include "execution.h"
 
+/** @brief Whether the most recent action callback was invoked. */
 static int action_called = 0;
+/** @brief Name of the last action triggered. */
 static char last_action_name[64] = {0};
 
+/**
+ * @brief Action callback for test assertions.
+ * @param action_name Name of the triggered action
+ * @param args Argument list (unused)
+ * @param ud User data (unused)
+ */
 static void
 test_action_cb(const char* action_name, cdsl_arg_node_t* args, void* ud)
 {
+	(void)args;
+	(void)ud;
 	action_called = 1;
 	strncpy(last_action_name, action_name, sizeof(last_action_name) - 1);
 }
 
+/**
+ * @brief Create a standard test schema with user and score variables.
+ * @return New schema with pre-registered variables and actions
+ */
 static cdsl_schema_t*
 make_test_schema(void)
 {
@@ -28,6 +57,9 @@ make_test_schema(void)
 	return s;
 }
 
+/**
+ * @brief Test context variable set/get/remove with type conversions.
+ */
 void
 test_context_set_get(void)
 {
@@ -89,6 +121,9 @@ test_context_set_get(void)
 	TEST_END();
 }
 
+/**
+ * @brief Test loading context variables from a JSON string.
+ */
 void
 test_context_load_json(void)
 {
@@ -112,6 +147,9 @@ test_context_load_json(void)
 	TEST_END();
 }
 
+/**
+ * @brief Test simple rule passing (WHEN condition is false).
+ */
 void
 test_simple_rule_pass(void)
 {
@@ -139,6 +177,9 @@ test_simple_rule_pass(void)
 	TEST_END();
 }
 
+/**
+ * @brief Test simple rule failing (WHEN condition is true).
+ */
 void
 test_simple_rule_fail(void)
 {
@@ -165,6 +206,9 @@ test_simple_rule_fail(void)
 	TEST_END();
 }
 
+/**
+ * @brief Test metric rule achieving a full score (PASSED).
+ */
 void
 test_metric_rule_scoring(void)
 {
@@ -206,6 +250,9 @@ test_metric_rule_scoring(void)
 	TEST_END();
 }
 
+/**
+ * @brief Test metric rule with partial pass (between thresholds).
+ */
 void
 test_metric_rule_partial(void)
 {
@@ -244,6 +291,9 @@ test_metric_rule_partial(void)
 	TEST_END();
 }
 
+/**
+ * @brief Test that a critical metric failure vetoes the entire rule.
+ */
 void
 test_critical_metric_veto(void)
 {
@@ -283,6 +333,9 @@ test_critical_metric_veto(void)
 	TEST_END();
 }
 
+/**
+ * @brief Test string comparison in DSL expressions.
+ */
 void
 test_string_comparison(void)
 {
@@ -309,6 +362,9 @@ test_string_comparison(void)
 	TEST_END();
 }
 
+/**
+ * @brief Test ruleset batch execution with multiple rules.
+ */
 void
 test_ruleset_batch(void)
 {
@@ -342,6 +398,9 @@ test_ruleset_batch(void)
 	TEST_END();
 }
 
+/**
+ * @brief Test detailed verification finds unknown variable references.
+ */
 void
 test_verify_detailed(void)
 {
@@ -357,6 +416,10 @@ test_verify_detailed(void)
 	TEST_END();
 }
 
+/**
+ * @brief Main entry: run all execution test cases.
+ * @return 0 if all tests passed, 1 otherwise
+ */
 int
 main(void)
 {

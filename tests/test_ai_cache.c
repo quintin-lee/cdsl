@@ -1,12 +1,28 @@
+/**
+ * @file test_ai_cache.c
+ * @brief Unit tests for the AI bridge cache injection mechanism.
+ *
+ * Tests that a user-provided cache implementation is correctly
+ * invoked during AI translation calls.
+ */
+
 #include "test.h"
 #include "ai_bridge.h"
 #include "cdsl_hashmap.h"
 #include <stdlib.h>
 #include <string.h>
 
+/** @brief Counter for cache get invocations. */
 static int get_count = 0;
+/** @brief Counter for cache put invocations. */
 static int put_count = 0;
 
+/**
+ * @brief Mock cache get: wraps hashmap lookup.
+ * @param ctx Opaque hashmap pointer
+ * @param key Cache key
+ * @return Cached string or NULL
+ */
 static char*
 my_cache_get(void* ctx, const char* key)
 {
@@ -15,6 +31,12 @@ my_cache_get(void* ctx, const char* key)
 	return cdsl_hashmap_get((cdsl_hashmap_t*)ctx, key);
 }
 
+/**
+ * @brief Mock cache put: wraps hashmap insertion.
+ * @param ctx Opaque hashmap pointer
+ * @param key Cache key
+ * @param value Value to cache
+ */
 static void
 my_cache_put(void* ctx, const char* key, const char* value)
 {
@@ -23,6 +45,9 @@ my_cache_put(void* ctx, const char* key, const char* value)
 	cdsl_hashmap_put((cdsl_hashmap_t*)ctx, key, strdup(value));
 }
 
+/**
+ * @brief Test that the AI bridge calls cache get/put methods.
+ */
 void
 test_ai_cache_injection(void)
 {
@@ -56,6 +81,10 @@ test_ai_cache_injection(void)
 	TEST_END();
 }
 
+/**
+ * @brief Main entry: run all AI cache test cases.
+ * @return 0 if all tests passed, 1 otherwise
+ */
 int
 main(void)
 {

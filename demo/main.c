@@ -1,3 +1,19 @@
+/**
+ * @file main.c
+ * @brief C-DSL Framework demo application.
+ *
+ * Demonstrates the full C-DSL pipeline across six scenarios:
+ * 1. Supplier Qualification Audit (AI NL-to-DSL + scoring)
+ * 2. Document Format & Signature Audit
+ * 3. Content Safety & Moderation Audit
+ * 4. JSON Context Loading
+ * 5. Simple Pass/Fail Rules (no scoring)
+ * 6. RuleSet Batch Execution
+ *
+ * Each scenario walks through: AI generation, safety review, parsing,
+ * schema verification, context binding, rule execution, and reporting.
+ */
+
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -6,6 +22,15 @@
 #include "execution.h"
 #include "ai_bridge.h"
 
+/**
+ * @brief Callback function for action invocations in the demo.
+ *
+ * Prints the action name and its arguments in a readable format.
+ *
+ * @param action_name Name of the triggered action
+ * @param args Linked list of argument expressions
+ * @param user_data User-provided data pointer (unused in demo)
+ */
 static void
 action_callback(const char* action_name, cdsl_arg_node_t* args, void* user_data)
 {
@@ -39,12 +64,27 @@ action_callback(const char* action_name, cdsl_arg_node_t* args, void* user_data)
 	printf(") triggered\n");
 }
 
+/**
+ * @brief Print a section separator with a title.
+ * @param title Section title string
+ */
 static void
 print_separator(const char* title)
 {
 	printf("\n%s\n", title);
 }
 
+/**
+ * @brief Demo 1: Supplier Qualification Audit.
+ *
+ * Demonstrates AI-driven NL-to-DSL translation, safety review,
+ * and scoring-based rule execution with multiple test cases
+ * including a good supplier, small supplier, blacklisted supplier,
+ * and medium supplier.
+ *
+ * @param schema Registered schema with supplier variables and actions
+ * @param ai_cfg AI configuration (mock mode in demo)
+ */
 static void
 demo_supplier_audit(cdsl_schema_t* schema, cdsl_ai_config_t* ai_cfg)
 {
@@ -131,6 +171,15 @@ demo_supplier_audit(cdsl_schema_t* schema, cdsl_ai_config_t* ai_cfg)
 	free(dsl_code);
 }
 
+/**
+ * @brief Demo 2: Document Format & Signature Audit.
+ *
+ * Demonstrates string and boolean context variables with scoring rules
+ * for document format validation and digital signature checking.
+ *
+ * @param schema Registered schema with document variables and actions
+ * @param ai_cfg AI configuration
+ */
 static void
 demo_doc_audit(cdsl_schema_t* schema, cdsl_ai_config_t* ai_cfg)
 {
@@ -200,6 +249,15 @@ demo_doc_audit(cdsl_schema_t* schema, cdsl_ai_config_t* ai_cfg)
 	free(dsl_code);
 }
 
+/**
+ * @brief Demo 3: Content Safety & Moderation Audit.
+ *
+ * Demonstrates content moderation rules with sensitive word counting,
+ * PII detection, and AI spam scoring.
+ *
+ * @param schema Registered schema with content variables and actions
+ * @param ai_cfg AI configuration
+ */
 static void
 demo_content_audit(cdsl_schema_t* schema, cdsl_ai_config_t* ai_cfg)
 {
@@ -269,6 +327,13 @@ demo_content_audit(cdsl_schema_t* schema, cdsl_ai_config_t* ai_cfg)
 	free(dsl_code);
 }
 
+/**
+ * @brief Demo 4: JSON Context Loading.
+ *
+ * Demonstrates loading context variables from a JSON string using
+ * cdsl_context_load_json(), including automatic type inference for
+ * integers, floats, and booleans.
+ */
 static void
 demo_json_context(void)
 {
@@ -344,6 +409,15 @@ demo_json_context(void)
 	cdsl_schema_free(schema);
 }
 
+/**
+ * @brief Demo 5: Simple Pass/Fail Rules (No Scoring).
+ *
+ * Demonstrates traditional WHEN/THEN rules with boolean pass/fail
+ * outcomes. Includes blacklist checking, capital floor verification,
+ * and document format validation.
+ *
+ * @param schema Registered schema with supplier and document variables
+ */
 static void
 demo_simple_rules(cdsl_schema_t* schema)
 {
@@ -404,6 +478,15 @@ demo_simple_rules(cdsl_schema_t* schema)
 	}
 }
 
+/**
+ * @brief Demo 6: RuleSet Batch Execution.
+ *
+ * Demonstrates creating a ruleset with priority-ordered rules and
+ * executing them as a batch via cdsl_vm_execute_ruleset().
+ * Includes aggregate reporting with pass/fail counts.
+ *
+ * @param schema Registered schema with supplier variables and actions
+ */
 static void
 demo_ruleset_batch(cdsl_schema_t* schema)
 {
@@ -455,6 +538,14 @@ demo_ruleset_batch(cdsl_schema_t* schema)
 	cdsl_ruleset_free(set);
 }
 
+/**
+ * @brief Main entry point for the C-DSL demo application.
+ *
+ * Sets up the schema with all demo variables and actions, then
+ * runs all six demo scenarios in sequence.
+ *
+ * @return 0 on success
+ */
 int
 main(void)
 {

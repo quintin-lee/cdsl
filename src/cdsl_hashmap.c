@@ -1,3 +1,15 @@
+/**
+ * @file cdsl_hashmap.c
+ * @brief Hash map implementation with separate chaining.
+ *
+ * Provides O(1) average-case key-value storage using the djb2 hash
+ * algorithm and separate chaining for collision resolution. Keys are
+ * strings (duplicated internally); values are opaque void pointers.
+ *
+ * Used extensively throughout the engine for context variable lookup,
+ * compilation caches, and AI provider/cache-driver registries.
+ */
+
 #include "cdsl_hashmap.h"
 #include <stdlib.h>
 #include <string.h>
@@ -155,6 +167,13 @@ cdsl_hashmap_remove(cdsl_hashmap_t* map, const char* key, cdsl_hashmap_free_fn f
 	return 0;
 }
 
+/**
+ * @brief Check if a key exists in the map (without retrieving value).
+ *
+ * @param map Target map
+ * @param key Key to search for
+ * @return 1 if key exists, 0 otherwise
+ */
 int
 cdsl_hashmap_has(const cdsl_hashmap_t* map, const char* key)
 {
@@ -172,6 +191,13 @@ cdsl_hashmap_has(const cdsl_hashmap_t* map, const char* key)
 	return 0;
 }
 
+/**
+ * @brief Iterate over all entries in the map, invoking a callback for each.
+ *
+ * @param map Target map
+ * @param cb Callback function invoked for each (key, value) pair
+ * @param user_data Opaque pointer forwarded to callback
+ */
 void
 cdsl_hashmap_iterate(const cdsl_hashmap_t* map, cdsl_hashmap_iter_fn cb, void* user_data)
 {
@@ -187,6 +213,16 @@ cdsl_hashmap_iterate(const cdsl_hashmap_t* map, cdsl_hashmap_iter_fn cb, void* u
 	}
 }
 
+/**
+ * @brief Get all keys from the map as a NULL-terminated array.
+ *
+ * Both the array and individual key strings are heap-allocated;
+ * the caller is responsible for freeing them.
+ *
+ * @param map Target map
+ * @param count Optional output parameter for key count (may be NULL)
+ * @return NULL-terminated array of key strings, or NULL if map is empty
+ */
 char**
 cdsl_hashmap_keys(const cdsl_hashmap_t* map, int* count)
 {

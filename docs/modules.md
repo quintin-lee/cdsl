@@ -246,7 +246,7 @@ Generates Graphviz DOT format:
 
 ### Responsibility
 
-Natural language to DSL translation and DSL rule safety review, with offline (mock) and online (LLM API) modes.
+Natural language to DSL translation and DSL rule safety review, with offline (mock) and online (LLM API) modes. Supports pluggable AI providers and cache drivers via a registration system.
 
 ### Work Modes
 
@@ -255,6 +255,15 @@ Natural language to DSL translation and DSL rule safety review, with offline (mo
 | Offline | 1          | Schema-based generation | Creates rules from schema vars   |
 | API     | 0          | cURL + LLM API         | OpenAI-compatible HTTP calls     |
 | Stream  | 0 + stream | SSE callbacks           | Streaming chunk delivery         |
+| Custom  | 0          | Registered provider     | External AI provider via registry|
+
+### Extension Registry
+
+The bridge supports two extension points:
+
+1. **AI Providers** — Register custom translation/review backends via `cdsl_ai_register_provider()`. The provider is selected by setting `cfg.provider_name` in the AI config.
+
+2. **Cache Drivers** — Register custom cache implementations via `cdsl_ai_register_cache_driver()`. The driver is selected by setting `cfg.cache_driver_name`. A per-config `cfg.cache` field also allows direct injection of a cache instance without the registry.
 
 ### Offline Generation Strategy
 
@@ -300,7 +309,7 @@ A zero-dependency, recursive-descent JSON parser supporting:
 
 The parser does NOT handle escape sequences (e.g., `\n`, `\"`) — these are passed through literally.
 
-### 5.2 Error Reporting (`cdsl_error.h` / `cdsl_error.c`)
+### 5.2 Error Reporting (cdsl_error.h / cdsl_error.c)
 
 Structured error types with hint support:
 
@@ -313,21 +322,21 @@ Structured error types with hint support:
 
 Error lists are dynamically allocated (initial capacity 16, doubles as needed).
 
-### 5.3 Arena Allocator (`cdsl_arena.h` / `cdsl_arena.c`)
+### 5.3 Arena Allocator (cdsl_arena.h / cdsl_arena.c)
 
 A bump allocator for same-lifetime objects:
 
 - 8-byte aligned allocations
 - Default 64 KB block size
 - New blocks allocated on demand (when current block is exhausted)
-- One-shot `free()` releases all memory at once
+- One-shot free() releases all memory at once
 - Ideal for AST node allocation during parsing
 
-### 5.4 Hash Table (`cdsl_hashmap.h` / `cdsl_hashmap.c`)
+### 5.4 Hash Table (cdsl_hashmap.h / cdsl_hashmap.c)
 
 A separate-chaining hash table with djb2 hashing:
 
-- String keys, generic `void*` values
+- String keys, generic void pointer values
 - O(1) average lookup
 - Optional destructor callback per entry for value cleanup
 - Used by: template registry, compile cache

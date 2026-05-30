@@ -1,3 +1,16 @@
+/**
+ * @file cdsl_json.c
+ * @brief Lightweight zero-dependency JSON parser implementation.
+ *
+ * Recursive-descent parser that builds a tree of cdsl_json_value_t nodes.
+ * Supports all JSON data types: objects, arrays, strings, numbers,
+ * booleans, and null. String values support full escape-sequence
+ * processing including \\uXXXX Unicode (converted to UTF-8).
+ *
+ * Used internally by cdsl_context_load_json() for context variable
+ * binding from JSON input. No external dependencies required.
+ */
+
 #include "cdsl_json.h"
 #include <stdlib.h>
 #include <string.h>
@@ -6,6 +19,8 @@
 
 /**
  * @brief Internal JSON parser state.
+ *
+ * Tracks the current position within the source string being parsed.
  */
 typedef struct {
 	const char* src; /**< Source string being parsed */

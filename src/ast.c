@@ -1,3 +1,17 @@
+/**
+ * @file ast.c
+ * @brief Abstract Syntax Tree (AST) construction and destruction.
+ *
+ * Implements all AST node constructors (expressions, actions, metadata,
+ * cases, metrics, rules) and recursive free functions. Also implements
+ * the DSL parser entry point (cdsl_parse_string) using a reentrant
+ * Flex/Bison scanner, the template registry for TEMPLATE/EXTENDS
+ * support, and internal deep-copy helpers for rule inheritance.
+ *
+ * @defgroup ast_impl AST Implementation
+ * @{
+ */
+
 #include "ast.h"
 #include <stdlib.h>
 #include <string.h>
@@ -138,7 +152,7 @@ cdsl_append_arg(cdsl_arg_node_t* list, cdsl_expr_node_t* expr)
 }
 
 /**
- * @brief Create an action node (for THEN / CASE / DEFAULT).
+ * @brief Create an action invocation node (for THEN / CASE / DEFAULT).
  * @param name Action name string (takes ownership)
  * @param args Argument list (takes ownership)
  * @return New action node
@@ -724,3 +738,4 @@ cdsl_create_extends_rule(char* name, char* template_name, cdsl_meta_item_t* meta
 	free(template_name);
 	return rule;
 }
+/** @} */
