@@ -135,11 +135,16 @@ parse_object(json_parser_t* p)
 		skip_ws(p);
 		char* key = parse_string_raw(p);
 		if (!key) {
+			/* malformed entry */
 			break;
 		}
 		skip_ws(p);
 		if (p->src[p->pos] == ':') {
 			p->pos++;
+		} else {
+			/* missing colon -> malformed */
+			free(key);
+			break;
 		}
 		skip_ws(p);
 		cdsl_json_value_t* val = parse_value(p);
@@ -155,15 +160,28 @@ parse_object(json_parser_t* p)
 			count++;
 		} else {
 			free(key);
+			/* malformed value */
+			break;
 		}
 		skip_ws(p);
 		if (p->src[p->pos] == ',') {
 			p->pos++;
+		} else {
+			/* if next char is not ',' and not '}', loop will exit and we'll handle it */
 		}
 	}
-	if (p->src[p->pos] == '}') {
-		p->pos++;
+	/* if we didn't end with a closing brace, treat as error */
+	if (p->src[p->pos] != '}') {
+		/* free collected items */
+		cdsl_json_value_t* it = head;
+		while (it) {
+			cdsl_json_value_t* next = it->next;
+			cdsl_json_free(it);
+			it = next;
+		}
+		return NULL;
 	}
+	p->pos++; /* consume '}' */
 	cdsl_json_value_t* obj = calloc(1, sizeof(*obj));
 	obj->type = JSON_OBJECT;
 	obj->value.object.items = head;
@@ -183,6 +201,7 @@ parse_array(json_parser_t* p)
 	int count = 0;
 	skip_ws(p);
 	while (p->src[p->pos] && p->src[p->pos] != ']') {
+		skip_ws(p);
 		cdsl_json_value_t* val = parse_value(p);
 		if (val) {
 			val->next = NULL;
@@ -193,15 +212,28 @@ parse_array(json_parser_t* p)
 			}
 			tail = val;
 			count++;
+		} else {
+			/* malformed value */
+			break;
 		}
 		skip_ws(p);
 		if (p->src[p->pos] == ',') {
 			p->pos++;
+		} else {
+			/* continue to check for closing ] */
 		}
 	}
-	if (p->src[p->pos] == ']') {
-		p->pos++;
+	/* if closing bracket missing, free items and return NULL */
+	if (p->src[p->pos] != ']') {
+		cdsl_json_value_t* it = head;
+		while (it) {
+			cdsl_json_value_t* next = it->next;
+			cdsl_json_free(it);
+			it = next;
+		}
+		return NULL;
 	}
+	p->pos++; /* consume ']' */
 	cdsl_json_value_t* arr = calloc(1, sizeof(*arr));
 	arr->type = JSON_ARRAY;
 	arr->value.array.items = head;
