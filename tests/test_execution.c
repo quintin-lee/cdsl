@@ -17,6 +17,8 @@
 #include "cdsl/ast.h"
 #include "cdsl/schema.h"
 #include "cdsl/execution.h"
+#include "cdsl/cache.h"
+#include <stdlib.h>
 
 /** @brief Whether the most recent action callback was invoked. */
 static int action_called = 0;
@@ -417,6 +419,120 @@ test_verify_detailed(void)
 }
 
 /**
+ * @brief Test VM lifecycle APIs: debug, depth, stats.
+ */
+void
+test_vm_lifecycle(void)
+{
+	TEST_BEGIN("VM lifecycle: debug, depth, stats");
+	cdsl_schema_t* schema = make_test_schema();
+	cdsl_vm_t* vm = cdsl_vm_create(schema);
+
+	cdsl_vm_set_debug(vm, 1);
+	TEST_ASSERT_INT(vm->debug_enabled, 1, "debug enabled");
+	cdsl_vm_set_debug(vm, 0);
+	TEST_ASSERT_INT(vm->debug_enabled, 0, "debug disabled");
+	cdsl_vm_set_debug(NULL, 1);
+
+	TEST_ASSERT_INT(cdsl_vm_get_max_expr_depth(vm), CDSL_MAX_EXPR_DEPTH, "default depth");
+	cdsl_vm_set_max_expr_depth(vm, 16);
+	TEST_ASSERT_INT(cdsl_vm_get_max_expr_depth(vm), 16, "depth set to 16");
+	cdsl_vm_set_max_expr_depth(vm, -1);
+	TEST_ASSERT_INT(cdsl_vm_get_max_expr_depth(vm), 16, "negative depth ignored");
+	TEST_ASSERT_INT(
+	    cdsl_vm_get_max_expr_depth(NULL), CDSL_MAX_EXPR_DEPTH, "NULL vm returns default");
+
+	cdsl_stats_t* stats = cdsl_vm_get_stats(vm);
+	TEST_ASSERT_NOT_NULL(stats, "stats not NULL");
+	TEST_ASSERT_INT(stats->total_executions, 0, "stats initially zero");
+	free(stats);
+
+	cdsl_vm_reset_stats(vm);
+	cdsl_vm_reset_stats(NULL);
+
+	cdsl_vm_free(vm);
+	cdsl_schema_free(schema);
+	TEST_END();
+}
+
+/**
+ * @brief Test report JSON serialization.
+ */
+void
+test_report_json(void)
+{
+	TEST_BEGIN("report JSON serialization");
+	cdsl_schema_t* schema = make_test_schema();
+	cdsl_context_t* ctx = cdsl_context_create(schema);
+	cdsl_context_set_int(ctx, "user.age", 25);
+
+	cdsl_vm_t* vm = cdsl_vm_create(schema);
+	cdsl_vm_register_action(vm, "block", test_action_cb);
+
+	/* Simple rule: without weight metadata, this should pass */
+	cdsl_rule_t* rule =
+	    cdsl_parse_string("RULE json_test { WHEN user.age < 18 THEN block(\"minor\") }");
+	TEST_ASSERT_NOT_NULL(rule, "rule parsed");
+
+	cdsl_rule_report_t* report = cdsl_vm_execute(vm, rule, ctx);
+	TEST_ASSERT_NOT_NULL(report, "report not null");
+
+	char* json = cdsl_report_to_json(report);
+	TEST_ASSERT_NOT_NULL(json, "json not null");
+	TEST_ASSERT(strstr(json, "\"rule_name\"") != NULL, "json has rule_name");
+	TEST_ASSERT(strstr(json, "json_test") != NULL, "json has rule name value");
+	TEST_ASSERT(strstr(json, "\"status\"") != NULL, "json has status");
+	/* Rule NOT triggered (25 < 18 is false), so status is PASSED */
+	TEST_ASSERT(strstr(json, "PASSED") != NULL, "json has PASSED status");
+
+	/* NULL report returns empty JSON, not NULL */
+	char* null_json = cdsl_report_to_json(NULL);
+	TEST_ASSERT_NOT_NULL(null_json, "NULL report returns non-NULL string");
+	TEST_ASSERT_STR(null_json, "{}", "NULL report returns {}");
+	free(null_json);
+
+	free(json);
+	cdsl_report_free(report);
+	cdsl_free_rule(rule);
+	cdsl_vm_free(vm);
+	cdsl_context_free(ctx);
+	cdsl_schema_free(schema);
+	TEST_END();
+}
+
+/**
+ * @brief Test edge cases: NULL parameters, division by zero.
+ */
+void
+test_execution_edge_cases(void)
+{
+	TEST_BEGIN("execution edge cases");
+	cdsl_schema_t* schema = make_test_schema();
+
+	TEST_ASSERT(cdsl_vm_execute(NULL, NULL, NULL) == NULL, "NULL all returns NULL");
+
+	cdsl_vm_t* vm = cdsl_vm_create(schema);
+	cdsl_context_t* ctx = cdsl_context_create(schema);
+	TEST_ASSERT(cdsl_vm_execute(NULL, NULL, ctx) == NULL, "NULL vm returns NULL");
+	TEST_ASSERT(cdsl_vm_execute(vm, NULL, ctx) == NULL, "NULL rule returns NULL");
+
+	cdsl_rule_t* rule = cdsl_parse_string(
+	    "RULE divzero { "
+	    "METRIC m { CASE user.age / 0 >= 18 THEN score(50) DEFAULT score(0) } }");
+	if (rule) {
+		cdsl_rule_report_t* rpt = cdsl_vm_execute(vm, rule, ctx);
+		TEST_ASSERT(rpt != NULL, "divzero produces report");
+		cdsl_report_free(rpt);
+		cdsl_free_rule(rule);
+	}
+
+	cdsl_context_free(ctx);
+	cdsl_vm_free(vm);
+	cdsl_schema_free(schema);
+	TEST_END();
+}
+
+/**
  * @brief Main entry: run all execution test cases.
  * @return 0 if all tests passed, 1 otherwise
  */
@@ -437,6 +553,9 @@ main(void)
 	test_string_comparison();
 	test_ruleset_batch();
 	test_verify_detailed();
+	test_vm_lifecycle();
+	test_report_json();
+	test_execution_edge_cases();
 
 	TEST_SUMMARY();
 	TEST_EXIT();

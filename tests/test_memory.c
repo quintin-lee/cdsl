@@ -153,6 +153,63 @@ test_hashmap_memory_management()
 	TEST_MEMORY_END();
 }
 
+// Test hashmap helper functions: remove, has, iterate, keys
+static int g_hashmap_cb_count;
+
+static void
+hashmap_count_cb(const char* key, void* value, void* ud)
+{
+	(void)key;
+	(void)value;
+	(void)ud;
+	g_hashmap_cb_count++;
+}
+
+static void
+test_hashmap_helpers(void)
+{
+	TEST_MEMORY_BEGIN("Hashmap helper functions");
+
+	cdsl_hashmap_t* map = cdsl_hashmap_create(16);
+	TEST_ASSERT_NOT_NULL(map, "Map created");
+
+	cdsl_hashmap_put(map, "alpha", strdup("value1"));
+	cdsl_hashmap_put(map, "beta", strdup("value2"));
+	cdsl_hashmap_put(map, "gamma", strdup("value3"));
+
+	// has()
+	TEST_ASSERT(cdsl_hashmap_has(map, "alpha"), "has alpha true");
+	TEST_ASSERT(cdsl_hashmap_has(map, "beta"), "has beta true");
+	TEST_ASSERT(!cdsl_hashmap_has(map, "nonexistent"), "has nonexistent false");
+	TEST_ASSERT(!cdsl_hashmap_has(NULL, "alpha"), "has NULL map false");
+	TEST_ASSERT(!cdsl_hashmap_has(map, NULL), "has NULL key false");
+
+	// remove() with destructor
+	int removed = cdsl_hashmap_remove(map, "alpha", free);
+	TEST_ASSERT(removed == 1, "remove alpha ok");
+	TEST_ASSERT(!cdsl_hashmap_has(map, "alpha"), "alpha gone");
+	TEST_ASSERT(cdsl_hashmap_remove(map, "nonexistent", free) == 0,
+		    "remove nonexistent returns 0");
+
+	// iterate() — use counter to verify all entries
+	g_hashmap_cb_count = 0;
+	cdsl_hashmap_iterate(map, hashmap_count_cb, NULL);
+	TEST_ASSERT_INT(g_hashmap_cb_count, 2, "iterate found 2 entries");
+
+	// keys()
+	int key_count = 0;
+	char** keys = cdsl_hashmap_keys(map, &key_count);
+	TEST_ASSERT_INT(key_count, 2, "keys() returns 2");
+	TEST_ASSERT_NOT_NULL(keys, "keys array not null");
+	for (int i = 0; i < key_count; i++) {
+		free(keys[i]);
+	}
+	free(keys);
+
+	cdsl_hashmap_free(map, free);
+	TEST_MEMORY_END();
+}
+
 // Test 5: AST memory management
 static void
 test_ast_memory_management()
@@ -504,6 +561,7 @@ main()
 	test_arena_large_allocations();
 	test_arena_boundary_conditions();
 	test_hashmap_memory_management();
+	test_hashmap_helpers();
 	test_ast_memory_management();
 	test_schema_memory_management();
 	test_vm_memory_management();
