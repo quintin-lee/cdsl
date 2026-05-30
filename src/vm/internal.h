@@ -1,5 +1,5 @@
 /**
- * @file execution_internal.h
+ * @file src/vm/internal.h
  * @brief Internal shared declarations for the execution module.
  *
  * Declares functions that are shared across the execution sub-modules

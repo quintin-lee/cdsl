@@ -17,7 +17,7 @@
  */
 
 #include "execution.h"
-#include "execution_internal.h"
+#include "internal.h"
 #include "ast.h"
 #include <stdlib.h>
 #include <string.h>
