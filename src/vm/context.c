@@ -468,7 +468,12 @@ cdsl_vm_get_stats(const cdsl_vm_t* vm)
 	if (!s) {
 		return NULL;
 	}
-	*s = vm->stats;
+	s->total_executions = atomic_load(&vm->stats.total_executions);
+	s->total_rules_executed = atomic_load(&vm->stats.total_rules_executed);
+	s->total_metrics_evaluated = atomic_load(&vm->stats.total_metrics_evaluated);
+	s->total_actions_triggered = atomic_load(&vm->stats.total_actions_triggered);
+	s->total_time_us = vm->stats.total_time_us;
+	s->avg_time_us = vm->stats.avg_time_us;
 	if (s->total_executions > 0) {
 		s->avg_time_us = s->total_time_us / s->total_executions;
 	}
@@ -479,7 +484,12 @@ void
 cdsl_vm_reset_stats(cdsl_vm_t* vm)
 {
 	if (vm) {
-		memset(&vm->stats, 0, sizeof(cdsl_stats_t));
+		atomic_store(&vm->stats.total_executions, 0);
+		atomic_store(&vm->stats.total_rules_executed, 0);
+		atomic_store(&vm->stats.total_metrics_evaluated, 0);
+		atomic_store(&vm->stats.total_actions_triggered, 0);
+		vm->stats.total_time_us = 0;
+		vm->stats.avg_time_us = 0;
 	}
 }
 

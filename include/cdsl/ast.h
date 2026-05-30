@@ -17,14 +17,21 @@
 #include <stdint.h>
 #include <time.h>
 
-/** @name Safety Limits */
-/** @{ */
-#define CDSL_MAX_EXPR_DEPTH 64	    /**< Maximum nesting depth of expressions */
-#define CDSL_MAX_METRICS 32	    /**< Maximum number of metrics per rule */
-#define CDSL_MAX_CASES 16	    /**< Maximum number of CASE branches per metric */
-#define CDSL_MAX_RULES 128	    /**< Maximum number of rules in a ruleset */
-#define CDSL_MAX_INPUT_LENGTH 65536 /**< Maximum DSL input string length in bytes */
-/** @} */
+/* Thread-local storage specifier, portable across compilers */
+#if __STDC_VERSION__ >= 201112L
+#define THREAD_LOCAL _Thread_local
+#elif defined(__GNUC__) || defined(__clang__)
+#define THREAD_LOCAL __thread
+#elif defined(_MSC_VER)
+#define THREAD_LOCAL __declspec(thread)
+#else
+#define THREAD_LOCAL
+#endif
+
+#define CDSL_MAX_EXPR_DEPTH 64
+#define CDSL_MAX_CASES 16
+#define CDSL_MAX_RULES 128
+#define CDSL_MAX_INPUT_LENGTH 65536
 
 /**
  * @brief Supported data types in the DSL type system.

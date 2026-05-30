@@ -803,7 +803,7 @@ mock_translate_generic(const char* natural_language,
 	}
 	rule_name[rn] = '\0';
 	if (rn == 0) {
-		strcpy(rule_name, "rule");
+		snprintf(rule_name, sizeof(rule_name), "rule");
 	}
 
 	char desc[256];

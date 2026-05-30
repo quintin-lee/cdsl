@@ -12,17 +12,6 @@
 #include <stdlib.h>
 #include <string.h>
 
-#if defined(__STDC_VERSION__) && __STDC_VERSION__ >= 201112L
-#include <threads.h>
-#define THREAD_LOCAL _Thread_local
-#elif defined(__GNUC__) || defined(__clang__)
-#define THREAD_LOCAL __thread
-#elif defined(_MSC_VER)
-#define THREAD_LOCAL __declspec(thread)
-#else
-#define THREAD_LOCAL
-#endif
-
 static THREAD_LOCAL cdsl_arena_t* current_ast_arena = NULL;
 
 /* Forward declaration from template.c */

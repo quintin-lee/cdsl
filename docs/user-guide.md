@@ -687,19 +687,33 @@ cdsl_error_list_free(errors);
 
 ## 17. Thread Safety Notes
 
+> **Key principle**: One VM + one Context per thread. Schema and parsed
+> Rule objects are read-only and can be shared across threads after parsing.
+
 | Operation                     | Thread Safe | Guidance                          |
 |-------------------------------|-------------|-----------------------------------|
 | `cdsl_parse_string()`         | ✅          | Reentrant scanner; thread-local arena |
-| `cdsl_vm_execute()`           | ✅          | One VM per thread                 |
-| `cdsl_context_*()`            | ✅          | One Context per thread            |
-| Schema (read-only)            | ✅          | Shared across threads             |
-| Rule (read-only)              | ✅          | Shared after parsing              |
-| `cdsl_compile_cache_t`        | ✅          | Internal RWLock protection        |
+| `cdsl_vm_execute()`           | ✅          | One VM per thread; VM stats use `_Atomic` counters |
+| `cdsl_vm_execute_compiled()`  | ✅          | Same guarantees as `cdsl_vm_execute()` |
+| `cdsl_context_set_*()`        | ✅          | One Context per thread (no internal locking) |
+| `cdsl_context_get_*()`        | ✅          | Read-only; safe with concurrent readers |
+| `cdsl_context_load_json()`    | ✅          | One Context per thread |
+| `cdsl_schema_*()`             | ⚠️ Read-only | Schema should not be modified after being shared |
+| `cdsl_rule_t` / AST           | ✅          | Immutable after parsing; read-only sharing |
+| `cdsl_compile_cache_t`        | ✅          | Internal RWLock protection |
+| `cdsl_hashmap_*()`            | ❌           | Not thread-safe; use `cdsl_compile_cache_t` for concurrent access |
 | AI provider/cache registry    | ✅          | pthread_once init; RWLock-guarded |
+| `cdsl_template_*()`           | ✅          | Internal RWLock protection |
 
-> **Parallel execution**: `cdsl_vm_execute_ruleset_parallel()` shares
-> the context read-only. Stats are aggregated from worker VMs back to
-> the parent VM sequentially — do not call this function concurrently
-> on the same VM instance.
+> **Parallel execution**: `cdsl_vm_execute_ruleset_parallel()` creates
+> per-worker VM instances. The context is shared read-only across workers.
+> Stats are aggregated from worker VMs back to the parent VM via `_Atomic`
+> operations — do not call this function concurrently on the same VM instance.
+>
+> **When libcurl is unavailable**, the AI bridge falls back to `popen("curl ...")`.
+> This path is inherently less secure than libcurl. Prefer building with
+> libcurl for production deployments.
 
-**Recommendation**: Create independent VM and Context instances per thread. Schema and Rule objects can be shared read-only across threads.
+**Recommendation**: Create independent VM and Context instances per thread.
+Schema and Rule objects can be shared read-only across threads.
+For thread-safe hash map operations, use `cdsl_compile_cache_t`.

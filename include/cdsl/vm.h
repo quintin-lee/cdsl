@@ -11,6 +11,7 @@
 #include "cdsl/schema.h"
 #include "cdsl/context.h"
 #include "cdsl/ast.h"
+#include <stdatomic.h>
 
 struct cdsl_vm;
 struct cdsl_context;
@@ -50,10 +51,10 @@ typedef struct cdsl_func_entry {
  * @brief Execution statistics for performance monitoring.
  */
 typedef struct {
-	long total_executions;
-	long total_rules_executed;
-	long total_metrics_evaluated;
-	long total_actions_triggered;
+	_Atomic long total_executions;
+	_Atomic long total_rules_executed;
+	_Atomic long total_metrics_evaluated;
+	_Atomic long total_actions_triggered;
 	double total_time_us;
 	double avg_time_us;
 } cdsl_stats_t;

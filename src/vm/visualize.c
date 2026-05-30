@@ -21,16 +21,7 @@
 #include <string.h>
 #include <stdio.h>
 
-#if defined(__STDC_VERSION__) && __STDC_VERSION__ >= 201112L
-#include <threads.h>
-#define THREAD_LOCAL _Thread_local
-#elif defined(__GNUC__) || defined(__clang__)
-#define THREAD_LOCAL __thread
-#elif defined(_MSC_VER)
-#define THREAD_LOCAL __declspec(thread)
-#else
-#define THREAD_LOCAL
-#endif
+/* Thread-local defined in cdsl/ast.h */
 
 /** @brief Sequential ID counter for DOT graph nodes (internal, thread-local). */
 static THREAD_LOCAL int dot_id = 0;
