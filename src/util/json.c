@@ -295,4 +295,47 @@ cdsl_json_free(cdsl_json_value_t* val)
 	}
 	free(val);
 }
+
+/* Helper implementations */
+int cdsl_json_object_length(const cdsl_json_value_t* obj)
+{
+	if (!obj || obj->type != JSON_OBJECT) return 0;
+	return obj->value.object.count;
+}
+
+int cdsl_json_array_length(const cdsl_json_value_t* arr)
+{
+	if (!arr || arr->type != JSON_ARRAY) return 0;
+	return arr->value.array.count;
+}
+
+cdsl_json_value_t* cdsl_json_get_object(const cdsl_json_value_t* obj, const char* key)
+{
+	if (!obj) return NULL;
+	if (obj->type == JSON_OBJECT) {
+		cdsl_json_value_t* it = obj->value.object.items;
+		while (it) {
+			if (it->key && key && strcmp(it->key, key) == 0) return (cdsl_json_value_t*)it;
+			it = it->next;
+		}
+		return NULL;
+	}
+	/* If this node is a string/number/bool and key refers to itself, return it */
+	return NULL;
+}
+
+cdsl_json_value_t* cdsl_json_get_array(const cdsl_json_value_t* arr, int idx)
+{
+	if (!arr || arr->type != JSON_ARRAY) return NULL;
+	if (idx < 0) return NULL;
+	cdsl_json_value_t* it = arr->value.array.items;
+	int i = 0;
+	while (it) {
+		if (i == idx) return (cdsl_json_value_t*)it;
+		it = it->next;
+		i++;
+	}
+	return NULL;
+}
+
 /** @} */

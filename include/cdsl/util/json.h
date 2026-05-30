@@ -30,6 +30,7 @@ typedef struct cdsl_json_value {
 	struct cdsl_json_value* next;
 } cdsl_json_value_t;
 
+
 /**
  * @brief Parse a JSON string into a value tree.
  * @param json Null-terminated JSON string
@@ -43,6 +44,12 @@ cdsl_json_value_t* cdsl_json_parse(const char* json);
  * @param val Root value to free (NULL-safe)
  */
 void cdsl_json_free(cdsl_json_value_t* val);
+
+/* Helper convenience functions expected by some tests */
+int cdsl_json_object_length(const cdsl_json_value_t* obj);
+int cdsl_json_array_length(const cdsl_json_value_t* arr);
+cdsl_json_value_t* cdsl_json_get_object(const cdsl_json_value_t* obj, const char* key);
+cdsl_json_value_t* cdsl_json_get_array(const cdsl_json_value_t* arr, int idx);
 
 #endif
 /** @} */
