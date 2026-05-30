@@ -53,7 +53,7 @@ target_include_directories(cdsl_static PUBLIC
     $<BUILD_INTERFACE:${CMAKE_CURRENT_BINARY_DIR}>
 )
 set_target_properties(cdsl_static PROPERTIES OUTPUT_NAME cdsl)
-target_link_libraries(cdsl_static PUBLIC Threads::Threads)
+target_link_libraries(cdsl_static PUBLIC Threads::Threads m)
 if(CURL_FOUND)
     target_link_libraries(cdsl_static PRIVATE CURL::libcurl)
 endif()
@@ -64,7 +64,7 @@ target_include_directories(cdsl_shared PUBLIC
     $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
     $<BUILD_INTERFACE:${CMAKE_CURRENT_BINARY_DIR}>
 )
-target_link_libraries(cdsl_shared PUBLIC Threads::Threads)
+target_link_libraries(cdsl_shared PUBLIC Threads::Threads m)
 if(CURL_FOUND)
     target_link_libraries(cdsl_shared PUBLIC CURL::libcurl)
 endif()

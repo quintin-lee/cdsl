@@ -403,14 +403,42 @@ cdsl_vm_register_function(vm, "abs", my_abs);
 
 CDSL provides these functions out of the box (auto-registered by `cdsl_vm_create()`):
 
-| Function                | Args      | Return   | Description |
-|-------------------------|-----------|----------|-------------|
-| `strlen(s)`             | STRING    | INT      | Length of string `s` |
+**String functions:**
+
+| Function                | Args      | Return | Description |
+|-------------------------|-----------|--------|-------------|
+| `strlen(s)`             | STRING    | INT    | Length of string `s` |
 | `contains(haystack, needle)` | STRING, STRING | INT | 1 if `haystack` contains `needle`, else 0 |
-| `now()`                 | —         | DATE     | Current time as `time_t` |
-| `is_before(a, b)`       | DATE, DATE | INT     | 1 if `a < b`, else 0 |
-| `is_after(a, b)`        | DATE, DATE | INT     | 1 if `a > b`, else 0 |
-| `days_between(a, b)`    | DATE, DATE | INT     | Days between `a` and `b` (absolute value) |
+| `uppercase(s)`          | STRING    | STRING | Convert string to uppercase |
+| `lowercase(s)`          | STRING    | STRING | Convert string to lowercase |
+| `trim(s)`               | STRING    | STRING | Remove leading and trailing whitespace |
+| `startswith(s, prefix)` | STRING, STRING | INT | 1 if `s` starts with `prefix`, else 0 |
+| `endswith(s, suffix)`   | STRING, STRING | INT | 1 if `s` ends with `suffix`, else 0 |
+
+**Date functions:**
+
+| Function                | Args      | Return | Description |
+|-------------------------|-----------|--------|-------------|
+| `now()`                 | —         | DATE   | Current time as `time_t` |
+| `is_before(a, b)`       | DATE/STRING, DATE/STRING | INT | 1 if `a < b`, else 0 |
+| `is_after(a, b)`        | DATE/STRING, DATE/STRING | INT | 1 if `a > b`, else 0 |
+| `days_between(a, b)`    | DATE/STRING, DATE/STRING | INT | Absolute days between `a` and `b` |
+| `date_add(d, days)`     | DATE/STRING, INT | DATE | Add `days` to date `d` |
+
+**Math functions:**
+
+| Function                | Args      | Return | Description |
+|-------------------------|-----------|--------|-------------|
+| `abs(n)`                | INT/FLOAT | INT/FLOAT | Absolute value |
+| `min(a, b)`             | INT/FLOAT, INT/FLOAT | INT/FLOAT | Smaller of two values |
+| `max(a, b)`             | INT/FLOAT, INT/FLOAT | INT/FLOAT | Larger of two values |
+| `round(n)`              | FLOAT     | INT    | Round to nearest integer |
+
+**Type introspection:**
+
+| Function                | Args      | Return | Description |
+|-------------------------|-----------|--------|-------------|
+| `typeof(expr)`          | ANY       | STRING | Type as string ("INT","FLOAT","BOOL","STRING","DATE","VOID") |
 
 DSL usage:
 

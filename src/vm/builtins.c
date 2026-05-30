@@ -21,6 +21,8 @@
 #include <stdlib.h>
 #include <stdio.h>
 #include <time.h>
+#include <ctype.h>
+#include <math.h>
 
 /**
  * @brief Built-in strlen: returns the length of a string.
@@ -166,12 +168,21 @@ builtin_is_before(const char* name, cdsl_arg_node_t* args, cdsl_context_t* ctx, 
 	cdsl_value_t t1_val = cdsl_eval_expr_internal(args->expr, ctx, vm, 0, 0);
 	cdsl_value_t t2_val = cdsl_eval_expr_internal(args->next->expr, ctx, vm, 0, 0);
 
-	if (t1_val.type == CDSL_TYPE_STRING && t2_val.type == CDSL_TYPE_STRING) {
-		time_t t1 = parse_iso_date(t1_val.data.string_val);
-		time_t t2 = parse_iso_date(t2_val.data.string_val);
-		if (t1 != (time_t)-1 && t2 != (time_t)-1) {
-			res.data.bool_val = (t1 < t2);
-		}
+	/* Accept both DATE type and ISO-8601 STRING type */
+	time_t t1 = (time_t)-1, t2 = (time_t)-1;
+	if (t1_val.type == CDSL_TYPE_DATE) {
+		t1 = t1_val.data.date_val;
+	} else if (t1_val.type == CDSL_TYPE_STRING) {
+		t1 = parse_iso_date(t1_val.data.string_val);
+	}
+	if (t2_val.type == CDSL_TYPE_DATE) {
+		t2 = t2_val.data.date_val;
+	} else if (t2_val.type == CDSL_TYPE_STRING) {
+		t2 = parse_iso_date(t2_val.data.string_val);
+	}
+
+	if (t1 != (time_t)-1 && t2 != (time_t)-1) {
+		res.data.bool_val = (t1 < t2);
 	}
 	return res;
 }
@@ -191,12 +202,344 @@ builtin_is_after(const char* name, cdsl_arg_node_t* args, cdsl_context_t* ctx, c
 	cdsl_value_t t1_val = cdsl_eval_expr_internal(args->expr, ctx, vm, 0, 0);
 	cdsl_value_t t2_val = cdsl_eval_expr_internal(args->next->expr, ctx, vm, 0, 0);
 
-	if (t1_val.type == CDSL_TYPE_STRING && t2_val.type == CDSL_TYPE_STRING) {
-		time_t t1 = parse_iso_date(t1_val.data.string_val);
-		time_t t2 = parse_iso_date(t2_val.data.string_val);
-		if (t1 != (time_t)-1 && t2 != (time_t)-1) {
-			res.data.bool_val = (t1 > t2);
-		}
+	/* Accept both DATE type and ISO-8601 STRING type */
+	time_t t1 = (time_t)-1, t2 = (time_t)-1;
+	if (t1_val.type == CDSL_TYPE_DATE) {
+		t1 = t1_val.data.date_val;
+	} else if (t1_val.type == CDSL_TYPE_STRING) {
+		t1 = parse_iso_date(t1_val.data.string_val);
+	}
+	if (t2_val.type == CDSL_TYPE_DATE) {
+		t2 = t2_val.data.date_val;
+	} else if (t2_val.type == CDSL_TYPE_STRING) {
+		t2 = parse_iso_date(t2_val.data.string_val);
+	}
+
+	if (t1 != (time_t)-1 && t2 != (time_t)-1) {
+		res.data.bool_val = (t1 > t2);
+	}
+	return res;
+}
+
+/**
+ * @brief built-in uppercase(s): converts string to uppercase.
+ */
+static cdsl_value_t
+builtin_uppercase(const char* name, cdsl_arg_node_t* args, cdsl_context_t* ctx, cdsl_vm_t* vm)
+{
+	(void)name;
+	cdsl_value_t res = {.type = CDSL_TYPE_STRING, .data = {.string_val = NULL}};
+	if (!args || !args->expr) {
+		return res;
+	}
+	cdsl_value_t v = cdsl_eval_expr_internal(args->expr, ctx, vm, 0, 0);
+	if (v.type != CDSL_TYPE_STRING || !v.data.string_val) {
+		return res;
+	}
+	static _Thread_local char buf[4096];
+	size_t len = strlen(v.data.string_val);
+	if (len >= sizeof(buf)) {
+		return res;
+	}
+	for (size_t i = 0; i < len; i++) {
+		buf[i] = (char)toupper((unsigned char)v.data.string_val[i]);
+	}
+	buf[len] = '\0';
+	res.data.string_val = buf;
+	return res;
+}
+
+/**
+ * @brief built-in lowercase(s): converts string to lowercase.
+ */
+static cdsl_value_t
+builtin_lowercase(const char* name, cdsl_arg_node_t* args, cdsl_context_t* ctx, cdsl_vm_t* vm)
+{
+	(void)name;
+	cdsl_value_t res = {.type = CDSL_TYPE_STRING, .data = {.string_val = NULL}};
+	if (!args || !args->expr) {
+		return res;
+	}
+	cdsl_value_t v = cdsl_eval_expr_internal(args->expr, ctx, vm, 0, 0);
+	if (v.type != CDSL_TYPE_STRING || !v.data.string_val) {
+		return res;
+	}
+	static _Thread_local char buf[4096];
+	size_t len = strlen(v.data.string_val);
+	if (len >= sizeof(buf)) {
+		return res;
+	}
+	for (size_t i = 0; i < len; i++) {
+		buf[i] = (char)tolower((unsigned char)v.data.string_val[i]);
+	}
+	buf[len] = '\0';
+	res.data.string_val = buf;
+	return res;
+}
+
+/**
+ * @brief built-in trim(s): removes leading and trailing whitespace.
+ */
+static cdsl_value_t
+builtin_trim(const char* name, cdsl_arg_node_t* args, cdsl_context_t* ctx, cdsl_vm_t* vm)
+{
+	(void)name;
+	cdsl_value_t res = {.type = CDSL_TYPE_STRING, .data = {.string_val = NULL}};
+	if (!args || !args->expr) {
+		return res;
+	}
+	cdsl_value_t v = cdsl_eval_expr_internal(args->expr, ctx, vm, 0, 0);
+	if (v.type != CDSL_TYPE_STRING || !v.data.string_val) {
+		return res;
+	}
+	const char* s = v.data.string_val;
+	while (*s && isspace((unsigned char)*s)) {
+		s++;
+	}
+	if (*s == '\0') {
+		static _Thread_local char empty[1];
+		empty[0] = '\0';
+		res.data.string_val = empty;
+		return res;
+	}
+	size_t len = strlen(s);
+	while (len > 0 && isspace((unsigned char)s[len - 1])) {
+		len--;
+	}
+	static _Thread_local char buf[4096];
+	if (len >= sizeof(buf)) {
+		return res;
+	}
+	memcpy(buf, s, len);
+	buf[len] = '\0';
+	res.data.string_val = buf;
+	return res;
+}
+
+/**
+ * @brief built-in startswith(s, prefix): checks if string starts with prefix.
+ */
+static cdsl_value_t
+builtin_startswith(const char* name, cdsl_arg_node_t* args, cdsl_context_t* ctx, cdsl_vm_t* vm)
+{
+	(void)name;
+	cdsl_value_t res = {.type = CDSL_TYPE_BOOL, .data = {.bool_val = 0}};
+	if (!args || !args->next || !args->expr || !args->next->expr) {
+		return res;
+	}
+	cdsl_value_t v1 = cdsl_eval_expr_internal(args->expr, ctx, vm, 0, 0);
+	cdsl_value_t v2 = cdsl_eval_expr_internal(args->next->expr, ctx, vm, 0, 0);
+	if (v1.type == CDSL_TYPE_STRING && v2.type == CDSL_TYPE_STRING && v1.data.string_val &&
+	    v2.data.string_val) {
+		res.data.bool_val =
+		    (strncmp(v1.data.string_val, v2.data.string_val, strlen(v2.data.string_val)) ==
+		     0);
+	}
+	return res;
+}
+
+/**
+ * @brief built-in endswith(s, suffix): checks if string ends with suffix.
+ */
+static cdsl_value_t
+builtin_endswith(const char* name, cdsl_arg_node_t* args, cdsl_context_t* ctx, cdsl_vm_t* vm)
+{
+	(void)name;
+	cdsl_value_t res = {.type = CDSL_TYPE_BOOL, .data = {.bool_val = 0}};
+	if (!args || !args->next || !args->expr || !args->next->expr) {
+		return res;
+	}
+	cdsl_value_t v1 = cdsl_eval_expr_internal(args->expr, ctx, vm, 0, 0);
+	cdsl_value_t v2 = cdsl_eval_expr_internal(args->next->expr, ctx, vm, 0, 0);
+	if (v1.type == CDSL_TYPE_STRING && v2.type == CDSL_TYPE_STRING && v1.data.string_val &&
+	    v2.data.string_val) {
+		size_t len1 = strlen(v1.data.string_val);
+		size_t len2 = strlen(v2.data.string_val);
+		res.data.bool_val = (len1 >= len2 && strcmp(v1.data.string_val + len1 - len2,
+							    v2.data.string_val) == 0);
+	}
+	return res;
+}
+
+/**
+ * @brief built-in abs(n): returns the absolute value of an INT or FLOAT.
+ */
+static cdsl_value_t
+builtin_abs(const char* name, cdsl_arg_node_t* args, cdsl_context_t* ctx, cdsl_vm_t* vm)
+{
+	(void)name;
+	cdsl_value_t res = {.type = CDSL_TYPE_INT, .data = {.int_val = 0}};
+	if (!args || !args->expr) {
+		return res;
+	}
+	cdsl_value_t v = cdsl_eval_expr_internal(args->expr, ctx, vm, 0, 0);
+	if (v.type == CDSL_TYPE_INT) {
+		res.type = CDSL_TYPE_INT;
+		res.data.int_val = abs(v.data.int_val);
+	} else if (v.type == CDSL_TYPE_FLOAT) {
+		res.type = CDSL_TYPE_FLOAT;
+		res.data.float_val = fabs(v.data.float_val);
+	}
+	return res;
+}
+
+/**
+ * @brief built-in min(a, b): returns the smaller of two numeric values.
+ */
+static cdsl_value_t
+builtin_min(const char* name, cdsl_arg_node_t* args, cdsl_context_t* ctx, cdsl_vm_t* vm)
+{
+	(void)name;
+	cdsl_value_t res = {.type = CDSL_TYPE_INT, .data = {.int_val = 0}};
+	if (!args || !args->next || !args->expr || !args->next->expr) {
+		return res;
+	}
+	cdsl_value_t a = cdsl_eval_expr_internal(args->expr, ctx, vm, 0, 0);
+	cdsl_value_t b = cdsl_eval_expr_internal(args->next->expr, ctx, vm, 0, 0);
+	int a_int =
+	    (a.type == CDSL_TYPE_INT || a.type == CDSL_TYPE_BOOL || a.type == CDSL_TYPE_FLOAT);
+	int b_int =
+	    (b.type == CDSL_TYPE_INT || b.type == CDSL_TYPE_BOOL || b.type == CDSL_TYPE_FLOAT);
+	if (!a_int || !b_int) {
+		return res;
+	}
+	double av = (a.type == CDSL_TYPE_FLOAT)	 ? a.data.float_val
+		    : (a.type == CDSL_TYPE_BOOL) ? (double)a.data.bool_val
+						 : (double)a.data.int_val;
+	double bv = (b.type == CDSL_TYPE_FLOAT)	 ? b.data.float_val
+		    : (b.type == CDSL_TYPE_BOOL) ? (double)b.data.bool_val
+						 : (double)b.data.int_val;
+	if (a.type == CDSL_TYPE_FLOAT || b.type == CDSL_TYPE_FLOAT) {
+		res.type = CDSL_TYPE_FLOAT;
+		res.data.float_val = (av < bv) ? av : bv;
+	} else {
+		res.type = CDSL_TYPE_INT;
+		res.data.int_val = (int)((av < bv) ? av : bv);
+	}
+	return res;
+}
+
+/**
+ * @brief built-in max(a, b): returns the larger of two numeric values.
+ */
+static cdsl_value_t
+builtin_max(const char* name, cdsl_arg_node_t* args, cdsl_context_t* ctx, cdsl_vm_t* vm)
+{
+	(void)name;
+	cdsl_value_t res = {.type = CDSL_TYPE_INT, .data = {.int_val = 0}};
+	if (!args || !args->next || !args->expr || !args->next->expr) {
+		return res;
+	}
+	cdsl_value_t a = cdsl_eval_expr_internal(args->expr, ctx, vm, 0, 0);
+	cdsl_value_t b = cdsl_eval_expr_internal(args->next->expr, ctx, vm, 0, 0);
+	int a_int =
+	    (a.type == CDSL_TYPE_INT || a.type == CDSL_TYPE_BOOL || a.type == CDSL_TYPE_FLOAT);
+	int b_int =
+	    (b.type == CDSL_TYPE_INT || b.type == CDSL_TYPE_BOOL || b.type == CDSL_TYPE_FLOAT);
+	if (!a_int || !b_int) {
+		return res;
+	}
+	double av = (a.type == CDSL_TYPE_FLOAT)	 ? a.data.float_val
+		    : (a.type == CDSL_TYPE_BOOL) ? (double)a.data.bool_val
+						 : (double)a.data.int_val;
+	double bv = (b.type == CDSL_TYPE_FLOAT)	 ? b.data.float_val
+		    : (b.type == CDSL_TYPE_BOOL) ? (double)b.data.bool_val
+						 : (double)b.data.int_val;
+	if (a.type == CDSL_TYPE_FLOAT || b.type == CDSL_TYPE_FLOAT) {
+		res.type = CDSL_TYPE_FLOAT;
+		res.data.float_val = (av > bv) ? av : bv;
+	} else {
+		res.type = CDSL_TYPE_INT;
+		res.data.int_val = (int)((av > bv) ? av : bv);
+	}
+	return res;
+}
+
+/**
+ * @brief built-in round(n): rounds a FLOAT to the nearest integer.
+ */
+static cdsl_value_t
+builtin_round(const char* name, cdsl_arg_node_t* args, cdsl_context_t* ctx, cdsl_vm_t* vm)
+{
+	(void)name;
+	cdsl_value_t res = {.type = CDSL_TYPE_INT, .data = {.int_val = 0}};
+	if (!args || !args->expr) {
+		return res;
+	}
+	cdsl_value_t v = cdsl_eval_expr_internal(args->expr, ctx, vm, 0, 0);
+	if (v.type == CDSL_TYPE_FLOAT) {
+		res.data.int_val = (int)round(v.data.float_val);
+	} else if (v.type == CDSL_TYPE_INT) {
+		res.data.int_val = v.data.int_val;
+	}
+	return res;
+}
+
+/**
+ * @brief built-in typeof(expr): returns the type name as a string.
+ */
+static cdsl_value_t
+builtin_typeof(const char* name, cdsl_arg_node_t* args, cdsl_context_t* ctx, cdsl_vm_t* vm)
+{
+	(void)name;
+	cdsl_value_t res = {.type = CDSL_TYPE_STRING, .data = {.string_val = NULL}};
+	if (!args || !args->expr) {
+		return res;
+	}
+	cdsl_value_t v = cdsl_eval_expr_internal(args->expr, ctx, vm, 0, 0);
+	switch (v.type) {
+	case CDSL_TYPE_INT:
+		res.data.string_val = "INT";
+		break;
+	case CDSL_TYPE_FLOAT:
+		res.data.string_val = "FLOAT";
+		break;
+	case CDSL_TYPE_BOOL:
+		res.data.string_val = "BOOL";
+		break;
+	case CDSL_TYPE_STRING:
+		res.data.string_val = "STRING";
+		break;
+	case CDSL_TYPE_DATE:
+		res.data.string_val = "DATE";
+		break;
+	default:
+		res.data.string_val = "VOID";
+		break;
+	}
+	return res;
+}
+
+/**
+ * @brief built-in date_add(d, days): adds days to a date, returns a new date.
+ */
+static cdsl_value_t
+builtin_date_add(const char* name, cdsl_arg_node_t* args, cdsl_context_t* ctx, cdsl_vm_t* vm)
+{
+	(void)name;
+	cdsl_value_t res = {.type = CDSL_TYPE_DATE, .data = {.date_val = (time_t)-1}};
+	if (!args || !args->next || !args->expr || !args->next->expr) {
+		return res;
+	}
+	cdsl_value_t dv = cdsl_eval_expr_internal(args->expr, ctx, vm, 0, 0);
+	cdsl_value_t nv = cdsl_eval_expr_internal(args->next->expr, ctx, vm, 0, 0);
+
+	time_t t = (time_t)-1;
+	if (dv.type == CDSL_TYPE_DATE) {
+		t = dv.data.date_val;
+	} else if (dv.type == CDSL_TYPE_STRING) {
+		t = parse_iso_date(dv.data.string_val);
+	}
+
+	int days = 0;
+	if (nv.type == CDSL_TYPE_INT) {
+		days = nv.data.int_val;
+	} else if (nv.type == CDSL_TYPE_FLOAT) {
+		days = (int)nv.data.float_val;
+	}
+
+	if (t != (time_t)-1 && days != 0) {
+		res.data.date_val = t + (time_t)(days * 86400);
 	}
 	return res;
 }
@@ -210,5 +553,16 @@ cdsl_vm_register_builtins(cdsl_vm_t* vm)
 	cdsl_vm_register_function(vm, "is_after", builtin_is_after);
 	cdsl_vm_register_function(vm, "now", builtin_now);
 	cdsl_vm_register_function(vm, "days_between", builtin_days_between);
+	cdsl_vm_register_function(vm, "uppercase", builtin_uppercase);
+	cdsl_vm_register_function(vm, "lowercase", builtin_lowercase);
+	cdsl_vm_register_function(vm, "trim", builtin_trim);
+	cdsl_vm_register_function(vm, "startswith", builtin_startswith);
+	cdsl_vm_register_function(vm, "endswith", builtin_endswith);
+	cdsl_vm_register_function(vm, "abs", builtin_abs);
+	cdsl_vm_register_function(vm, "min", builtin_min);
+	cdsl_vm_register_function(vm, "max", builtin_max);
+	cdsl_vm_register_function(vm, "round", builtin_round);
+	cdsl_vm_register_function(vm, "typeof", builtin_typeof);
+	cdsl_vm_register_function(vm, "date_add", builtin_date_add);
 }
 /** @} */
