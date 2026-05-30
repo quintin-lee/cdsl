@@ -32,7 +32,7 @@
 
 | Tool     | Minimum Version |
 |----------|-----------------|
-| C99 compiler (GCC / Clang) | — |
+| C23 compiler (GCC / Clang) | — |
 | CMake    | 3.14            |
 | Flex     | 2.6             |
 | Bison    | 3.8             |
@@ -84,7 +84,7 @@ cmake --build build --target doc
 The schema defines the contract between rules and the host program. It declares all available variables and actions.
 
 ```c
-#include "abstract.h"
+#include <cdsl/schema.h>
 
 cdsl_schema_t* schema = cdsl_schema_create();
 
@@ -103,7 +103,7 @@ cdsl_schema_register_action(schema, "fail_metric", CDSL_TYPE_VOID, 2,
 ### 2.2 Parse a Rule
 
 ```c
-#include "ast.h"
+#include <cdsl/ast.h>
 
 const char* dsl =
     "RULE check_age {"
@@ -130,7 +130,7 @@ if (!cdsl_verify_rule(rule, schema, err, sizeof(err))) {
 
 // Detailed verification (all errors)
 cdsl_error_list_t* errors = cdsl_verify_rule_detailed(rule, schema);
-if (errors->count > 0) {
+if (cdsl_error_list_has_errors(errors)) {
     cdsl_error_list_print(errors);
 }
 cdsl_error_list_free(errors);
@@ -139,7 +139,7 @@ cdsl_error_list_free(errors);
 ### 2.4 Create VM and Register Actions
 
 ```c
-#include "execution.h"
+#include <cdsl/execution.h>
 
 void on_block(const char* name, cdsl_arg_node_t* args, void* ud) {
     if (args && args->expr && args->expr->type == CDSL_EXPR_STRING) {
@@ -480,7 +480,7 @@ dot -Tpng ruleset.dot -o ruleset.png
 ### 12.1 Offline Mode (Mock)
 
 ```c
-#include "ai_bridge.h"
+#include <cdsl/ai.h>
 
 // Default config uses mock mode (use_mock = 1)
 cdsl_ai_config_t cfg = cdsl_ai_config_default();
@@ -525,7 +525,7 @@ char* dsl = cdsl_ai_translate(
 Register a custom AI provider to replace the built-in LLM or mock backends:
 
 ```c
-#include "ai_bridge.h"
+#include <cdsl/ai.h>
 
 cdsl_ai_provider_t my_prov = {
     .ctx = my_state,

@@ -1,6 +1,6 @@
 # Module Design Document
 
-**Revision**: 1.0 &nbsp;·&nbsp; **Audience**: Contributors
+**Revision**: 2.0 &nbsp;·&nbsp; **Audience**: Contributors
 
 ---
 
@@ -9,35 +9,43 @@
 ```
 cdsl/
 ├── Core Modules
-│   ├── ast          — Abstract syntax tree construction
-│   ├── abstract     — Schema verification and type checking
-│   ├── execution    — VM engine, context, reports, RuleSet, codegen, visualization
-│   └── ai_bridge    — AI translation and safety review
+│   ├── ast          — Abstract syntax tree construction (src/ast/)
+│   ├── schema       — Schema verification and type checking (src/schema/)
+│   ├── execution    — VM engine: context, vm, report, cache, ruleset, codegen, visual (src/vm/)
+│   └── ai           — AI translation and safety review (src/ai/)
 │
-├── Infrastructure
-│   ├── cdsl_json    — Zero-dependency JSON parser
-│   ├── cdsl_error   — Structured error reporting
-│   ├── cdsl_arena   — Arena memory allocator
-│   └── cdsl_hashmap — Hash table implementation
+├── Infrastructure (src/util/)
+│   ├── json         — Zero-dependency JSON parser
+│   ├── error        — Structured error reporting
+│   ├── arena        — Arena memory allocator
+│   └── hashmap      — Hash table implementation
 │
-├── Grammar
+├── Grammar (parser/)
 │   ├── lexer.l      — Flex lexical rules
 │   └── parser.y     — Bison grammar rules
 │
 └── Build & Docs
     ├── CMakeLists.txt
     ├── Doxyfile
-    ├── cmake/        — Package config templates
-    └── docs/         — Markdown documentation
+    ├── cmake/         — Package config templates
+    └── docs/          — Markdown documentation
 ```
 
 ---
 
-## 1. AST Module (`ast.h` / `ast.c`)
+## 1. AST Module (`<cdsl/ast.h>` / `src/ast/`)
 
 ### Responsibility
 
 Defines all DSL syntax node types and provides constructors/free functions for the abstract syntax tree (AST). The AST is the output of the parser and the input to verification and execution.
+
+### Source Layout
+
+| File               | Responsibility                     |
+|--------------------|------------------------------------|
+| `src/ast/ast.c`    | Node constructors and `cdsl_free_rule()` |
+| `src/ast/parse.c`  | `cdsl_parse_string()` parser bridge |
+| `src/ast/template.c` | Template registry (`cdsl_template_register`, `cdsl_template_get`, etc.) |
 
 ### Data Structure
 
@@ -75,7 +83,7 @@ cdsl_rule_t
 
 ### Parser Integration
 
-The parser (`parser.y`) calls AST constructors (e.g., `cdsl_create_expr_binary()`) as it reduces grammar rules. The `cdsl_parse_string()` function wraps the Flex/Bison pipeline:
+The parser (`parser.y`) calls AST constructors (e.g., `cdsl_create_expr_binary()`) as it reduces grammar rules. The `cdsl_parse_string()` function in `src/ast/parse.c` wraps the Flex/Bison pipeline:
 
 ```
 dsl_string → yy_scan_string() → yyparse() → final_parsed_rule
@@ -83,15 +91,21 @@ dsl_string → yy_scan_string() → yyparse() → final_parsed_rule
 
 ### Template Registration
 
-Templates are stored in a global linked list within `ast.c`. When a `RULE ... EXTENDS` is parsed, `cdsl_create_extends_rule()` copies metrics from the registered template into the new rule via a deep copy of each metric's metadata and case structure (action/expression pointers are shared, not deep-copied).
+Templates are stored in a hash map within `src/ast/template.c`. When a `RULE ... EXTENDS` is parsed, `cdsl_create_extends_rule()` copies metrics from the registered template into the new rule via a deep copy of each metric's metadata and case structure (action/expression pointers are shared, not deep-copied).
 
 ---
 
-## 2. Abstract Module (`abstract.h` / `abstract.c`)
+## 2. Schema Module (`<cdsl/schema.h>` / `src/schema/schema.c`)
 
 ### Responsibility
 
 Schema registration and static semantic verification of AST rules before execution. Catches type errors, undefined variables, and invalid action signatures.
+
+### Source Layout
+
+| File                   | Responsibility                     |
+|------------------------|------------------------------------|
+| `src/schema/schema.c`  | Schema creation, variable/action registration, verification |
 
 ### Schema Structure
 
@@ -138,16 +152,34 @@ Two verification modes:
 
 | Function                  | Behavior                           | Use case              |
 |---------------------------|------------------------------------|-----------------------|
-| `cdsl_verify_rule()`      | Fail-fast, first error as string   | Quick validation      |
+| `cdsl_verify_rule()`      | Fail-fast, first error as `bool`   | Quick validation      |
 | `cdsl_verify_rule_detailed()` | Collect all errors into list    | IDE / batch reporting |
 
 ---
 
-## 3. Execution Module (`execution.h` / `execution.c`)
+## 3. Execution Module (7 Sub-modules)
 
 ### Responsibility
 
 The largest module. Handles: runtime context binding, AST interpretation, action dispatch, report generation, RuleSet management, compilation caching, code generation, and Graphviz visualization.
+
+The single monolithic `execution.h` / `execution.c` has been split into 7 specialized sub-modules under `src/vm/`.
+
+### Source Layout
+
+| File                    | Header                    | Responsibility                    |
+|-------------------------|---------------------------|-----------------------------------|
+| `src/vm/context.c`      | `<cdsl/context.h>`        | Context binding, `cdsl_value_t`   |
+| `src/vm/vm.c`           | `<cdsl/vm.h>`             | VM lifecycle, action/function registration, stats |
+| `src/vm/eval.c`         | — (internal)              | Core AST interpreter, `cdsl_vm_execute()` |
+| `src/vm/report.c`       | `<cdsl/report.h>`         | Report creation, printing, JSON serialization |
+| `src/vm/cache.c`        | `<cdsl/cache.h>`          | Thread-safe compilation cache     |
+| `src/vm/ruleset.c`      | `<cdsl/ruleset.h>`        | Priority-based batch execution, parallel, hot reload, topological sort |
+| `src/vm/codegen.c`      | `<cdsl/codegen.h>`        | DSL → C code generation           |
+| `src/vm/visual.c`       | `<cdsl/visual.h>`         | Graphviz DOT output                |
+| `src/vm/internal.h`     | — (private)               | Shared internal declarations       |
+
+A backward-compatible shim header `<cdsl/execution.h>` includes all 7 sub-module headers.
 
 ### Context (`cdsl_context_t`)
 
@@ -165,7 +197,7 @@ Two binding methods:
 1. **API binding**: type-specific setters (`cdsl_context_set_int`, etc.)
 2. **JSON loading**: `cdsl_context_load_json()` parses JSON and recursively binds variables with dot-notation keys
 
-### Expression Evaluation (`eval_expr`)
+### Expression Evaluation (`eval_expr` — internal to `vm/eval.c`)
 
 ```
 eval_expr(expr, ctx, vm, debug)
@@ -242,7 +274,7 @@ Generates Graphviz DOT format:
 
 ---
 
-## 4. AI Bridge Module (`ai_bridge.h` / `ai_bridge.c`)
+## 4. AI Module (`<cdsl/ai.h>` / `src/ai/bridge.c`)
 
 ### Responsibility
 
@@ -297,9 +329,9 @@ Response parsing extracts the `content` field from the JSON response and optiona
 
 ---
 
-## 5. Infrastructure Modules
+## 5. Infrastructure Modules (`<cdsl/util/*.h>` / `src/util/`)
 
-### 5.1 JSON Parser (`cdsl_json.h` / `cdsl_json.c`)
+### 5.1 JSON Parser (`<cdsl/util/json.h>` / `src/util/json.c`)
 
 A zero-dependency, recursive-descent JSON parser supporting:
 
@@ -309,7 +341,7 @@ A zero-dependency, recursive-descent JSON parser supporting:
 
 The parser does NOT handle escape sequences (e.g., `\n`, `\"`) — these are passed through literally.
 
-### 5.2 Error Reporting (cdsl_error.h / cdsl_error.c)
+### 5.2 Error Reporting (`<cdsl/util/error.h>` / `src/util/error.c`)
 
 Structured error types with hint support:
 
@@ -322,7 +354,7 @@ Structured error types with hint support:
 
 Error lists are dynamically allocated (initial capacity 16, doubles as needed).
 
-### 5.3 Arena Allocator (cdsl_arena.h / cdsl_arena.c)
+### 5.3 Arena Allocator (`<cdsl/util/arena.h>` / `src/util/arena.c`)
 
 A bump allocator for same-lifetime objects:
 
@@ -332,7 +364,7 @@ A bump allocator for same-lifetime objects:
 - One-shot free() releases all memory at once
 - Ideal for AST node allocation during parsing
 
-### 5.4 Hash Table (cdsl_hashmap.h / cdsl_hashmap.c)
+### 5.4 Hash Table (`<cdsl/util/hashmap.h>` / `src/util/hashmap.c`)
 
 A separate-chaining hash table with djb2 hashing:
 

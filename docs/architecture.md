@@ -6,7 +6,7 @@
 
 ## 1. Overview
 
-C-DSL is a three-layer rule engine framework built in C99. It transforms natural language business rules into executable DSL, validates them against a formal schema, and produces structured audit reports.
+C-DSL is a three-layer rule engine framework built in C23. It transforms natural language business rules into executable DSL, validates them against a formal schema, and produces structured audit reports.
 
 ### 1.1 Design Goals
 
@@ -23,7 +23,7 @@ C-DSL is a three-layer rule engine framework built in C99. It transforms natural
 
 | Component       | Technology                  |
 |-----------------|-----------------------------|
-| Language        | C99                         |
+| Language        | C23                         |
 | Build system    | CMake 3.14+                 |
 | Lexer           | Flex 2.6+                   |
 | Parser          | Bison 3.8+                  |
@@ -37,7 +37,7 @@ C-DSL is a three-layer rule engine framework built in C99. It transforms natural
 
 ```
 ┌──────────────────────────────────────────────────────────────┐
-│                    AI Bridge Layer                             │
+│                       AI Layer                                 │
 │                                                                │
 │  • Natural Language → DSL translation                          │
 │    - Schema-aware offline generation                          │
@@ -67,7 +67,7 @@ C-DSL is a three-layer rule engine framework built in C99. It transforms natural
                            │ Raw AST (cdsl_rule_t)
                            ▼
 ┌──────────────────────────────────────────────────────────────┐
-│  2. Abstract Layer                                            │
+│  2. Schema Layer                                              │
 │                                                                │
 │  Schema registration and static verification:                  │
 │  • Variable type checking (existence + type match)            │
@@ -100,7 +100,7 @@ C-DSL is a three-layer rule engine framework built in C99. It transforms natural
 
 ### 2.1 Syntax Layer
 
-**Files**: `parser/lexer.l`, `parser/parser.y`, `src/ast.c`
+**Files**: `parser/lexer.l`, `parser/parser.y`, `src/ast/ast.c`, `src/ast/parse.c`, `src/ast/template.c`
 
 The Syntax Layer is responsible for lexical analysis and parsing of DSL source text. Flex tokenizes the input into a stream of tokens; Bison consumes the token stream and constructs an abstract syntax tree (AST) using the node constructors in `ast.c`.
 
@@ -110,9 +110,9 @@ The Syntax Layer is responsible for lexical analysis and parsing of DSL source t
 - AST construction with proper parent-child relationships
 - Memory ownership: the parser allocates all AST nodes; the caller owns the returned `cdsl_rule_t`
 
-### 2.2 Abstract Layer
+### 2.2 Schema Layer
 
-**Files**: `src/abstract.c`, `include/cdsl_error.h`
+**Files**: `src/schema/schema.c`, `include/cdsl/util/error.h`
 
 The Abstract Layer performs static analysis on the raw AST before execution. It verifies that the rule is semantically correct with respect to a registered schema.
 
@@ -128,16 +128,18 @@ Two verification functions are provided:
 
 ### 2.3 Execution Layer
 
-**Files**: `src/vm_eval.c`, `src/vm_context.c`, `src/vm_cache.c`, `src/vm_ruleset.c`, `src/vm_codegen.c`, `src/vm_visualize.c`, `src/cdsl_json.c`
+**Files**: `src/vm/eval.c`, `src/vm/context.c`, `src/vm/vm.c`, `src/vm/cache.c`, `src/vm/ruleset.c`, `src/vm/codegen.c`, `src/vm/visual.c`, `src/vm/report.c`
 
 The Execution Layer interprets the verified AST against a runtime context. It has been modularized for better maintainability and thread-safety:
 
-- **vm_context.c**: Manages execution contexts, variable bindings, and VM lifecycle.
-- **vm_eval.c**: Core AST interpreter and rule execution logic (metric and simple rules).
-- **vm_cache.c**: Thread-safe compilation cache with robust collision handling.
-- **vm_ruleset.c**: Priority-based batch execution and parallel RuleSet evaluation.
-- **vm_codegen.c**: Translation of DSL rules into standalone C code.
-- **vm_visualize.c**: Generation of Graphviz DOT representations for rules and rulesets.
+- **vm/context.c**: Manages execution contexts, variable bindings.
+- **vm/vm.c**: VM lifecycle, action/function registration, execution statistics.
+- **vm/eval.c**: Core AST interpreter and rule execution logic (metric and simple rules).
+- **vm/report.c**: Report creation, printing, JSON serialization.
+- **vm/cache.c**: Thread-safe compilation cache with robust collision handling.
+- **vm/ruleset.c**: Priority-based batch execution and parallel RuleSet evaluation.
+- **vm/codegen.c**: Translation of DSL rules into standalone C code.
+- **vm/visual.c**: Generation of Graphviz DOT representations for rules and rulesets.
 
 **Execution flow**:
 

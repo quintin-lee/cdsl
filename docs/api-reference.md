@@ -6,16 +6,23 @@
 
 ## Module Index
 
-| Module                                            | Header               | Description                         |
-|---------------------------------------------------|----------------------|-------------------------------------|
-| AST (1)                                            | `ast.h`              | Abstract syntax tree construction   |
-| Abstract (2)                                       | `abstract.h`         | Schema verification                 |
-| Execution (3)                                      | `execution.h`        | VM, context, reports, RuleSet       |
-| AI Bridge (4)                                      | `ai_bridge.h`        | AI integration (mock + LLM)         |
-| Error (5)                                          | `cdsl_error.h`       | Error reporting                     |
-| Arena (6)                                          | `cdsl_arena.h`       | Arena memory allocator              |
-| Hashmap (7)                                        | `cdsl_hashmap.h`     | Hash table                          |
-| JSON (8)                                           | `cdsl_json.h`        | JSON parser                         |
+| Module                                             | Header                  | Description                         |
+|----------------------------------------------------|-------------------------|-------------------------------------|
+| AST (1)                                            | `<cdsl/ast.h>`          | Abstract syntax tree construction   |
+| Schema (2)                                         | `<cdsl/schema.h>`       | Schema verification                 |
+| Execution (3)                                      | `<cdsl/execution.h>`    | Umbrella: VM, context, reports, RuleSet |
+| &emsp;Context (3a)                                 | `<cdsl/context.h>`      | Variable bindings, `cdsl_value_t`   |
+| &emsp;VM (3b)                                      | `<cdsl/vm.h>`           | VM lifecycle, actions, functions    |
+| &emsp;Report (3c)                                  | `<cdsl/report.h>`       | Report creation, JSON serialization |
+| &emsp;Cache (3d)                                   | `<cdsl/cache.h>`        | Compilation cache                   |
+| &emsp;RuleSet (3e)                                 | `<cdsl/ruleset.h>`      | Batch execution, parallel, hot reload |
+| &emsp;Codegen (3f)                                 | `<cdsl/codegen.h>`      | DSL → C code generation             |
+| &emsp;Visual (3g)                                  | `<cdsl/visual.h>`       | Graphviz DOT output                 |
+| AI (4)                                             | `<cdsl/ai.h>`           | AI integration (mock + LLM)         |
+| Error (5)                                          | `<cdsl/util/error.h>`   | Error reporting                     |
+| Arena (6)                                          | `<cdsl/util/arena.h>`   | Arena memory allocator              |
+| Hashmap (7)                                        | `<cdsl/util/hashmap.h>` | Hash table                          |
+| JSON (8)                                           | `<cdsl/util/json.h>`    | JSON parser                         |
 
 ---
 
@@ -123,7 +130,7 @@ Finds a metadata value by key. Returns NULL if the key is not present.
 
 ---
 
-## 2. Abstract Module
+## 2. Schema Module
 
 ### Type Definitions
 
@@ -166,17 +173,17 @@ typedef struct cdsl_action_schema {
 | `cdsl_schema_free(schema)`                | `void`      | Free schema and all registrations        |
 | `cdsl_schema_register_var(schema, name, type)` | `void` | Register a typed variable             |
 | `cdsl_schema_register_action(schema, name, ret_type, arg_count, ...)` | `void` | Register an action with variadic argument types |
-| `cdsl_verify_rule(rule, schema, err_buf, err_buf_sz)` | `int` (1=valid) | Fast-fail verification with string error |
+| `cdsl_verify_rule(rule, schema, err_buf, err_buf_sz)` | `bool` | Fast-fail verification with string error |
 | `cdsl_verify_rule_detailed(rule, schema)` | `error_list*` | Collect all errors into structured list   |
 
 #### `cdsl_verify_rule`
 
 ```c
-int cdsl_verify_rule(const cdsl_rule_t* rule, const cdsl_schema_t* schema,
+bool cdsl_verify_rule(const cdsl_rule_t* rule, const cdsl_schema_t* schema,
                       char* err_buf, int err_buf_sz);
 ```
 
-Verifies a rule against the schema. Returns 1 if valid, 0 on error. On failure, `err_buf` contains a human-readable error message.
+Verifies a rule against the schema. Returns `true` if valid, `false` on error. On failure, `err_buf` contains a human-readable error message.
 
 #### `cdsl_verify_rule_detailed`
 
@@ -382,7 +389,7 @@ Loads variables from a JSON string. Nested objects are flattened with dot notati
 
 ---
 
-## 4. AI Bridge Module
+## 4. AI Module
 
 ### Type Definitions
 

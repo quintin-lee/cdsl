@@ -3,7 +3,7 @@
 [![CI](https://github.com/quintin-lee/cdsl/actions/workflows/ci.yml/badge.svg)](https://github.com/quintin-lee/cdsl/actions/workflows/ci.yml)
 [![Docs](https://img.shields.io/badge/docs-github--pages-blue)](https://quintin-lee.github.io/cdsl/)
 [![License: MIT](https://img.shields.io/badge/license-MIT-green)](LICENSE)
-[![C Standard](https://img.shields.io/badge/C-99-blue)](https://en.wikipedia.org/wiki/C99)
+[![C Standard](https://img.shields.io/badge/C-23-blue)](https://en.wikipedia.org/wiki/C23)
 
 **C-DSL** is an AI-powered domain-specific language rule engine for business rule validation. It translates natural language rules into executable DSL, evaluates them with multi-metric scoring, and produces tri-state audit reports (PASSED / PARTIALLY PASSED / FAILED).
 
@@ -67,7 +67,7 @@
 
 | Tool     | Minimum Version |
 |----------|-----------------|
-| C99 compiler (GCC / Clang) | —               |
+| C23 compiler (GCC / Clang) | —               |
 | CMake    | 3.14            |
 | Flex     | 2.6             |
 | Bison    | 3.8             |
@@ -136,7 +136,7 @@ pkg-config --cflags --libs cdsl
 
 ```
 ┌─────────────────────────────────────────────────────┐
-│                  AI Bridge Layer                     │
+│                     AI Layer                         │
 │   NL → DSL translation + Safety Review              │
 │   (mock / OpenAI-compatible API / stream)            │
 └────────────────────┬────────────────────────────────┘
@@ -144,13 +144,13 @@ pkg-config --cflags --libs cdsl
                      ▼
 ┌─────────────────────────────────────────────────────┐
 │  1. Syntax Layer (Flex/Bison → AST)                 │
-│     parser/lexer.l → parser/parser.y                │
+│     parser/ → src/ast/                              │
 │     Output: cdsl_rule_t (AST)                       │
 └────────────────────┬────────────────────────────────┘
                      │ Raw AST
                      ▼
 ┌─────────────────────────────────────────────────────┐
-│  2. Abstract Layer (Schema Verification)            │
+│  2. Schema Layer (Schema Verification)              │
 │     Type checking, variable resolution,             │
 │     action signature validation                     │
 └────────────────────┬────────────────────────────────┘
@@ -222,16 +222,48 @@ See [DSL Syntax Reference](docs/dsl-syntax.md) for full grammar details.
 
 ```
 cdsl/
-├── include/          # Public headers (8 files)
-├── src/              # Core implementation
-│   ├── ast.c         #         AST construction & free
-│   ├── abstract.c    #    Schema verification
-│   ├── execution.c   #    VM, context, RuleSet, stats, codegen, visualization
-│   ├── ai_bridge.c   #    NL ↔ DSL translation & review
-│   ├── cdsl_json.c   #    Zero-dependency JSON parser
-│   ├── cdsl_error.c  #    Structured error reporting
-│   ├── cdsl_arena.c  #    Arena memory allocator
-│   └── cdsl_hashmap.c#    Hash table
+├── include/cdsl/     # Public headers
+│   ├── cdsl.h        # Umbrella header (includes all below)
+│   ├── ast.h         # AST construction
+│   ├── schema.h      # Schema verification
+│   ├── context.h     # Variable bindings
+│   ├── vm.h          # VM lifecycle
+│   ├── report.h      # Report creation
+│   ├── cache.h       # Compilation cache
+│   ├── ruleset.h     # Batch execution
+│   ├── codegen.h     # DSL → C code generation
+│   ├── visual.h      # Graphviz DOT output
+│   ├── execution.h   # Backward-compat shim
+│   ├── ai.h          # AI integration
+│   └── util/         # Infrastructure
+│       ├── arena.h
+│       ├── error.h
+│       ├── hashmap.h
+│       └── json.h
+├── src/              # Implementation
+│   ├── ast/          # AST module
+│   │   ├── ast.c
+│   │   ├── parse.c
+│   │   └── template.c
+│   ├── schema/
+│   │   └── schema.c  # Schema verification
+│   ├── vm/           # Execution module (7 sub-modules)
+│   │   ├── context.c
+│   │   ├── vm.c
+│   │   ├── eval.c
+│   │   ├── report.c
+│   │   ├── cache.c
+│   │   ├── ruleset.c
+│   │   ├── codegen.c
+│   │   ├── visual.c
+│   │   └── internal.h
+│   ├── ai/
+│   │   └── bridge.c  # AI translation & review
+│   └── util/         # Infrastructure
+│       ├── arena.c
+│       ├── error.c
+│       ├── hashmap.c
+│       └── json.c
 ├── parser/           # Flex/Bison grammar
 │   ├── lexer.l
 │   └── parser.y
