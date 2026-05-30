@@ -85,6 +85,10 @@ codegen_expr(FILE* f, cdsl_expr_node_t* expr, const cdsl_schema_t* schema, const
 			getter = "get_bool";
 		} else if (t == CDSL_TYPE_STRING) {
 			getter = "get_string";
+		} else if (t == CDSL_TYPE_DATE) {
+			getter = "get_date";
+		} else if (t == CDSL_TYPE_LONG) {
+			getter = "get_long";
 		}
 		fprintf(f, "%s(ctx, \"%s\")", getter, expr->data.id_val);
 		break;

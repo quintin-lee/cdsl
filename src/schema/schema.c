@@ -16,7 +16,19 @@
 cdsl_schema_t*
 cdsl_schema_create(void)
 {
-	return calloc(1, sizeof(cdsl_schema_t));
+	cdsl_schema_t* s = calloc(1, sizeof(*s));
+	if (!s) {
+		return NULL;
+	}
+	s->var_map = cdsl_hashmap_create(32);
+	s->action_map = cdsl_hashmap_create(16);
+	if (!s->var_map || !s->action_map) {
+		cdsl_hashmap_free(s->var_map, NULL);
+		cdsl_hashmap_free(s->action_map, NULL);
+		free(s);
+		return NULL;
+	}
+	return s;
 }
 
 void
@@ -25,6 +37,8 @@ cdsl_schema_free(cdsl_schema_t* schema)
 	if (!schema) {
 		return;
 	}
+	cdsl_hashmap_free(schema->var_map, NULL);
+	cdsl_hashmap_free(schema->action_map, NULL);
 	cdsl_var_schema_t* v = schema->vars;
 	while (v) {
 		cdsl_var_schema_t* next = v->next;
@@ -49,11 +63,10 @@ cdsl_schema_register_var(cdsl_schema_t* schema, const char* name, cdsl_type_t ty
 	if (!schema || !name) {
 		return;
 	}
-	for (cdsl_var_schema_t* cur = schema->vars; cur; cur = cur->next) {
-		if (strcmp(cur->name, name) == 0) {
-			cur->type = type;
-			return;
-		}
+	cdsl_var_schema_t* cur = cdsl_hashmap_get(schema->var_map, name);
+	if (cur) {
+		cur->type = type;
+		return;
 	}
 	cdsl_var_schema_t* v = calloc(1, sizeof(*v));
 	if (!v) {
@@ -67,6 +80,7 @@ cdsl_schema_register_var(cdsl_schema_t* schema, const char* name, cdsl_type_t ty
 	v->type = type;
 	v->next = schema->vars;
 	schema->vars = v;
+	cdsl_hashmap_put(schema->var_map, name, v);
 }
 
 void
@@ -100,28 +114,19 @@ cdsl_schema_register_action(
 	}
 	a->next = schema->actions;
 	schema->actions = a;
+	cdsl_hashmap_put(schema->action_map, name, a);
 }
 
 static cdsl_var_schema_t*
 find_var(const cdsl_schema_t* schema, const char* name)
 {
-	for (cdsl_var_schema_t* v = schema->vars; v; v = v->next) {
-		if (strcmp(v->name, name) == 0) {
-			return v;
-		}
-	}
-	return NULL;
+	return cdsl_hashmap_get(schema->var_map, name);
 }
 
 static cdsl_action_schema_t*
 find_action(const cdsl_schema_t* schema, const char* name)
 {
-	for (cdsl_action_schema_t* a = schema->actions; a; a = a->next) {
-		if (strcmp(a->name, name) == 0) {
-			return a;
-		}
-	}
-	return NULL;
+	return cdsl_hashmap_get(schema->action_map, name);
 }
 
 static int

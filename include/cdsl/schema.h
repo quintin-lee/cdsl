@@ -10,6 +10,7 @@
 
 #include "cdsl/ast.h"
 #include "cdsl/util/error.h"
+#include "cdsl/util/hashmap.h"
 
 /**
  * @brief Registered variable descriptor.
@@ -37,6 +38,8 @@ typedef struct cdsl_action_schema {
 typedef struct cdsl_schema {
 	cdsl_var_schema_t* vars;
 	cdsl_action_schema_t* actions;
+	cdsl_hashmap_t* var_map;
+	cdsl_hashmap_t* action_map;
 } cdsl_schema_t;
 
 /**
