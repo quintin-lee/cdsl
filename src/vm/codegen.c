@@ -27,7 +27,7 @@
  * @param indent Current indentation string
  */
 static void
-codegen_expr(FILE* f, cdsl_expr_node_t* expr, const char* indent)
+codegen_expr(FILE* f, cdsl_expr_node_t* expr, const cdsl_schema_t* schema, const char* indent)
 {
 	if (!expr) {
 		return;
@@ -45,9 +45,27 @@ codegen_expr(FILE* f, cdsl_expr_node_t* expr, const char* indent)
 	case CDSL_EXPR_STRING:
 		fprintf(f, "\"%s\"", expr->data.string_val);
 		break;
-	case CDSL_EXPR_ID:
-		fprintf(f, "ctx_get_int(ctx, \"%s\")", expr->data.id_val);
+	case CDSL_EXPR_ID: {
+		cdsl_type_t t = CDSL_TYPE_INT;
+		if (schema) {
+			for (cdsl_var_schema_t* v = schema->vars; v; v = v->next) {
+				if (strcmp(v->name, expr->data.id_val) == 0) {
+					t = v->type;
+					break;
+				}
+			}
+		}
+		const char* getter = "get_int";
+		if (t == CDSL_TYPE_FLOAT) {
+			getter = "get_float";
+		} else if (t == CDSL_TYPE_BOOL) {
+			getter = "get_bool";
+		} else if (t == CDSL_TYPE_STRING) {
+			getter = "get_string";
+		}
+		fprintf(f, "%s(ctx, \"%s\")", getter, expr->data.id_val);
 		break;
+	}
 	case CDSL_EXPR_BINARY: {
 		const char* op_str = "?";
 		switch (expr->data.binary.op) {
@@ -75,25 +93,37 @@ codegen_expr(FILE* f, cdsl_expr_node_t* expr, const char* indent)
 		case CDSL_OP_OR:
 			op_str = "||";
 			break;
+		case CDSL_OP_ADD:
+			op_str = "+";
+			break;
+		case CDSL_OP_SUB:
+			op_str = "-";
+			break;
+		case CDSL_OP_MUL:
+			op_str = "*";
+			break;
+		case CDSL_OP_DIV:
+			op_str = "/";
+			break;
 		default:
 			break;
 		}
 		fprintf(f, "(");
-		codegen_expr(f, expr->data.binary.left, indent);
+		codegen_expr(f, expr->data.binary.left, schema, indent);
 		fprintf(f, " %s ", op_str);
-		codegen_expr(f, expr->data.binary.right, indent);
+		codegen_expr(f, expr->data.binary.right, schema, indent);
 		fprintf(f, ")");
 		break;
 	}
 	case CDSL_EXPR_UNARY:
-		fprintf(f, "!");
-		codegen_expr(f, expr->data.unary.expr, indent);
+		fprintf(f, expr->data.unary.op == CDSL_OP_NOT ? "!" : "-");
+		codegen_expr(f, expr->data.unary.expr, schema, indent);
 		break;
 	case CDSL_EXPR_CALL:
 		fprintf(f, "func_%s(ctx", expr->data.call.func_name);
 		for (cdsl_arg_node_t* a = expr->data.call.args; a; a = a->next) {
 			fprintf(f, ", ");
-			codegen_expr(f, a->expr, indent);
+			codegen_expr(f, a->expr, schema, indent);
 		}
 		fprintf(f, ")");
 		break;
@@ -104,7 +134,7 @@ codegen_expr(FILE* f, cdsl_expr_node_t* expr, const char* indent)
  * @brief Emit a C statement for an action node (internal).
  */
 static void
-codegen_action(FILE* f, cdsl_action_node_t* action, const char* indent)
+codegen_action(FILE* f, cdsl_action_node_t* action, const cdsl_schema_t* schema, const char* indent)
 {
 	if (!action) {
 		return;
@@ -116,7 +146,7 @@ codegen_action(FILE* f, cdsl_action_node_t* action, const char* indent)
 			fprintf(f, ", ");
 		}
 		first = 0;
-		codegen_expr(f, a->expr, indent);
+		codegen_expr(f, a->expr, schema, indent);
 	}
 	fprintf(f, ");\n");
 }
@@ -166,17 +196,19 @@ cdsl_codegen_rule_to_c(const cdsl_rule_t* rule, const cdsl_schema_t* schema)
 				critical ? ", is_critical=true" : "");
 			for (cdsl_case_node_t* c = m->case_list; c; c = c->next) {
 				fprintf(f, "    if (");
-				codegen_expr(f, c->condition, "        ");
+				codegen_expr(f, c->condition, schema, "        ");
 				fprintf(f, ") {\n");
 				if (c->action) {
 					if (strcmp(c->action->action_name, "score") == 0 &&
 					    c->action->args) {
 						fprintf(f, "        total_score += ");
-						codegen_expr(
-						    f, c->action->args->expr, "            ");
+						codegen_expr(f,
+							     c->action->args->expr,
+							     schema,
+							     "            ");
 						fprintf(f, ";\n");
 					} else {
-						codegen_action(f, c->action, "        ");
+						codegen_action(f, c->action, schema, "        ");
 					}
 				}
 				fprintf(f, "        goto next_metric_%s;\n", m->name);
@@ -192,7 +224,7 @@ cdsl_codegen_rule_to_c(const cdsl_rule_t* rule, const cdsl_schema_t* schema)
 						fprintf(f, "    return -1; /* critical veto */\n");
 					}
 				} else {
-					codegen_action(f, m->default_action, "    ");
+					codegen_action(f, m->default_action, schema, "    ");
 				}
 			}
 			fprintf(f, "    next_metric_%s: ;\n", m->name);
@@ -206,9 +238,9 @@ cdsl_codegen_rule_to_c(const cdsl_rule_t* rule, const cdsl_schema_t* schema)
 		fprintf(f, "                 void (*action)(const char* name, void* ud),\n");
 		fprintf(f, "                 void* ctx, void* ud) {\n");
 		fprintf(f, "    if (");
-		codegen_expr(f, rule->when_expr, "        ");
+		codegen_expr(f, rule->when_expr, schema, "        ");
 		fprintf(f, ") {\n");
-		codegen_action(f, rule->then_action, "        ");
+		codegen_action(f, rule->then_action, schema, "        ");
 		fprintf(f, "        return 0; /* FAILED */\n");
 		fprintf(f, "    }\n");
 		fprintf(f, "    return 1; /* PASSED */\n");
@@ -238,6 +270,179 @@ cdsl_codegen_to_file(const cdsl_rule_t* rule, const cdsl_schema_t* schema, const
 	fputs(code, f);
 	fclose(f);
 	free(code);
+	return 1;
+}
+
+char*
+cdsl_codegen_ruleset_to_h(const cdsl_ruleset_t* set,
+			  const cdsl_schema_t* schema,
+			  const char* module_name)
+{
+	(void)schema;
+	if (!set || !module_name) {
+		return NULL;
+	}
+	char* buf = NULL;
+	size_t len = 0;
+	FILE* f = open_memstream(&buf, &len);
+	if (!f) {
+		return NULL;
+	}
+
+	char guard[256];
+	snprintf(guard, sizeof(guard), "CDSL_GENERATED_%s_H", module_name);
+	for (int i = 0; guard[i]; i++) {
+		if (guard[i] >= 'a' && guard[i] <= 'z') {
+			guard[i] -= 32;
+		}
+	}
+
+	fprintf(f, "#ifndef %s\n#define %s\n\n", guard, guard);
+	fprintf(f, "/* Auto-generated header for ruleset module: %s */\n\n", module_name);
+
+	/* Prototypes for rules */
+	for (cdsl_ruleset_entry_t* e = set->entries; e; e = e->next) {
+		if (e->rule->metrics) {
+			fprintf(
+			    f,
+			    "int cdsl_eval_rule_%s(int (*get_int)(void* ctx, const char* name),\n",
+			    e->rule->name);
+			fprintf(
+			    f,
+			    "                 void (*action)(const char* name, int score, const "
+			    "char* reason, void* ud),\n");
+			fprintf(f, "                 void* ctx, void* ud);\n\n");
+		} else {
+			fprintf(
+			    f,
+			    "int cdsl_eval_rule_%s(int (*get_int)(void* ctx, const char* name),\n",
+			    e->rule->name);
+			fprintf(f,
+				"                 void (*action)(const char* name, void* ud),\n");
+			fprintf(f, "                 void* ctx, void* ud);\n\n");
+		}
+	}
+
+	/* Master ruleset prototype */
+	fprintf(f,
+		"int cdsl_eval_ruleset_%s(int (*get_int)(void* ctx, const char* name),\n",
+		module_name);
+	fprintf(f, "                     void* ctx, void* ud);\n\n");
+
+	fprintf(f, "#endif /* %s */\n", guard);
+
+	fflush(f);
+	fclose(f);
+	return buf;
+}
+
+char*
+cdsl_codegen_ruleset_to_c(const cdsl_ruleset_t* set,
+			  const cdsl_schema_t* schema,
+			  const char* module_name)
+{
+	if (!set || !module_name) {
+		return NULL;
+	}
+	char* buf = NULL;
+	size_t len = 0;
+	FILE* f = open_memstream(&buf, &len);
+	if (!f) {
+		return NULL;
+	}
+
+	fprintf(f, "#include \"%s.h\"\n", module_name);
+	fprintf(f, "#include <stdio.h>\n#include <string.h>\n\n");
+
+	/* Individual rules */
+	for (cdsl_ruleset_entry_t* e = set->entries; e; e = e->next) {
+		char* rule_c = cdsl_codegen_rule_to_c(e->rule, schema);
+		if (rule_c) {
+			/* Skip the header comments and standard includes already in rule_c */
+			char* body = strstr(rule_c, "int cdsl_eval_rule_");
+			if (body) {
+				fprintf(f, "%s\n", body);
+			}
+			free(rule_c);
+		}
+	}
+
+	/* Master ruleset evaluation function */
+	fprintf(f,
+		"int cdsl_eval_ruleset_%s(int (*get_int)(void* ctx, const char* name),\n",
+		module_name);
+	fprintf(f, "                     void* ctx, void* ud) {\n");
+	fprintf(f, "    int total_score = 0;\n");
+	fprintf(f, "    int res;\n\n");
+
+	for (cdsl_ruleset_entry_t* e = set->entries; e; e = e->next) {
+		fprintf(f, "    /* Rule: %s (priority: %d) */\n", e->rule->name, e->priority);
+		if (e->rule->metrics) {
+			fprintf(f,
+				"    res = cdsl_eval_rule_%s(get_int, NULL, ctx, ud);\n",
+				e->rule->name);
+			fprintf(f, "    if (res < 0) return -1; /* critical veto */\n");
+			fprintf(f, "    total_score += res;\n\n");
+		} else {
+			fprintf(f,
+				"    res = cdsl_eval_rule_%s(get_int, NULL, ctx, ud);\n",
+				e->rule->name);
+			fprintf(f, "    if (res == 0) return -1; /* simple rule failure */\n\n");
+		}
+	}
+
+	fprintf(f, "    return total_score;\n");
+	fprintf(f, "}\n");
+
+	fflush(f);
+	fclose(f);
+	return buf;
+}
+
+int
+cdsl_codegen_ruleset_to_files(const cdsl_ruleset_t* set,
+			      const cdsl_schema_t* schema,
+			      const char* base_path)
+{
+	if (!set || !base_path) {
+		return 0;
+	}
+
+	/* Extract module name from base_path */
+	const char* module_name = strrchr(base_path, '/');
+	if (module_name) {
+		module_name++;
+	} else {
+		module_name = base_path;
+	}
+
+	char* h_content = cdsl_codegen_ruleset_to_h(set, schema, module_name);
+	char* c_content = cdsl_codegen_ruleset_to_c(set, schema, module_name);
+
+	if (!h_content || !c_content) {
+		free(h_content);
+		free(c_content);
+		return 0;
+	}
+
+	char h_path[512], c_path[512];
+	snprintf(h_path, sizeof(h_path), "%s.h", base_path);
+	snprintf(c_path, sizeof(c_path), "%s.c", base_path);
+
+	FILE* fh = fopen(h_path, "w");
+	if (fh) {
+		fputs(h_content, fh);
+		fclose(fh);
+	}
+
+	FILE* fc = fopen(c_path, "w");
+	if (fc) {
+		fputs(c_content, fc);
+		fclose(fc);
+	}
+
+	free(h_content);
+	free(c_content);
 	return 1;
 }
 /** @} */

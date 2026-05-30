@@ -437,6 +437,50 @@ test_codegen_complex_expressions()
 	TEST_CODEGEN_END();
 }
 
+// Test 11: Ruleset code generation
+static void
+test_ruleset_codegen()
+{
+	TEST_CODEGEN_BEGIN("Ruleset code generation");
+
+	cdsl_ruleset_t* ruleset = cdsl_ruleset_create();
+	cdsl_schema_t* schema = cdsl_schema_create();
+
+	cdsl_schema_register_var(schema, "user.age", CDSL_TYPE_INT);
+	cdsl_schema_register_var(schema, "user.score", CDSL_TYPE_FLOAT);
+
+	const char* dsl1 = "RULE rule1 { WHEN user.age > 18 THEN score(10) }";
+	const char* dsl2 = "RULE rule2 { WHEN user.score > 50 THEN score(20) }";
+
+	cdsl_ruleset_add(ruleset, cdsl_parse_string(dsl1), 1);
+	cdsl_ruleset_add(ruleset, cdsl_parse_string(dsl2), 2);
+
+	// Generate H and C content
+	char* h_code = cdsl_codegen_ruleset_to_h(ruleset, schema, "my_rules");
+	char* c_code = cdsl_codegen_ruleset_to_c(ruleset, schema, "my_rules");
+
+	TEST_ASSERT_NOT_NULL(h_code, "Header code should be generated");
+	TEST_ASSERT_NOT_NULL(c_code, "Implementation code should be generated");
+
+	// Check header content
+	TEST_ASSERT(strstr(h_code, "int cdsl_eval_ruleset_my_rules") != NULL,
+		    "Header should contain ruleset function prototype");
+	TEST_ASSERT(strstr(h_code, "int cdsl_eval_rule_rule1") != NULL,
+		    "Header should contain rule1 prototype");
+
+	// Check implementation content
+	TEST_ASSERT(strstr(c_code, "int cdsl_eval_ruleset_my_rules") != NULL,
+		    "Implementation should contain ruleset function");
+	TEST_ASSERT(strstr(c_code, "cdsl_eval_rule_rule1(get_int, NULL, ctx, ud)") != NULL,
+		    "Implementation should call rule1");
+
+	free(h_code);
+	free(c_code);
+	cdsl_ruleset_free(ruleset);
+	cdsl_schema_free(schema);
+	TEST_CODEGEN_END();
+}
+
 int
 main()
 {
@@ -453,6 +497,7 @@ main()
 	test_codegen_string_literals();
 	test_codegen_performance();
 	test_codegen_complex_expressions();
+	test_ruleset_codegen();
 
 	TEST_SUMMARY();
 	TEST_EXIT();
