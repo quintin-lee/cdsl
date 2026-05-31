@@ -26,6 +26,23 @@
 #include <stdio.h>
 #include <math.h>
 
+/**
+ * @brief Evaluate condition using bytecode if available, else tree-walk.
+ */
+static cdsl_value_t
+evaluate_condition(cdsl_expr_node_t* expr,
+		   cdsl_context_t* ctx,
+		   cdsl_vm_t* vm,
+		   const cdsl_bytecode_t* bc,
+		   int debug)
+{
+	if (bc && bc->code) {
+		(void)debug;
+		return cdsl_bytecode_execute(vm, bc, ctx);
+	}
+	return cdsl_eval_expr_internal(expr, ctx, vm, debug, 0);
+}
+
 static size_t
 json_escape_len(const char* s)
 {
@@ -728,7 +745,10 @@ execute_metric_rule(cdsl_vm_t* vm, const cdsl_rule_t* rule, cdsl_context_t* ctx)
 }
 
 static cdsl_rule_report_t*
-execute_simple_rule(cdsl_vm_t* vm, const cdsl_rule_t* rule, cdsl_context_t* ctx)
+execute_simple_rule(cdsl_vm_t* vm,
+		    const cdsl_rule_t* rule,
+		    cdsl_context_t* ctx,
+		    const cdsl_bytecode_t* bc)
 {
 	cdsl_rule_report_t* report = calloc(1, sizeof(*report));
 	if (!report) {
@@ -758,7 +778,7 @@ execute_simple_rule(cdsl_vm_t* vm, const cdsl_rule_t* rule, cdsl_context_t* ctx)
 	if (vm->debug_enabled) {
 		fprintf(stderr, "[TRACE] Evaluating simple rule '%s'\n", rule->name);
 	}
-	cdsl_value_t cond = cdsl_eval_expr_internal(rule->when_expr, ctx, vm, vm->debug_enabled, 0);
+	cdsl_value_t cond = evaluate_condition(rule->when_expr, ctx, vm, bc, vm->debug_enabled);
 	int triggered = (cond.type == CDSL_TYPE_BOOL) ? cond.data.bool_val : 0;
 	if (vm->debug_enabled) {
 		fprintf(stderr, "[TRACE] WHEN result: %s\n", triggered ? "true" : "false");
@@ -792,6 +812,18 @@ execute_simple_rule(cdsl_vm_t* vm, const cdsl_rule_t* rule, cdsl_context_t* ctx)
 }
 
 cdsl_rule_report_t*
+cdsl_vm_execute_compiled(cdsl_vm_t* vm, cdsl_compiled_rule_t* compiled, cdsl_context_t* ctx)
+{
+	if (!vm || !compiled || !compiled->rule || !ctx) {
+		return NULL;
+	}
+	if (compiled->rule->metrics) {
+		return execute_metric_rule(vm, compiled->rule, ctx);
+	}
+	return execute_simple_rule(vm, compiled->rule, ctx, &compiled->bc);
+}
+
+cdsl_rule_report_t*
 cdsl_vm_execute(cdsl_vm_t* vm, const cdsl_rule_t* rule, cdsl_context_t* ctx)
 {
 	if (!vm || !rule || !ctx) {
@@ -802,7 +834,7 @@ cdsl_vm_execute(cdsl_vm_t* vm, const cdsl_rule_t* rule, cdsl_context_t* ctx)
 	if (rule->metrics) {
 		rpt = execute_metric_rule(vm, rule, ctx);
 	} else {
-		rpt = execute_simple_rule(vm, rule, ctx);
+		rpt = execute_simple_rule(vm, rule, ctx, NULL);
 	}
 	double elapsed = cdsl_get_time_us_internal() - t0;
 	vm->stats.total_executions++;

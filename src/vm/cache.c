@@ -37,6 +37,7 @@ free_compiled_rule(void* val)
 {
 	cdsl_compiled_rule_t* e = (cdsl_compiled_rule_t*)val;
 	if (e) {
+		cdsl_bytecode_free(&e->bc);
 		cdsl_free_rule(e->rule);
 		free(e->dsl_hash);
 		free(e);
@@ -140,16 +141,10 @@ cdsl_compile(cdsl_compile_cache_t* cache,
 	existing->verified = 1;
 	cdsl_hashmap_put(cache->map, dsl_code, existing);
 
+	/* Compile bytecode for faster execution */
+	cdsl_bytecode_compile(rule, schema, &existing->bc);
+
 	pthread_rwlock_unlock(&cache->lock);
 	return existing;
-}
-
-cdsl_rule_report_t*
-cdsl_vm_execute_compiled(cdsl_vm_t* vm, cdsl_compiled_rule_t* compiled, cdsl_context_t* ctx)
-{
-	if (!vm || !compiled || !compiled->rule || !ctx) {
-		return NULL;
-	}
-	return cdsl_vm_execute(vm, compiled->rule, ctx);
 }
 /** @} */

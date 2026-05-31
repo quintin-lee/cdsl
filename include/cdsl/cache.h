@@ -11,6 +11,7 @@
 #include "cdsl/ast.h"
 #include "cdsl/schema.h"
 #include "cdsl/util/hashmap.h"
+#include "cdsl/bytecode.h"
 #include <pthread.h>
 
 /**
@@ -20,6 +21,7 @@ typedef struct cdsl_compiled_rule {
 	cdsl_rule_t* rule;
 	char* dsl_hash;
 	int verified;
+	cdsl_bytecode_t bc;
 } cdsl_compiled_rule_t;
 
 /**
