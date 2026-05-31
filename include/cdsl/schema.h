@@ -18,6 +18,7 @@
 typedef struct cdsl_var_schema {
 	char* name;
 	cdsl_type_t type;
+	int is_readonly; /**< 1 if variable is read-only at runtime */
 	struct cdsl_var_schema* next;
 } cdsl_var_schema_t;
 
@@ -62,6 +63,22 @@ void cdsl_schema_free(cdsl_schema_t* schema);
  * @param type Expected data type
  */
 void cdsl_schema_register_var(cdsl_schema_t* schema, const char* name, cdsl_type_t type);
+/**
+ * @brief Register a variable with read-only protection.
+ *
+ * Read-only variables can be set once but not modified by
+ * cdsl_context_set_*() after being bound. Use for configuration
+ * variables that rules should not modify during execution.
+ *
+ * @param schema Target schema
+ * @param name Variable name (duplicated internally)
+ * @param type Expected data type
+ * @param readonly 1 to prevent runtime modification, 0 for normal behavior
+ */
+void cdsl_schema_register_var_rw(cdsl_schema_t* schema,
+				 const char* name,
+				 cdsl_type_t type,
+				 int readonly);
 
 /**
  * @brief Register an action in the schema.

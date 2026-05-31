@@ -77,5 +77,9 @@ cdsl_context_entry_t* cdsl_context_get_entry_internal(cdsl_context_t* ctx, const
  */
 void cdsl_vm_register_builtins(cdsl_vm_t* vm);
 
+int cdsl_vm_track_alloc(cdsl_vm_t* vm, size_t bytes);
+void cdsl_vm_track_free(cdsl_vm_t* vm, size_t bytes);
+int cdsl_vm_check_abort(cdsl_vm_t* vm, double start_time_us);
+
 #endif
 /** @} */

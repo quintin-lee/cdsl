@@ -70,7 +70,19 @@ typedef struct cdsl_vm {
 	int debug_enabled;
 	cdsl_stats_t stats;
 	int max_expr_depth;
+	int64_t timeout_us;	     /**< Execution timeout in microseconds; 0=unlimited */
+	int64_t memory_limit;	     /**< Max allocation bytes per execution; 0=unlimited */
+	_Atomic int64_t alloc_bytes; /**< Current allocation counter (for limit enforcement) */
+	_Atomic int error_state;     /**< Non-zero if execution was aborted (timeout/OOM) */
 } cdsl_vm_t;
+
+/** @name Execution quota control */
+/** @{ */
+void cdsl_vm_set_timeout(cdsl_vm_t* vm, int64_t timeout_us);
+int64_t cdsl_vm_get_timeout(const cdsl_vm_t* vm);
+void cdsl_vm_set_memory_limit(cdsl_vm_t* vm, int64_t limit_bytes);
+int64_t cdsl_vm_get_memory_limit(const cdsl_vm_t* vm);
+/** @} */
 
 [[nodiscard]]
 cdsl_vm_t* cdsl_vm_create(const cdsl_schema_t* schema);

@@ -82,10 +82,84 @@ cdsl_context_free(cdsl_context_t* ctx)
 	free(ctx);
 }
 
+/**
+ * @brief Check if a context variable is read-only per schema.
+ */
+static int
+context_var_is_readonly(const cdsl_context_t* ctx, const char* name)
+{
+	if (!ctx || !ctx->schema || !name) {
+		return 0;
+	}
+	cdsl_var_schema_t* vs = cdsl_hashmap_get(ctx->schema->var_map, name);
+	return vs && vs->is_readonly;
+}
+
+/**
+ * @brief Track memory allocation and enforce per-VM limit (internal).
+ * @return 1 if allocation should proceed, 0 if limit exceeded
+ */
+int
+cdsl_vm_track_alloc(cdsl_vm_t* vm, size_t bytes)
+{
+	if (!vm) {
+		return 1;
+	}
+	if (vm->memory_limit <= 0) {
+		return 1;
+	}
+	int64_t cur = atomic_fetch_add(&vm->alloc_bytes, (int64_t)bytes) + (int64_t)bytes;
+	if (cur > vm->memory_limit) {
+		vm->error_state = 1;
+		return 0;
+	}
+	return 1;
+}
+
+/**
+ * @brief Track memory deallocation (internal).
+ */
+void
+cdsl_vm_track_free(cdsl_vm_t* vm, size_t bytes)
+{
+	if (!vm || !bytes) {
+		return;
+	}
+	atomic_fetch_sub(&vm->alloc_bytes, (int64_t)bytes);
+}
+
+/**
+ * @brief Check if execution has been aborted (timeout or OOM).
+ */
+int
+cdsl_vm_check_abort(cdsl_vm_t* vm, double start_time_us)
+{
+	if (!vm) {
+		return 0;
+	}
+	if (vm->error_state) {
+		return 1;
+	}
+	if (vm->timeout_us > 0) {
+		double elapsed = cdsl_get_time_us_internal() - start_time_us;
+		if (elapsed > (double)vm->timeout_us) {
+			vm->error_state = 1;
+			return 1;
+		}
+	}
+	return 0;
+}
+
 void
 cdsl_context_set_int(cdsl_context_t* ctx, const char* name, int val)
 {
+	if (!ctx || !name) {
+		return;
+	}
 	cdsl_context_entry_t* e = cdsl_context_get_entry_internal(ctx, name);
+	if (e && context_var_is_readonly(ctx, name)) {
+		return;
+	}
 	if (e) {
 		if (e->value.type == CDSL_TYPE_STRING) {
 			free(e->value.data.string_val);
@@ -113,7 +187,14 @@ cdsl_context_set_int(cdsl_context_t* ctx, const char* name, int val)
 void
 cdsl_context_set_float(cdsl_context_t* ctx, const char* name, double val)
 {
-	cdsl_context_entry_t* e = cdsl_context_get_entry_internal(ctx, name);
+	cdsl_context_entry_t* e;
+	if (!ctx || !name) {
+		return;
+	}
+	e = cdsl_context_get_entry_internal(ctx, name);
+	if (e && context_var_is_readonly(ctx, name)) {
+		return;
+	}
 	if (e) {
 		if (e->value.type == CDSL_TYPE_STRING) {
 			free(e->value.data.string_val);
@@ -141,7 +222,14 @@ cdsl_context_set_float(cdsl_context_t* ctx, const char* name, double val)
 void
 cdsl_context_set_bool(cdsl_context_t* ctx, const char* name, int val)
 {
-	cdsl_context_entry_t* e = cdsl_context_get_entry_internal(ctx, name);
+	cdsl_context_entry_t* e;
+	if (!ctx || !name) {
+		return;
+	}
+	e = cdsl_context_get_entry_internal(ctx, name);
+	if (e && context_var_is_readonly(ctx, name)) {
+		return;
+	}
 	if (e) {
 		if (e->value.type == CDSL_TYPE_STRING) {
 			free(e->value.data.string_val);
@@ -169,7 +257,14 @@ cdsl_context_set_bool(cdsl_context_t* ctx, const char* name, int val)
 void
 cdsl_context_set_string(cdsl_context_t* ctx, const char* name, const char* val)
 {
-	cdsl_context_entry_t* e = cdsl_context_get_entry_internal(ctx, name);
+	cdsl_context_entry_t* e;
+	if (!ctx || !name) {
+		return;
+	}
+	e = cdsl_context_get_entry_internal(ctx, name);
+	if (e && context_var_is_readonly(ctx, name)) {
+		return;
+	}
 	if (e) {
 		if (e->value.type == CDSL_TYPE_STRING) {
 			free(e->value.data.string_val);
@@ -202,7 +297,14 @@ cdsl_context_set_string(cdsl_context_t* ctx, const char* name, const char* val)
 void
 cdsl_context_set_date(cdsl_context_t* ctx, const char* name, time_t val)
 {
-	cdsl_context_entry_t* e = cdsl_context_get_entry_internal(ctx, name);
+	cdsl_context_entry_t* e;
+	if (!ctx || !name) {
+		return;
+	}
+	e = cdsl_context_get_entry_internal(ctx, name);
+	if (e && context_var_is_readonly(ctx, name)) {
+		return;
+	}
 	if (e) {
 		if (e->value.type == CDSL_TYPE_STRING) {
 			free(e->value.data.string_val);
@@ -230,7 +332,14 @@ cdsl_context_set_date(cdsl_context_t* ctx, const char* name, time_t val)
 void
 cdsl_context_set_long(cdsl_context_t* ctx, const char* name, int64_t val)
 {
-	cdsl_context_entry_t* e = cdsl_context_get_entry_internal(ctx, name);
+	cdsl_context_entry_t* e;
+	if (!ctx || !name) {
+		return;
+	}
+	e = cdsl_context_get_entry_internal(ctx, name);
+	if (e && context_var_is_readonly(ctx, name)) {
+		return;
+	}
 	if (e) {
 		if (e->value.type == CDSL_TYPE_STRING) {
 			free(e->value.data.string_val);
@@ -491,6 +600,34 @@ cdsl_vm_reset_stats(cdsl_vm_t* vm)
 		vm->stats.total_time_us = 0;
 		vm->stats.avg_time_us = 0;
 	}
+}
+
+void
+cdsl_vm_set_timeout(cdsl_vm_t* vm, int64_t timeout_us)
+{
+	if (vm) {
+		vm->timeout_us = timeout_us;
+	}
+}
+
+int64_t
+cdsl_vm_get_timeout(const cdsl_vm_t* vm)
+{
+	return vm ? vm->timeout_us : 0;
+}
+
+void
+cdsl_vm_set_memory_limit(cdsl_vm_t* vm, int64_t limit_bytes)
+{
+	if (vm) {
+		vm->memory_limit = limit_bytes;
+	}
+}
+
+int64_t
+cdsl_vm_get_memory_limit(const cdsl_vm_t* vm)
+{
+	return vm ? vm->memory_limit : 0;
 }
 
 void

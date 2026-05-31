@@ -58,7 +58,7 @@ cdsl_schema_free(cdsl_schema_t* schema)
 }
 
 void
-cdsl_schema_register_var(cdsl_schema_t* schema, const char* name, cdsl_type_t type)
+cdsl_schema_register_var_rw(cdsl_schema_t* schema, const char* name, cdsl_type_t type, int readonly)
 {
 	if (!schema || !name) {
 		return;
@@ -66,6 +66,7 @@ cdsl_schema_register_var(cdsl_schema_t* schema, const char* name, cdsl_type_t ty
 	cdsl_var_schema_t* cur = cdsl_hashmap_get(schema->var_map, name);
 	if (cur) {
 		cur->type = type;
+		cur->is_readonly = readonly;
 		return;
 	}
 	cdsl_var_schema_t* v = calloc(1, sizeof(*v));
@@ -78,9 +79,15 @@ cdsl_schema_register_var(cdsl_schema_t* schema, const char* name, cdsl_type_t ty
 		return;
 	}
 	v->type = type;
+	v->is_readonly = readonly;
 	v->next = schema->vars;
 	schema->vars = v;
 	cdsl_hashmap_put(schema->var_map, name, v);
+}
+void
+cdsl_schema_register_var(cdsl_schema_t* schema, const char* name, cdsl_type_t type)
+{
+	cdsl_schema_register_var_rw(schema, name, type, 0);
 }
 
 void

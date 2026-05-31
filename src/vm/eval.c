@@ -778,6 +778,10 @@ execute_simple_rule(cdsl_vm_t* vm,
 	if (vm->debug_enabled) {
 		fprintf(stderr, "[TRACE] Evaluating simple rule '%s'\n", rule->name);
 	}
+	/* Abort if timeout or OOM */
+	if (vm->error_state) {
+		return NULL;
+	}
 	cdsl_value_t cond = evaluate_condition(rule->when_expr, ctx, vm, bc, vm->debug_enabled);
 	int triggered = (cond.type == CDSL_TYPE_BOOL) ? cond.data.bool_val : 0;
 	if (vm->debug_enabled) {
@@ -831,10 +835,19 @@ cdsl_vm_execute(cdsl_vm_t* vm, const cdsl_rule_t* rule, cdsl_context_t* ctx)
 	}
 	double t0 = cdsl_get_time_us_internal();
 	cdsl_rule_report_t* rpt;
+	/* Reset error state for each execution */
+	vm->error_state = 0;
 	if (rule->metrics) {
 		rpt = execute_metric_rule(vm, rule, ctx);
 	} else {
 		rpt = execute_simple_rule(vm, rule, ctx, NULL);
+	}
+	/* Check if aborted */
+	if (vm->error_state && !rpt) {
+		rpt = calloc(1, sizeof(cdsl_rule_report_t));
+		if (rpt) {
+			rpt->status = CDSL_STATUS_ERROR;
+		}
 	}
 	double elapsed = cdsl_get_time_us_internal() - t0;
 	vm->stats.total_executions++;

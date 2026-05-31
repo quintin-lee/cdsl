@@ -629,6 +629,7 @@ cdsl_bytecode_execute(cdsl_vm_t* vm, const cdsl_bytecode_t* bc, cdsl_context_t* 
 		return result;
 	}
 
+	double t0 = cdsl_get_time_us_internal();
 	cdsl_value_t stack[CDSL_BYTECODE_MAX_STACK];
 	int sp = 0;
 
@@ -643,8 +644,14 @@ cdsl_bytecode_execute(cdsl_vm_t* vm, const cdsl_bytecode_t* bc, cdsl_context_t* 
 
 	const bc_inst_t* ip = bc->code;
 	const bc_inst_t* end = bc->code + bc->count;
+	int loop_cnt = 0;
 
 	while (ip < end) {
+		/* Periodic timeout/OOM check */
+		if ((++loop_cnt & 0x3FF) == 0 && cdsl_vm_check_abort(vm, t0)) {
+			result.type = CDSL_TYPE_VOID;
+			goto done;
+		}
 		switch (ip->op) {
 		case BC_PUSH_INT:
 			result.type = CDSL_TYPE_INT;
