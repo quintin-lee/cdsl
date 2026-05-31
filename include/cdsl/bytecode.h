@@ -16,6 +16,7 @@
 #include "cdsl/schema.h"
 #include "cdsl/context.h"
 #include "cdsl/vm.h"
+#include "cdsl/report.h"
 
 /** Maximum value stack depth for bytecode execution. */
 #define CDSL_BYTECODE_MAX_STACK 256
@@ -49,6 +50,10 @@ typedef enum {
 	BC_JMP_IF_FALSE, /**< Peek; jump [operand: jump_offset] if top is false */
 	BC_JMP_IF_TRUE,	 /**< Peek; jump [operand: jump_offset] if top is true */
 	BC_JMP,		 /**< Unconditional jump [operand: jump_offset] */
+	BC_METRIC_START, /**< Start new metric [operand: const_idx (name)] */
+	BC_SET_SCORE,	 /**< Set score for current metric [operand: none (pops value)] */
+	BC_FAIL_METRIC,	 /**< Fail metric with reason [operand: const_idx (reason)] */
+	BC_RULE_END,	 /**< Finalize rule report [operand: none] */
 	BC_RET		 /**< Return (top of stack is result) */
 } bc_op_t;
 
@@ -61,7 +66,7 @@ typedef struct {
 		int int_val;
 		double float_val;
 		int bool_val;
-		char* string_val;
+		int const_idx; /**< Index into constant pool */
 		time_t date_val;
 		int64_t long_val;
 		int jump_offset;
@@ -76,6 +81,9 @@ typedef struct {
 	int count;
 	int capacity;
 	int max_stack;
+	cdsl_value_t* constants; /**< Constant pool for strings and large literals */
+	int const_count;
+	int const_capacity;
 } cdsl_bytecode_t;
 
 /**
@@ -101,6 +109,20 @@ cdsl_bytecode_compile(const cdsl_rule_t* rule, const cdsl_schema_t* schema, cdsl
  * @return Evaluated value; string pointers are borrowed from context/bytecode
  */
 cdsl_value_t cdsl_bytecode_execute(cdsl_vm_t* vm, const cdsl_bytecode_t* bc, cdsl_context_t* ctx);
+
+/**
+ * @brief Execute bytecode to produce a full rule report.
+ *
+ * This function handles the logic for both Simple Rules and Metric Rules,
+ * including score calculation, threshold checks, and action triggering.
+ *
+ * @param vm VM instance
+ * @param bc Compiled bytecode chunk
+ * @param ctx Execution context
+ * @return Newly allocated rule report (must be freed with cdsl_report_free)
+ */
+cdsl_rule_report_t*
+cdsl_bytecode_execute_rule(cdsl_vm_t* vm, const cdsl_bytecode_t* bc, cdsl_context_t* ctx);
 
 /**
  * @brief Free a bytecode chunk.

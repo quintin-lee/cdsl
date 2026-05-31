@@ -868,6 +868,9 @@ cdsl_vm_execute_compiled(cdsl_vm_t* vm, cdsl_compiled_rule_t* compiled, cdsl_con
 	if (!vm || !compiled || !compiled->rule || !ctx) {
 		return NULL;
 	}
+	if (compiled->bc.code) {
+		return cdsl_bytecode_execute_rule(vm, &compiled->bc, ctx);
+	}
 	if (compiled->rule->metrics) {
 		return execute_metric_rule(vm, compiled->rule, ctx);
 	}

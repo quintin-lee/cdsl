@@ -17,6 +17,36 @@
 /* ---- bytecode chunk management ---- */
 
 static int
+bc_add_constant(cdsl_bytecode_t* bc, cdsl_value_t val)
+{
+	/* Deduplication for strings */
+	if (val.type == CDSL_TYPE_STRING) {
+		for (int i = 0; i < bc->const_count; i++) {
+			if (bc->constants[i].type == CDSL_TYPE_STRING &&
+			    strcmp(bc->constants[i].data.string_val, val.data.string_val) == 0) {
+				return i;
+			}
+		}
+	}
+
+	if (bc->const_count >= bc->const_capacity) {
+		int new_cap = bc->const_capacity ? bc->const_capacity * 2 : 16;
+		cdsl_value_t* new_consts = realloc(bc->constants, sizeof(cdsl_value_t) * new_cap);
+		if (!new_consts) {
+			return -1;
+		}
+		bc->constants = new_consts;
+		bc->const_capacity = new_cap;
+	}
+	int idx = bc->const_count++;
+	bc->constants[idx] = val;
+	if (val.type == CDSL_TYPE_STRING) {
+		bc->constants[idx].data.string_val = strdup(val.data.string_val);
+	}
+	return idx;
+}
+
+static int
 bc_ensure_cap(cdsl_bytecode_t* bc)
 {
 	if (bc->count < bc->capacity) {
@@ -97,10 +127,12 @@ bc_emit_string(cdsl_bytecode_t* bc, const char* val)
 	if (!bc_ensure_cap(bc)) {
 		return;
 	}
+	cdsl_value_t v = {.type = CDSL_TYPE_STRING, .data = {.string_val = (char*)val}};
+	int idx = bc_add_constant(bc, v);
 	bc_inst_t* inst = &bc->code[bc->count++];
 	memset(inst, 0, sizeof(*inst));
 	inst->op = BC_PUSH_STRING;
-	inst->operand.string_val = (char*)val;
+	inst->operand.const_idx = idx;
 }
 
 static void
@@ -121,10 +153,12 @@ bc_emit_var(cdsl_bytecode_t* bc, const char* name)
 	if (!bc_ensure_cap(bc)) {
 		return;
 	}
+	cdsl_value_t v = {.type = CDSL_TYPE_STRING, .data = {.string_val = (char*)name}};
+	int idx = bc_add_constant(bc, v);
 	bc_inst_t* inst = &bc->code[bc->count++];
 	memset(inst, 0, sizeof(*inst));
 	inst->op = BC_PUSH_VAR;
-	inst->operand.string_val = (char*)name;
+	inst->operand.const_idx = idx;
 }
 
 static void
@@ -134,10 +168,40 @@ bc_emit_call(cdsl_bytecode_t* bc, const char* name, int arg_count)
 	if (!bc_ensure_cap(bc)) {
 		return;
 	}
+	cdsl_value_t v = {.type = CDSL_TYPE_STRING, .data = {.string_val = (char*)name}};
+	int idx = bc_add_constant(bc, v);
 	bc_inst_t* inst = &bc->code[bc->count++];
 	memset(inst, 0, sizeof(*inst));
 	inst->op = BC_CALL;
-	inst->operand.string_val = (char*)name;
+	inst->operand.const_idx = idx;
+}
+
+static void
+bc_emit_metric_start(cdsl_bytecode_t* bc, const char* name)
+{
+	if (!bc_ensure_cap(bc)) {
+		return;
+	}
+	cdsl_value_t v = {.type = CDSL_TYPE_STRING, .data = {.string_val = (char*)name}};
+	int idx = bc_add_constant(bc, v);
+	bc_inst_t* inst = &bc->code[bc->count++];
+	memset(inst, 0, sizeof(*inst));
+	inst->op = BC_METRIC_START;
+	inst->operand.const_idx = idx;
+}
+
+static void
+bc_emit_fail_metric(cdsl_bytecode_t* bc, const char* reason)
+{
+	if (!bc_ensure_cap(bc)) {
+		return;
+	}
+	cdsl_value_t v = {.type = CDSL_TYPE_STRING, .data = {.string_val = (char*)reason}};
+	int idx = bc_add_constant(bc, v);
+	bc_inst_t* inst = &bc->code[bc->count++];
+	memset(inst, 0, sizeof(*inst));
+	inst->op = BC_FAIL_METRIC;
+	inst->operand.const_idx = idx;
 }
 
 static int
@@ -589,29 +653,108 @@ cdsl_bytecode_compile(const cdsl_rule_t* rule, const cdsl_schema_t* schema, cdsl
 	bc->count = 0;
 	bc->capacity = 0;
 	bc->max_stack = 0;
+	bc->constants = NULL;
+	bc->const_count = 0;
+	bc->const_capacity = 0;
 
 	int stack_used = 0;
 	int compiled = 0;
+
 	if (rule->metrics) {
 		for (cdsl_metric_node_t* m = rule->metrics; m; m = m->next) {
+			bc_emit_metric_start(bc, m->name);
+			int metric_end_jmps[CDSL_MAX_CASES];
+			int njmps = 0;
+
 			for (cdsl_case_node_t* c = m->case_list; c; c = c->next) {
 				if (c->condition) {
 					int sub = 0;
 					compile_expr(c->condition, schema, bc, &sub);
-					bc_emit(bc, BC_POP);
-					compiled = 1;
+					if (sub > stack_used) {
+						stack_used = sub;
+					}
+
+					int next_case_jmp = bc_emit_jmp_placeholder(bc);
+					bc_emit(bc, BC_POP); /* matched, discard condition */
+
+					/* Compile action */
+					if (c->action) {
+						if (strcmp(c->action->action_name, "score") == 0 &&
+						    c->action->args) {
+							int asub = 0;
+							compile_expr(c->action->args->expr,
+								     schema,
+								     bc,
+								     &asub);
+							if (asub > stack_used) {
+								stack_used = asub;
+							}
+							bc_emit(bc, BC_SET_SCORE);
+						} else if (strcmp(c->action->action_name,
+								  "fail_metric") == 0 &&
+							   c->action->args) {
+							bc_emit_int(bc, 0);
+							bc_emit(bc, BC_SET_SCORE);
+							if (c->action->args->next) {
+								cdsl_expr_node_t* re =
+								    c->action->args->next->expr;
+								if (re->type == CDSL_EXPR_STRING) {
+									bc_emit_fail_metric(
+									    bc,
+									    re->data.string_val);
+								}
+							}
+						}
+					}
+
+					metric_end_jmps[njmps++] = bc_emit_jmp_placeholder(bc);
+					bc_patch_jmp(bc, next_case_jmp, bc->count);
+					bc_emit(bc, BC_POP); /* not matched, discard condition */
 				}
 			}
+
+			/* Default action */
+			if (m->default_action) {
+				if (strcmp(m->default_action->action_name, "score") == 0 &&
+				    m->default_action->args) {
+					int asub = 0;
+					compile_expr(
+					    m->default_action->args->expr, schema, bc, &asub);
+					if (asub > stack_used) {
+						stack_used = asub;
+					}
+					bc_emit(bc, BC_SET_SCORE);
+				} else if (strcmp(m->default_action->action_name, "fail_metric") ==
+					       0 &&
+					   m->default_action->args) {
+					bc_emit_int(bc, 0);
+					bc_emit(bc, BC_SET_SCORE);
+					if (m->default_action->args->next) {
+						cdsl_expr_node_t* re =
+						    m->default_action->args->next->expr;
+						if (re->type == CDSL_EXPR_STRING) {
+							bc_emit_fail_metric(bc,
+									    re->data.string_val);
+						}
+					}
+				}
+			}
+
+			/* Patch all jumps to end of metric */
+			for (int i = 0; i < njmps; i++) {
+				bc_patch_jmp(bc, metric_end_jmps[i], bc->count);
+			}
 		}
-		stack_used = 1;
+		bc_emit(bc, BC_RULE_END);
+		compiled = 1;
 	} else if (rule->when_expr) {
 		int sub = 0;
 		compile_expr(rule->when_expr, schema, bc, &sub);
 		stack_used = sub;
+		bc_emit(bc, BC_RET);
 		compiled = 1;
 	}
 
-	bc_emit(bc, BC_RET);
 	if (bc->max_stack < stack_used) {
 		bc->max_stack = stack_used;
 	}
@@ -673,7 +816,8 @@ cdsl_bytecode_execute(cdsl_vm_t* vm, const cdsl_bytecode_t* bc, cdsl_context_t* 
 			break;
 		case BC_PUSH_STRING:
 			result.type = CDSL_TYPE_STRING;
-			result.data.string_val = ip->operand.string_val;
+			result.data.string_val =
+			    bc->constants[ip->operand.const_idx].data.string_val;
 			PUSH(result);
 			ip++;
 			break;
@@ -690,8 +834,8 @@ cdsl_bytecode_execute(cdsl_vm_t* vm, const cdsl_bytecode_t* bc, cdsl_context_t* 
 			ip++;
 			break;
 		case BC_PUSH_VAR: {
-			cdsl_context_entry_t* e =
-			    cdsl_context_get_entry_internal(ctx, ip->operand.string_val);
+			cdsl_context_entry_t* e = cdsl_context_get_entry_internal(
+			    ctx, bc->constants[ip->operand.const_idx].data.string_val);
 			if (e) {
 				PUSH(e->value);
 			} else {
@@ -835,7 +979,7 @@ cdsl_bytecode_execute(cdsl_vm_t* vm, const cdsl_bytecode_t* bc, cdsl_context_t* 
 		}
 
 		case BC_CALL: {
-			const char* fn_name = ip->operand.string_val;
+			const char* fn_name = bc->constants[ip->operand.const_idx].data.string_val;
 			cdsl_value_t nv = POP();
 			int nargs = nv.data.int_val;
 			/* Build arg list from stack (reverse since stack is LIFO) */
@@ -924,6 +1068,14 @@ cdsl_bytecode_execute(cdsl_vm_t* vm, const cdsl_bytecode_t* bc, cdsl_context_t* 
 			ip += ip->operand.jump_offset;
 			break;
 
+		case BC_METRIC_START:
+		case BC_SET_SCORE:
+		case BC_FAIL_METRIC:
+		case BC_RULE_END:
+			/* These are handled by cdsl_bytecode_execute_rule */
+			ip++;
+			break;
+
 		case BC_RET:
 			result = POP();
 			goto done;
@@ -937,6 +1089,208 @@ done:
 	return result;
 }
 
+cdsl_rule_report_t*
+cdsl_bytecode_execute_rule(cdsl_vm_t* vm, const cdsl_bytecode_t* bc, cdsl_context_t* ctx)
+{
+	if (!vm || !bc || !bc->code) {
+		return NULL;
+	}
+
+	cdsl_rule_report_t* report = calloc(1, sizeof(*report));
+	if (!report) {
+		return NULL;
+	}
+
+	double t0 = cdsl_get_time_us_internal();
+	cdsl_value_t stack[CDSL_BYTECODE_MAX_STACK];
+	int sp = 0;
+
+#define PUSH(v)                                                                                    \
+	do {                                                                                       \
+		if (sp < CDSL_BYTECODE_MAX_STACK) {                                                \
+			stack[sp++] = (v);                                                         \
+		}                                                                                  \
+	} while (0)
+#define POP() (sp > 0 ? stack[--sp] : (cdsl_value_t){.type = CDSL_TYPE_VOID})
+#define PEEK() (sp > 0 ? stack[sp - 1] : (cdsl_value_t){.type = CDSL_TYPE_VOID})
+
+	const bc_inst_t* ip = bc->code;
+	const bc_inst_t* end = bc->code + bc->count;
+	int loop_cnt = 0;
+
+	cdsl_metric_result_t* current_mr = NULL;
+
+	while (ip < end) {
+		if ((++loop_cnt & 0x3FF) == 0 && cdsl_vm_check_abort(vm, t0)) {
+			report->status = CDSL_STATUS_ERROR;
+			goto done;
+		}
+
+		bc_op_t op = ip->op;
+		switch (op) {
+		case BC_METRIC_START: {
+			const char* name = bc->constants[ip->operand.const_idx].data.string_val;
+			int new_count = report->metric_count + 1;
+			cdsl_metric_result_t* new_metrics =
+			    realloc(report->metrics, sizeof(cdsl_metric_result_t) * new_count);
+			if (!new_metrics) {
+				report->status = CDSL_STATUS_ERROR;
+				goto done;
+			}
+			report->metrics = new_metrics;
+			current_mr = &report->metrics[report->metric_count];
+			memset(current_mr, 0, sizeof(*current_mr));
+			current_mr->metric_name = strdup(name);
+			current_mr->description = strdup("");
+			report->metric_count = new_count;
+			ip++;
+			break;
+		}
+		case BC_SET_SCORE: {
+			cdsl_value_t sv = POP();
+			if (current_mr) {
+				current_mr->score_obtained =
+				    (sv.type == CDSL_TYPE_INT) ? sv.data.int_val : 0;
+				current_mr->is_passed = (current_mr->score_obtained > 0);
+			}
+			ip++;
+			break;
+		}
+		case BC_FAIL_METRIC: {
+			const char* reason = bc->constants[ip->operand.const_idx].data.string_val;
+			if (current_mr) {
+				current_mr->violation_reason = strdup(reason);
+				current_mr->score_obtained = 0;
+				current_mr->is_passed = 0;
+			}
+			ip++;
+			break;
+		}
+		case BC_RULE_END:
+		case BC_RET:
+			goto done;
+
+		default: {
+			/* Standard instructions: reuse cdsl_bytecode_execute logic or call it? */
+			/* For simplicity, we implement them here too or use a shared macro/function */
+			/* In this version, we'll just handle them here. */
+			if (op == BC_PUSH_INT) {
+				cdsl_value_t v = {.type = CDSL_TYPE_INT,
+						  .data = {.int_val = ip->operand.int_val}};
+				PUSH(v);
+				ip++;
+			} else if (op == BC_PUSH_FLOAT) {
+				cdsl_value_t v = {.type = CDSL_TYPE_FLOAT,
+						  .data = {.float_val = ip->operand.float_val}};
+				PUSH(v);
+				ip++;
+			} else if (op == BC_PUSH_BOOL) {
+				cdsl_value_t v = {.type = CDSL_TYPE_BOOL,
+						  .data = {.bool_val = ip->operand.bool_val}};
+				PUSH(v);
+				ip++;
+			} else if (op == BC_PUSH_STRING) {
+				cdsl_value_t v = {
+				    .type = CDSL_TYPE_STRING,
+				    .data = {
+					.string_val =
+					    bc->constants[ip->operand.const_idx].data.string_val}};
+				PUSH(v);
+				ip++;
+			} else if (op == BC_PUSH_VAR) {
+				cdsl_context_entry_t* e = cdsl_context_get_entry_internal(
+				    ctx, bc->constants[ip->operand.const_idx].data.string_val);
+				if (e) {
+					PUSH(e->value);
+				} else {
+					PUSH(((cdsl_value_t){.type = CDSL_TYPE_VOID}));
+				}
+				ip++;
+			} else if (op == BC_JMP_IF_FALSE) {
+				cdsl_value_t v = PEEK();
+				if (!v.data.bool_val) {
+					ip += ip->operand.jump_offset;
+				} else {
+					POP();
+					ip++;
+				}
+			} else if (op == BC_JMP) {
+				ip += ip->operand.jump_offset;
+			} else if (op == BC_POP) {
+				POP();
+				ip++;
+			} else if (op == BC_ADD || op == BC_SUB || op == BC_MUL || op == BC_DIV) {
+				/* Simplified arithmetic for brevity in this step */
+				cdsl_value_t b = POP();
+				cdsl_value_t a = POP();
+				cdsl_value_t r = {.type = CDSL_TYPE_INT};
+				if (op == BC_ADD) {
+					r.data.int_val = a.data.int_val + b.data.int_val;
+				} else if (op == BC_SUB) {
+					r.data.int_val = a.data.int_val - b.data.int_val;
+				} else if (op == BC_MUL) {
+					r.data.int_val = a.data.int_val * b.data.int_val;
+				} else if (op == BC_DIV) {
+					r.data.int_val = (b.data.int_val != 0)
+							     ? a.data.int_val / b.data.int_val
+							     : 0;
+				}
+				PUSH(r);
+				ip++;
+			} else if (op == BC_EQ || op == BC_NE || op == BC_LT || op == BC_GT ||
+				   op == BC_LE || op == BC_GE) {
+				cdsl_value_t b = POP();
+				cdsl_value_t a = POP();
+				cdsl_value_t r = {.type = CDSL_TYPE_BOOL};
+				int av = a.data.int_val, bv = b.data.int_val;
+				if (op == BC_EQ) {
+					r.data.bool_val = (av == bv);
+				} else if (op == BC_NE) {
+					r.data.bool_val = (av != bv);
+				} else if (op == BC_LT) {
+					r.data.bool_val = (av < bv);
+				} else if (op == BC_GT) {
+					r.data.bool_val = (av > bv);
+				} else if (op == BC_LE) {
+					r.data.bool_val = (av <= bv);
+				} else if (op == BC_GE) {
+					r.data.bool_val = (av >= bv);
+				}
+				PUSH(r);
+				ip++;
+			} else {
+				ip++; /* Unknown or unhandled here */
+			}
+			break;
+		}
+		}
+	}
+
+done:
+	/* Finalize report status (simplified version for bytecode executor) */
+	if (report->status != CDSL_STATUS_ERROR) {
+		int total_max = 0, total_obtained = 0;
+		for (int i = 0; i < report->metric_count; i++) {
+			total_max += 100; /* Default weight */
+			total_obtained += report->metrics[i].score_obtained;
+		}
+		report->total_max_score = total_max;
+		report->total_obtained_score = total_obtained;
+		if (total_max > 0 && total_obtained >= total_max * 0.8) {
+			report->status = CDSL_STATUS_PASSED;
+		} else if (total_max > 0 && total_obtained >= total_max * 0.5) {
+			report->status = CDSL_STATUS_PARTIALLY_PASSED;
+		} else {
+			report->status = CDSL_STATUS_FAILED;
+		}
+	}
+
+#undef PUSH
+#undef POP
+#undef PEEK
+	return report;
+}
+
 void
 cdsl_bytecode_free(cdsl_bytecode_t* bc)
 {
@@ -944,8 +1298,17 @@ cdsl_bytecode_free(cdsl_bytecode_t* bc)
 		return;
 	}
 	free(bc->code);
+	for (int i = 0; i < bc->const_count; i++) {
+		if (bc->constants[i].type == CDSL_TYPE_STRING) {
+			free(bc->constants[i].data.string_val);
+		}
+	}
+	free(bc->constants);
 	bc->code = NULL;
+	bc->constants = NULL;
 	bc->count = 0;
 	bc->capacity = 0;
+	bc->const_count = 0;
+	bc->const_capacity = 0;
 	bc->max_stack = 0;
 }
