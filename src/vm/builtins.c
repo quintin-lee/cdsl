@@ -491,6 +491,10 @@ builtin_typeof(const char* name, cdsl_arg_node_t* args, cdsl_context_t* ctx, cds
 		res.data.string_val = "VOID";
 		break;
 	}
+	if (v.type == CDSL_TYPE_ARRAY && v.data.array_val) {
+		free(v.data.array_val->items);
+		free(v.data.array_val);
+	}
 	return res;
 }
 
@@ -508,6 +512,8 @@ builtin_count(const char* name, cdsl_arg_node_t* args, cdsl_context_t* ctx, cdsl
 	cdsl_value_t v = cdsl_eval_expr_internal(args->expr, ctx, vm, 0, 0);
 	if (v.type == CDSL_TYPE_ARRAY && v.data.array_val) {
 		res.data.int_val = v.data.array_val->count;
+		free(v.data.array_val->items);
+		free(v.data.array_val);
 	}
 	return res;
 }
@@ -532,6 +538,8 @@ builtin_sum(const char* name, cdsl_arg_node_t* args, cdsl_context_t* ctx, cdsl_v
 			}
 		}
 		res.data.int_val = sum;
+		free(v.data.array_val->items);
+		free(v.data.array_val);
 	}
 	return res;
 }
