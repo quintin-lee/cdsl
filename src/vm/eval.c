@@ -27,6 +27,31 @@
 #include <math.h>
 
 /**
+ * @brief Fire a trace event if callback is registered.
+ */
+static void
+fire_trace(cdsl_vm_t* vm,
+	   cdsl_trace_kind_t kind,
+	   const char* rule_name,
+	   const char* detail,
+	   cdsl_value_t val,
+	   int depth)
+{
+	if (!vm || !vm->trace_cb) {
+		return;
+	}
+	cdsl_trace_event_t ev = {
+	    .kind = kind,
+	    .rule_name = rule_name,
+	    .detail = detail,
+	    .value = val,
+	    .depth = depth,
+	    .timestamp_us = cdsl_get_time_us_internal(),
+	};
+	vm->trace_cb(&ev, vm->trace_ud);
+}
+
+/**
  * @brief Evaluate condition using bytecode if available, else tree-walk.
  */
 static cdsl_value_t
@@ -783,6 +808,7 @@ execute_simple_rule(cdsl_vm_t* vm,
 		return NULL;
 	}
 	cdsl_value_t cond = evaluate_condition(rule->when_expr, ctx, vm, bc, vm->debug_enabled);
+	fire_trace(vm, CDSL_TRACE_EXPR, rule->name, "WHEN", cond, 0);
 	int triggered = (cond.type == CDSL_TYPE_BOOL) ? cond.data.bool_val : 0;
 	if (vm->debug_enabled) {
 		fprintf(stderr, "[TRACE] WHEN result: %s\n", triggered ? "true" : "false");
@@ -796,6 +822,12 @@ execute_simple_rule(cdsl_vm_t* vm,
 		report->total_max_score = 100;
 		report->total_obtained_score = 0;
 		cdsl_trigger_action_internal(vm, rule->then_action);
+		fire_trace(vm,
+			   CDSL_TRACE_ACTION,
+			   rule->name,
+			   rule->then_action ? rule->then_action->action_name : "?",
+			   (cdsl_value_t){.type = CDSL_TYPE_VOID},
+			   0);
 	} else {
 		report->metrics[0].score_obtained = 100;
 		report->metrics[0].max_weight = 100;
@@ -804,6 +836,12 @@ execute_simple_rule(cdsl_vm_t* vm,
 		report->total_max_score = 100;
 		report->total_obtained_score = 100;
 	}
+	fire_trace(vm,
+		   CDSL_TRACE_RULE,
+		   rule->name,
+		   report->status == CDSL_STATUS_PASSED ? "PASSED" : "FAILED",
+		   (cdsl_value_t){.type = CDSL_TYPE_VOID},
+		   0);
 
 	char buf[256];
 	snprintf(buf,

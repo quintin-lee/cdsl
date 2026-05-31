@@ -603,6 +603,15 @@ cdsl_vm_reset_stats(cdsl_vm_t* vm)
 }
 
 void
+cdsl_vm_set_trace_callback(cdsl_vm_t* vm, cdsl_trace_cb_t cb, void* user_data)
+{
+	if (vm) {
+		vm->trace_cb = cb;
+		vm->trace_ud = user_data;
+	}
+}
+
+void
 cdsl_vm_set_timeout(cdsl_vm_t* vm, int64_t timeout_us)
 {
 	if (vm) {

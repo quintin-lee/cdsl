@@ -91,6 +91,12 @@ foreach(test_src ${TEST_SOURCES})
     add_test(NAME ${test_name} COMMAND ${test_name})
 endforeach()
 
+# 8. LSP tool (optional)
+option(CDSL_BUILD_LSP "Build the C-DSL Language Server" OFF)
+if(CDSL_BUILD_LSP)
+    add_subdirectory(tools/cdsl-lsp)
+endif()
+
 # 8. Install targets
 include(GNUInstallDirs)
 
