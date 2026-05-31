@@ -22,6 +22,19 @@
 #include "cdsl/execution.h"
 #include "cdsl/ai.h"
 
+static cdsl_rule_t*
+parse_dsl(const char* dsl) {
+	cdsl_error_list_t* errs = NULL;
+	cdsl_rule_t* rule = cdsl_parse_string(dsl, &errs);
+	if (errs) {
+		for (int i = 0; i < errs->count; i++) {
+			cdsl_error_print(errs->errors[i]);
+		}
+		cdsl_error_list_free(errs);
+	}
+	return rule;
+}
+
 /**
  * @brief Callback function for action invocations in the demo.
  *
@@ -126,7 +139,7 @@ demo_supplier_audit(cdsl_schema_t* schema, cdsl_ai_config_t* ai_cfg)
 	}
 
 	printf("[Step 3] Parsing DSL...\n");
-	cdsl_rule_t* rule = cdsl_parse_string(dsl_code, NULL);
+	cdsl_rule_t* rule = parse_dsl(dsl_code);
 	if (!rule) {
 		printf("  Parse failed.\n");
 		return;
@@ -215,7 +228,7 @@ demo_doc_audit(cdsl_schema_t* schema, cdsl_ai_config_t* ai_cfg)
 	       review->approved ? "YES" : "NO",
 	       review->risk_score);
 
-	cdsl_rule_t* rule = cdsl_parse_string(dsl_code, NULL);
+	cdsl_rule_t* rule = parse_dsl(dsl_code);
 	if (!rule) {
 		printf("Parse failed.\n");
 		cdsl_ai_review_free(review);
@@ -302,7 +315,7 @@ demo_content_audit(cdsl_schema_t* schema, cdsl_ai_config_t* ai_cfg)
 	       review->approved ? "YES" : "NO",
 	       review->risk_score);
 
-	cdsl_rule_t* rule = cdsl_parse_string(dsl_code, NULL);
+	cdsl_rule_t* rule = parse_dsl(dsl_code);
 	if (!rule) {
 		printf("Parse failed.\n");
 		cdsl_ai_review_free(review);
@@ -398,7 +411,7 @@ demo_json_context(void)
 	printf("DSL:\n%s\n", dsl);
 	printf("JSON Context: %s\n\n", json);
 
-	cdsl_rule_t* rule = cdsl_parse_string(dsl, NULL);
+	cdsl_rule_t* rule = parse_dsl(dsl);
 	if (!rule) {
 		printf("Parse failed.\n");
 		return;
@@ -474,7 +487,7 @@ demo_simple_rules(cdsl_schema_t* schema)
 
 	for (int i = 0; i < nrules; i++) {
 		printf("\n[Rule] %s\n", dsl_rules[i]);
-		cdsl_rule_t* rule = cdsl_parse_string(dsl_rules[i], NULL);
+		cdsl_rule_t* rule = parse_dsl(dsl_rules[i]);
 		if (!rule) {
 			printf("  Parse failed.\n");
 			continue;
@@ -546,7 +559,7 @@ demo_ruleset_batch(cdsl_schema_t* schema)
 	cdsl_vm_register_action(vm, "record_warning", action_callback);
 
 	for (int i = 0; i < 3; i++) {
-		cdsl_rule_t* rule = cdsl_parse_string(dsl_rules[i], NULL);
+		cdsl_rule_t* rule = parse_dsl(dsl_rules[i]);
 		if (rule) {
 			cdsl_ruleset_add(set, rule, priorities[i]);
 		}

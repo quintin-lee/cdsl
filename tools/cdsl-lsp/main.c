@@ -121,41 +121,62 @@ static void init_schema(void) {
 
 /* ---- Diagnostics ---- */
 
+static void append_diag(char* items, int line, int severity, const char* msg, const char* hint) {
+	char buf[1024], esc[1024], esc_hint[1024];
+	json_esc(msg, esc, sizeof(esc));
+	if (hint) json_esc(hint, esc_hint, sizeof(esc_hint));
+	int has_hint = hint && hint[0];
+	snprintf(buf, sizeof(buf),
+		 "{\"range\":{\"start\":{\"line\":%d,\"character\":0},"
+		 "\"end\":{\"line\":%d,\"character\":0}},"
+		 "\"severity\":%d,\"message\":\"%s\"%s%s%s}%s",
+		 line, line, severity, esc,
+		 has_hint ? ",\"hint\":\"" : "", has_hint ? esc_hint : "",
+		 has_hint ? "\"" : "",
+		 items[0] ? "," : "");
+	strcat(items, buf);
+}
+
 static void publish_diagnostics(void) {
 	char items[MAX_MSG] = "";
-	char buf[512];
-	int has_error = 0;
+	int n_diag = 0;
 
 	if (g_text[0]) {
-		cdsl_rule_t* rule = cdsl_parse_string(g_text, NULL);
-		if (!rule) {
-			snprintf(buf, sizeof(buf),
-				 "{\"range\":{\"start\":{\"line\":0,\"character\":0},"
-				 "\"end\":{\"line\":0,\"character\":0}},"
-				 "\"severity\":1,\"message\":\"Parse error\"}%s",
-				 items[0] ? "," : "");
-			has_error = 1;
-		} else {
-			char verr[512] = {0};
-			if (!cdsl_verify_rule(rule, g_schema, verr, sizeof(verr))) {
-				char esc[1024];
-				snprintf(buf, sizeof(buf),
-					 "{\"range\":{\"start\":{\"line\":0,\"character\":0},"
-					 "\"end\":{\"line\":0,\"character\":0}},"
-					 "\"severity\":1,\"message\":\"%s\"}%s",
-					 json_esc(verr, esc, sizeof(esc)),
-					 items[0] ? "," : "");
-				has_error = 1;
+		cdsl_error_list_t* errs = NULL;
+
+		cdsl_rule_t* rule = cdsl_parse_string(g_text, &errs);
+		if (rule) {
+			cdsl_error_list_t* verr = cdsl_verify_rule_detailed(rule, g_schema);
+			if (verr) {
+				for (int i = 0; i < verr->count; i++) {
+					int line = verr->errors[i]->line > 0 ? verr->errors[i]->line - 1 : 0;
+					int sev = verr->errors[i]->kind == CDSL_ERR_WARNING ? 2 : 1;
+					append_diag(items, line, sev,
+						    verr->errors[i]->message ? verr->errors[i]->message : "",
+						    verr->errors[i]->hint);
+					n_diag++;
+				}
+				cdsl_error_list_free(verr);
 			}
 			cdsl_free_rule(rule);
 		}
-		if (has_error) strcat(items, buf);
+
+		if (errs) {
+			for (int i = 0; i < errs->count; i++) {
+				int line = errs->errors[i]->line > 0 ? errs->errors[i]->line - 1 : 0;
+				append_diag(items, line, 1,
+					    errs->errors[i]->message ? errs->errors[i]->message : "",
+					    errs->errors[i]->hint);
+				n_diag++;
+			}
+			cdsl_error_list_free(errs);
+		}
 	}
 
 	snprintf(g_out, sizeof(g_out),
 		 "{\"jsonrpc\":\"2.0\",\"method\":\"textDocument/publishDiagnostics\","
 		 "\"params\":{\"uri\":\"%s\",\"diagnostics\":[%s]}}",
-		 g_uri, items);
+		 g_uri, n_diag > 0 ? items : "");
 	send_message(g_out);
 }
 
