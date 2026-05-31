@@ -18,6 +18,7 @@
 #include "cdsl/ruleset.h"
 #include "cdsl/codegen.h"
 #include "cdsl/visual.h"
+#include "cdsl/bytecode.h"
 
 #endif
 /** @} */
