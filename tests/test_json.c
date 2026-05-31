@@ -28,45 +28,45 @@ test_json_basic_parsing()
 	const char* json_obj = "{\"name\": \"Alice\", \"age\": 25, \"active\": true}";
 	cdsl_json_value_t* obj = cdsl_json_parse(json_obj);
 	TEST_ASSERT_NOT_NULL(obj, "JSON object should parse");
-	TEST_ASSERT(obj->type == JSON_OBJECT, "Should be object type");
+	TEST_ASSERT(obj->type == CDSL_JSON_OBJECT, "Should be object type");
 
 	// Test JSON array
 	const char* json_arr = "[1, 2, 3, 4, 5]";
 	cdsl_json_value_t* arr = cdsl_json_parse(json_arr);
 	TEST_ASSERT_NOT_NULL(arr, "JSON array should parse");
-	TEST_ASSERT(arr->type == JSON_ARRAY, "Should be array type");
+	TEST_ASSERT(arr->type == CDSL_JSON_ARRAY, "Should be array type");
 
 	// Test JSON string
 	const char* json_str = "\"Hello, World!\"";
 	cdsl_json_value_t* str = cdsl_json_parse(json_str);
 	TEST_ASSERT_NOT_NULL(str, "JSON string should parse");
-	TEST_ASSERT(str->type == JSON_STRING, "Should be string type");
+	TEST_ASSERT(str->type == CDSL_JSON_STRING, "Should be string type");
 
 	// Test JSON number (integer)
 	const char* json_num = "42";
 	cdsl_json_value_t* num = cdsl_json_parse(json_num);
 	TEST_ASSERT_NOT_NULL(num, "JSON number should parse");
-	TEST_ASSERT(num->type == JSON_NUMBER, "Should be number type");
+	TEST_ASSERT(num->type == CDSL_JSON_NUMBER, "Should be number type");
 
 	// Test JSON boolean (true)
 	const char* json_true = "true";
 	cdsl_json_value_t* true_val = cdsl_json_parse(json_true);
 	TEST_ASSERT_NOT_NULL(true_val, "JSON true should parse");
-	TEST_ASSERT(true_val->type == JSON_BOOL, "Should be boolean type");
+	TEST_ASSERT(true_val->type == CDSL_JSON_BOOL, "Should be boolean type");
 	TEST_ASSERT(true_val->value.bool_val == 1, "Should be true");
 
 	// Test JSON boolean (false)
 	const char* json_false = "false";
 	cdsl_json_value_t* false_val = cdsl_json_parse(json_false);
 	TEST_ASSERT_NOT_NULL(false_val, "JSON false should parse");
-	TEST_ASSERT(false_val->type == JSON_BOOL, "Should be boolean type");
+	TEST_ASSERT(false_val->type == CDSL_JSON_BOOL, "Should be boolean type");
 	TEST_ASSERT(false_val->value.bool_val == 0, "Should be false");
 
 	// Test JSON null
 	const char* json_null = "null";
 	cdsl_json_value_t* null_val = cdsl_json_parse(json_null);
 	TEST_ASSERT_NOT_NULL(null_val, "JSON null should parse");
-	TEST_ASSERT(null_val->type == JSON_NULL, "Should be null type");
+	TEST_ASSERT(null_val->type == CDSL_JSON_NULL, "Should be null type");
 
 	// Clean up
 	cdsl_json_free(obj);
@@ -101,52 +101,52 @@ test_json_nested_parsing()
 
 	cdsl_json_value_t* root = cdsl_json_parse(nested_json);
 	TEST_ASSERT_NOT_NULL(root, "Nested JSON should parse");
-	TEST_ASSERT(root->type == JSON_OBJECT, "Root should be object");
+	TEST_ASSERT(root->type == CDSL_JSON_OBJECT, "Root should be object");
 
 	// Test nested object access
 	cdsl_json_value_t* user = cdsl_json_get_object(root, "user");
 	TEST_ASSERT_NOT_NULL(user, "User object should exist");
-	TEST_ASSERT(user->type == JSON_OBJECT, "User should be object");
+	TEST_ASSERT(user->type == CDSL_JSON_OBJECT, "User should be object");
 
 	cdsl_json_value_t* name = cdsl_json_get_object(user, "name");
 	TEST_ASSERT_NOT_NULL(name, "Name should exist");
-	TEST_ASSERT(name->type == JSON_STRING, "Name should be string");
+	TEST_ASSERT(name->type == CDSL_JSON_STRING, "Name should be string");
 	TEST_ASSERT(strcmp(name->value.string_val, "Alice") == 0, "Name should match");
 
 	cdsl_json_value_t* age = cdsl_json_get_object(user, "age");
 	TEST_ASSERT_NOT_NULL(age, "Age should exist");
-	TEST_ASSERT(age->type == JSON_NUMBER, "Age should be number");
+	TEST_ASSERT(age->type == CDSL_JSON_NUMBER, "Age should be number");
 	TEST_ASSERT(age->value.number_val == 25, "Age should match");
 
 	// Test nested object
 	cdsl_json_value_t* address = cdsl_json_get_object(user, "address");
 	TEST_ASSERT_NOT_NULL(address, "Address should exist");
-	TEST_ASSERT(address->type == JSON_OBJECT, "Address should be object");
+	TEST_ASSERT(address->type == CDSL_JSON_OBJECT, "Address should be object");
 
 	cdsl_json_value_t* city = cdsl_json_get_object(address, "city");
 	TEST_ASSERT_NOT_NULL(city, "City should exist");
-	TEST_ASSERT(city->type == JSON_STRING, "City should be string");
+	TEST_ASSERT(city->type == CDSL_JSON_STRING, "City should be string");
 	TEST_ASSERT(strcmp(city->value.string_val, "New York") == 0, "City should match");
 
 	// Test array access
 	cdsl_json_value_t* scores = cdsl_json_get_object(root, "scores");
 	TEST_ASSERT_NOT_NULL(scores, "Scores should exist");
-	TEST_ASSERT(scores->type == JSON_ARRAY, "Scores should be array");
+	TEST_ASSERT(scores->type == CDSL_JSON_ARRAY, "Scores should be array");
 
 	cdsl_json_value_t* score1 = cdsl_json_get_array(scores, 0);
 	TEST_ASSERT_NOT_NULL(score1, "First score should exist");
-	TEST_ASSERT(score1->type == JSON_NUMBER, "Score should be number");
+	TEST_ASSERT(score1->type == CDSL_JSON_NUMBER, "Score should be number");
 	TEST_ASSERT(score1->value.number_val == 100, "First score should match");
 
 	cdsl_json_value_t* score3 = cdsl_json_get_array(scores, 2);
 	TEST_ASSERT_NOT_NULL(score3, "Third score should exist");
-	TEST_ASSERT(score3->type == JSON_NUMBER, "Score should be number");
+	TEST_ASSERT(score3->type == CDSL_JSON_NUMBER, "Score should be number");
 	TEST_ASSERT(score3->value.number_val == 87, "Third score should match");
 
 	// Test boolean access
 	cdsl_json_value_t* active = cdsl_json_get_object(root, "active");
 	TEST_ASSERT_NOT_NULL(active, "Active should exist");
-	TEST_ASSERT(active->type == JSON_BOOL, "Active should be boolean");
+	TEST_ASSERT(active->type == CDSL_JSON_BOOL, "Active should be boolean");
 	TEST_ASSERT(active->value.bool_val == 1, "Active should be true");
 
 	cdsl_json_free(root);
@@ -163,7 +163,7 @@ test_json_array_handling()
 	const char* mixed_array = "[\"string\", 42, true, null, {\"key\": \"value\"}]";
 	cdsl_json_value_t* arr = cdsl_json_parse(mixed_array);
 	TEST_ASSERT_NOT_NULL(arr, "Mixed array should parse");
-	TEST_ASSERT(arr->type == JSON_ARRAY, "Should be array type");
+	TEST_ASSERT(arr->type == CDSL_JSON_ARRAY, "Should be array type");
 
 	// Test array length
 	int length = cdsl_json_array_length(arr);
@@ -172,30 +172,30 @@ test_json_array_handling()
 	// Test individual elements
 	cdsl_json_value_t* elem0 = cdsl_json_get_array(arr, 0);
 	TEST_ASSERT_NOT_NULL(elem0, "Element 0 should exist");
-	TEST_ASSERT(elem0->type == JSON_STRING, "Element 0 should be string");
+	TEST_ASSERT(elem0->type == CDSL_JSON_STRING, "Element 0 should be string");
 	TEST_ASSERT(strcmp(elem0->value.string_val, "string") == 0, "Element 0 should match");
 
 	cdsl_json_value_t* elem1 = cdsl_json_get_array(arr, 1);
 	TEST_ASSERT_NOT_NULL(elem1, "Element 1 should exist");
-	TEST_ASSERT(elem1->type == JSON_NUMBER, "Element 1 should be number");
+	TEST_ASSERT(elem1->type == CDSL_JSON_NUMBER, "Element 1 should be number");
 	TEST_ASSERT(elem1->value.number_val == 42, "Element 1 should match");
 
 	cdsl_json_value_t* elem2 = cdsl_json_get_array(arr, 2);
 	TEST_ASSERT_NOT_NULL(elem2, "Element 2 should exist");
-	TEST_ASSERT(elem2->type == JSON_BOOL, "Element 2 should be boolean");
+	TEST_ASSERT(elem2->type == CDSL_JSON_BOOL, "Element 2 should be boolean");
 	TEST_ASSERT(elem2->value.bool_val == 1, "Element 2 should be true");
 
 	cdsl_json_value_t* elem3 = cdsl_json_get_array(arr, 3);
 	TEST_ASSERT_NOT_NULL(elem3, "Element 3 should exist");
-	TEST_ASSERT(elem3->type == JSON_NULL, "Element 3 should be null");
+	TEST_ASSERT(elem3->type == CDSL_JSON_NULL, "Element 3 should be null");
 
 	cdsl_json_value_t* elem4 = cdsl_json_get_array(arr, 4);
 	TEST_ASSERT_NOT_NULL(elem4, "Element 4 should exist");
-	TEST_ASSERT(elem4->type == JSON_OBJECT, "Element 4 should be object");
+	TEST_ASSERT(elem4->type == CDSL_JSON_OBJECT, "Element 4 should be object");
 
 	cdsl_json_value_t* key_val = cdsl_json_get_object(elem4, "key");
 	TEST_ASSERT_NOT_NULL(key_val, "Key should exist");
-	TEST_ASSERT(key_val->type == JSON_STRING, "Key should be string");
+	TEST_ASSERT(key_val->type == CDSL_JSON_STRING, "Key should be string");
 	TEST_ASSERT(strcmp(key_val->value.string_val, "value") == 0, "Key should match");
 
 	// Test array bounds
@@ -503,14 +503,14 @@ test_json_edge_cases()
 	const char* empty_obj = "{}";
 	cdsl_json_value_t* obj = cdsl_json_parse(empty_obj);
 	TEST_ASSERT_NOT_NULL(obj, "Empty object should parse");
-	TEST_ASSERT(obj->type == JSON_OBJECT, "Should be object type");
+	TEST_ASSERT(obj->type == CDSL_JSON_OBJECT, "Should be object type");
 	TEST_ASSERT(cdsl_json_object_length(obj) == 0, "Empty object should have 0 keys");
 
 	// Test empty array
 	const char* empty_arr = "[]";
 	cdsl_json_value_t* arr = cdsl_json_parse(empty_arr);
 	TEST_ASSERT_NOT_NULL(arr, "Empty array should parse");
-	TEST_ASSERT(arr->type == JSON_ARRAY, "Should be array type");
+	TEST_ASSERT(arr->type == CDSL_JSON_ARRAY, "Should be array type");
 	TEST_ASSERT(cdsl_json_array_length(arr) == 0, "Empty array should have 0 elements");
 
 	// Test deeply nested object

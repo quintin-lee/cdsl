@@ -73,7 +73,7 @@ json_escape_small(char* dst, size_t dst_size, const char* src)
 static cdsl_json_value_t*
 find_json_key(cdsl_json_value_t* obj, const char* key)
 {
-	if (!obj || obj->type != JSON_OBJECT || !key) {
+	if (!obj || obj->type != CDSL_JSON_OBJECT || !key) {
 		return NULL;
 	}
 	for (cdsl_json_value_t* v = obj->value.object.items; v; v = v->next) {
@@ -484,12 +484,12 @@ call_llm_api(const char* prompt, const cdsl_ai_config_t* config)
 
 	char* decoded = NULL;
 	cdsl_json_value_t* choices = find_json_key(root, "choices");
-	if (choices && choices->type == JSON_ARRAY && choices->value.array.items) {
+	if (choices && choices->type == CDSL_JSON_ARRAY && choices->value.array.items) {
 		cdsl_json_value_t* first_choice = choices->value.array.items;
 		cdsl_json_value_t* message = find_json_key(first_choice, "message");
 		if (message) {
 			cdsl_json_value_t* content_val = find_json_key(message, "content");
-			if (content_val && content_val->type == JSON_STRING) {
+			if (content_val && content_val->type == CDSL_JSON_STRING) {
 				decoded = strdup(content_val->value.string_val);
 			}
 		}
@@ -538,12 +538,12 @@ process_sse_data(const char* data,
 
 	char* chunk_content = NULL;
 	cdsl_json_value_t* choices = find_json_key(root, "choices");
-	if (choices && choices->type == JSON_ARRAY && choices->value.array.items) {
+	if (choices && choices->type == CDSL_JSON_ARRAY && choices->value.array.items) {
 		cdsl_json_value_t* first_choice = choices->value.array.items;
 		cdsl_json_value_t* delta = find_json_key(first_choice, "delta");
 		if (delta) {
 			cdsl_json_value_t* content_val = find_json_key(delta, "content");
-			if (content_val && content_val->type == JSON_STRING) {
+			if (content_val && content_val->type == CDSL_JSON_STRING) {
 				chunk_content = content_val->value.string_val;
 			}
 		}
@@ -1124,17 +1124,17 @@ default_review(void* ctx,
 				cdsl_json_value_t* v;
 				if ((v = find_json_key(root, "approved"))) {
 					rev->approved =
-					    (v->type == JSON_BOOL) ? v->value.bool_val : 0;
+					    (v->type == CDSL_JSON_BOOL) ? v->value.bool_val : 0;
 				}
 				if ((v = find_json_key(root, "risk_score"))) {
 					rev->risk_score =
-					    (v->type == JSON_NUMBER) ? (int)v->value.number_val : 0;
+					    (v->type == CDSL_JSON_NUMBER) ? (int)v->value.number_val : 0;
 				}
-				if ((v = find_json_key(root, "reason")) && v->type == JSON_STRING) {
+				if ((v = find_json_key(root, "reason")) && v->type == CDSL_JSON_STRING) {
 					rev->reason = strdup(v->value.string_val);
 				}
 				if ((v = find_json_key(root, "suggestions")) &&
-				    v->type == JSON_STRING) {
+				    v->type == CDSL_JSON_STRING) {
 					rev->suggestions = strdup(v->value.string_val);
 				}
 				cdsl_json_free(root);

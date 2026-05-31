@@ -61,7 +61,7 @@ typedef enum {
 /**
  * @brief Single bytecode instruction.
  */
-typedef struct {
+typedef struct bc_inst {
 	bc_op_t op;
 	union {
 		int int_val;
@@ -77,7 +77,7 @@ typedef struct {
 /**
  * @brief Compiled bytecode chunk for a single expression or rule.
  */
-typedef struct {
+typedef struct cdsl_bytecode {
 	bc_inst_t* code;
 	int count;
 	int capacity;

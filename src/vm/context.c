@@ -486,7 +486,7 @@ cdsl_context_remove(cdsl_context_t* ctx, const char* name)
 static void
 load_json_recursive(cdsl_context_t* ctx, cdsl_json_value_t* obj, const char* prefix)
 {
-	if (!obj || obj->type != JSON_OBJECT) {
+	if (!obj || obj->type != CDSL_JSON_OBJECT) {
 		return;
 	}
 	cdsl_json_value_t* child = obj->value.object.items;
@@ -506,18 +506,18 @@ load_json_recursive(cdsl_context_t* ctx, cdsl_json_value_t* obj, const char* pre
 			}
 		}
 
-		if (child->type == JSON_OBJECT) {
+		if (child->type == CDSL_JSON_OBJECT) {
 			load_json_recursive(ctx, child, key);
-		} else if (child->type == JSON_NUMBER) {
+		} else if (child->type == CDSL_JSON_NUMBER) {
 			double v = child->value.number_val;
 			if (v != (double)(int)v) {
 				cdsl_context_set_float(ctx, key, v);
 			} else {
 				cdsl_context_set_int(ctx, key, (int)v);
 			}
-		} else if (child->type == JSON_BOOL) {
+		} else if (child->type == CDSL_JSON_BOOL) {
 			cdsl_context_set_bool(ctx, key, child->value.bool_val);
-		} else if (child->type == JSON_STRING) {
+		} else if (child->type == CDSL_JSON_STRING) {
 			cdsl_context_set_string(ctx, key, child->value.string_val);
 		}
 		free(key);

@@ -66,7 +66,7 @@ typedef struct cdsl_func_entry {
  * Counters use _Atomic to support lock-free reads during parallel
  * rule execution.  Time values are in microseconds (monotonic clock).
  */
-typedef struct {
+typedef struct cdsl_stats {
 	_Atomic long total_executions;	      /**< Total cdsl_vm_execute() calls */
 	_Atomic long total_rules_executed;    /**< Individual rule evaluations */
 	_Atomic long total_metrics_evaluated; /**< Metric CASE evaluations */
@@ -91,7 +91,7 @@ typedef enum {
  * String pointers (rule_name, detail) are borrowed and valid only
  * for the duration of the callback.
  */
-typedef struct {
+typedef struct cdsl_trace_event {
 	cdsl_trace_kind_t kind; /**< What happened */
 	const char* rule_name;	/**< Owning rule's name (may be NULL) */
 	const char* detail;	/**< Expression text, metric name, or action name */

@@ -205,7 +205,7 @@ parse_object(json_parser_t* p)
 	}
 	p->pos++; /* consume '}' */
 	cdsl_json_value_t* obj = calloc(1, sizeof(*obj));
-	obj->type = JSON_OBJECT;
+	obj->type = CDSL_JSON_OBJECT;
 	obj->value.object.items = head;
 	obj->value.object.count = count;
 	return obj;
@@ -257,7 +257,7 @@ parse_array(json_parser_t* p)
 	}
 	p->pos++; /* consume ']' */
 	cdsl_json_value_t* arr = calloc(1, sizeof(*arr));
-	arr->type = JSON_ARRAY;
+	arr->type = CDSL_JSON_ARRAY;
 	arr->value.array.items = head;
 	arr->value.array.count = count;
 	return arr;
@@ -281,7 +281,7 @@ parse_value(json_parser_t* p)
 			free(s);
 			return NULL;
 		}
-		v->type = JSON_STRING;
+		v->type = CDSL_JSON_STRING;
 		v->value.string_val = s;
 		return v;
 	}
@@ -293,7 +293,7 @@ parse_value(json_parser_t* p)
 		if (!v) {
 			return NULL;
 		}
-		v->type = JSON_BOOL;
+		v->type = CDSL_JSON_BOOL;
 		v->value.bool_val = 1;
 		p->pos += 4;
 		return v;
@@ -306,7 +306,7 @@ parse_value(json_parser_t* p)
 		if (!v) {
 			return NULL;
 		}
-		v->type = JSON_BOOL;
+		v->type = CDSL_JSON_BOOL;
 		v->value.bool_val = 0;
 		p->pos += 5;
 		return v;
@@ -319,7 +319,7 @@ parse_value(json_parser_t* p)
 		if (!v) {
 			return NULL;
 		}
-		v->type = JSON_NULL;
+		v->type = CDSL_JSON_NULL;
 		p->pos += 4;
 		return v;
 	}
@@ -328,7 +328,7 @@ parse_value(json_parser_t* p)
 		if (!v) {
 			return NULL;
 		}
-		v->type = JSON_NUMBER;
+		v->type = CDSL_JSON_NUMBER;
 		char* end;
 		v->value.number_val = strtod(p->src + p->pos, &end);
 		p->pos = (int)(end - p->src);
@@ -357,13 +357,13 @@ cdsl_json_free(cdsl_json_value_t* val)
 		free(val->key);
 	}
 	switch (val->type) {
-	case JSON_STRING:
+	case CDSL_JSON_STRING:
 		free(val->value.string_val);
 		break;
-	case JSON_OBJECT:
-	case JSON_ARRAY: {
+	case CDSL_JSON_OBJECT:
+	case CDSL_JSON_ARRAY: {
 		cdsl_json_value_t* item =
-		    val->type == JSON_OBJECT ? val->value.object.items : val->value.array.items;
+		    val->type == CDSL_JSON_OBJECT ? val->value.object.items : val->value.array.items;
 		while (item) {
 			cdsl_json_value_t* next = item->next;
 			cdsl_json_free(item);
@@ -381,7 +381,7 @@ cdsl_json_free(cdsl_json_value_t* val)
 int
 cdsl_json_object_length(const cdsl_json_value_t* obj)
 {
-	if (!obj || obj->type != JSON_OBJECT) {
+	if (!obj || obj->type != CDSL_JSON_OBJECT) {
 		return 0;
 	}
 	return obj->value.object.count;
@@ -390,7 +390,7 @@ cdsl_json_object_length(const cdsl_json_value_t* obj)
 int
 cdsl_json_array_length(const cdsl_json_value_t* arr)
 {
-	if (!arr || arr->type != JSON_ARRAY) {
+	if (!arr || arr->type != CDSL_JSON_ARRAY) {
 		return 0;
 	}
 	return arr->value.array.count;
@@ -402,7 +402,7 @@ cdsl_json_get_object(const cdsl_json_value_t* obj, const char* key)
 	if (!obj) {
 		return NULL;
 	}
-	if (obj->type == JSON_OBJECT) {
+	if (obj->type == CDSL_JSON_OBJECT) {
 		cdsl_json_value_t* it = obj->value.object.items;
 		while (it) {
 			if (it->key && key && strcmp(it->key, key) == 0) {
@@ -419,7 +419,7 @@ cdsl_json_get_object(const cdsl_json_value_t* obj, const char* key)
 cdsl_json_value_t*
 cdsl_json_get_array(const cdsl_json_value_t* arr, int idx)
 {
-	if (!arr || arr->type != JSON_ARRAY) {
+	if (!arr || arr->type != CDSL_JSON_ARRAY) {
 		return NULL;
 	}
 	if (idx < 0) {

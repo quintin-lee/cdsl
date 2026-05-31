@@ -32,7 +32,7 @@ typedef struct cdsl_ruleset {
 /**
  * @brief Batch execution report for a ruleset.
  */
-typedef struct {
+typedef struct cdsl_ruleset_report {
 	cdsl_rule_report_t** rule_reports;
 	int rule_count;
 	int total_passed;

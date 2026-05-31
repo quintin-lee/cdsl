@@ -21,7 +21,7 @@
  * Allows users to inject custom caching logic (e.g., in-memory, Redis, file-based)
  * to avoid redundant LLM API calls for identical prompts.
  */
-typedef struct {
+typedef struct cdsl_ai_cache {
 	void* ctx; /**< Opaque pointer for the cache implementation's state */
 
 	/**
@@ -69,7 +69,7 @@ typedef struct cdsl_ai_review {
 /**
  * @brief External AI provider interface.
  */
-typedef struct {
+typedef struct cdsl_ai_provider {
 	void* ctx; /**< Opaque pointer for the provider's state */
 
 	/**

@@ -9,11 +9,23 @@
 #define CDSL_UTIL_JSON_H
 
 /**
+ * @brief JSON value type.
+ */
+typedef enum {
+	CDSL_JSON_NULL,   /**< null */
+	CDSL_JSON_BOOL,   /**< true / false */
+	CDSL_JSON_NUMBER, /**< number */
+	CDSL_JSON_STRING, /**< string */
+	CDSL_JSON_OBJECT, /**< object */
+	CDSL_JSON_ARRAY   /**< array */
+} cdsl_json_type_t;
+
+/**
  * @brief JSON value node.
  */
 typedef struct cdsl_json_value {
 	char* key;
-	enum { JSON_NULL, JSON_BOOL, JSON_NUMBER, JSON_STRING, JSON_OBJECT, JSON_ARRAY } type;
+	cdsl_json_type_t type;
 	union {
 		int bool_val;
 		double number_val;

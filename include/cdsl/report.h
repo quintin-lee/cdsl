@@ -24,7 +24,7 @@ typedef enum {
 /**
  * @brief Individual metric evaluation result.
  */
-typedef struct {
+typedef struct cdsl_metric_result {
 	char* metric_name;
 	char* description;
 	int max_weight;
@@ -38,7 +38,7 @@ typedef struct {
 /**
  * @brief Complete rule evaluation report.
  */
-typedef struct {
+typedef struct cdsl_rule_report {
 	char* rule_name;
 	char* description;
 	cdsl_metric_result_t* metrics;
