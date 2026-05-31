@@ -9,17 +9,18 @@
 | Module                                             | Header                  | Description                         |
 |----------------------------------------------------|-------------------------|-------------------------------------|
 | AST (1)                                            | `<cdsl/ast.h>`          | Abstract syntax tree construction   |
-| Schema (2)                                         | `<cdsl/schema.h>`       | Schema verification                 |
+| Schema (2)                                         | `<cdsl/schema.h>`       | Schema verification & static analysis |
 | Execution (3)                                      | `<cdsl/execution.h>`    | Umbrella: VM, context, reports, RuleSet |
 | &emsp;Context (3a)                                 | `<cdsl/context.h>`      | Variable bindings, `cdsl_value_t`   |
-| &emsp;VM (3b)                                      | `<cdsl/vm.h>`           | VM lifecycle, actions, functions    |
+| &emsp;VM (3b)                                      | `<cdsl/vm.h>`           | VM lifecycle, actions, functions, quotas, tracing |
 | &emsp;Report (3c)                                  | `<cdsl/report.h>`       | Report creation, JSON serialization |
-| &emsp;Cache (3d)                                   | `<cdsl/cache.h>`        | Compilation cache                   |
+| &emsp;Cache (3d)                                   | `<cdsl/cache.h>`        | Compilation cache with bytecode     |
 | &emsp;RuleSet (3e)                                 | `<cdsl/ruleset.h>`      | Batch execution, parallel, hot reload |
 | &emsp;Codegen (3f)                                 | `<cdsl/codegen.h>`      | DSL → C code generation             |
 | &emsp;Visual (3g)                                  | `<cdsl/visual.h>`       | Graphviz DOT output                 |
+| &emsp;Bytecode (3h)                                | `<cdsl/bytecode.h>`     | Stack-based bytecode VM             |
 | AI (4)                                             | `<cdsl/ai.h>`           | AI integration (mock + LLM)         |
-| Error (5)                                          | `<cdsl/util/error.h>`   | Error reporting                     |
+| Error (5)                                          | `<cdsl/util/error.h>`   | Error reporting & warnings          |
 | Arena (6)                                          | `<cdsl/util/arena.h>`   | Arena memory allocator              |
 | Hashmap (7)                                        | `<cdsl/util/hashmap.h>` | Hash table                          |
 | JSON (8)                                           | `<cdsl/util/json.h>`    | JSON parser                         |
@@ -202,6 +203,30 @@ cdsl_error_list_t* cdsl_verify_rule_detailed(const cdsl_rule_t* rule,
 
 Verifies a rule and collects all errors found (does not stop at the first error). Returns an error list that must be freed with `cdsl_error_list_free()`.
 
+#### `cdsl_analyze_rule`
+
+```c
+cdsl_error_list_t* cdsl_analyze_rule(const cdsl_rule_t* rule,
+                                      const cdsl_schema_t* schema);
+```
+
+Static analysis beyond verification. Returns warnings (not errors) for:
+- Always-true/false WHEN conditions (tautologies/contradictions)
+- Dead CASE branches (always-true or always-false conditions)
+- Shadowed CASE conditions (identical comparisons on same variable)
+Returns NULL if no warnings found.
+
+#### `cdsl_schema_register_var_rw`
+
+```c
+void cdsl_schema_register_var_rw(cdsl_schema_t* schema, const char* name,
+                                  cdsl_type_t type, int readonly);
+```
+
+Register a variable with optional read-only protection. When `readonly=1`,
+the variable can be bound once via `cdsl_context_set_*()` but subsequent
+modifications are silently ignored.
+
 ---
 
 ## 3. Execution Module
@@ -354,6 +379,11 @@ Loads variables from a JSON string. Nested objects are flattened with dot notati
 | `cdsl_vm_set_max_expr_depth(vm, depth)`        | Set max expression nesting depth (must be > 0)   |
 | `cdsl_vm_get_stats(vm)`                        | Get execution statistics (caller must free)      |
 | `cdsl_vm_reset_stats(vm)`                      | Reset all statistics counters                    |
+| `cdsl_vm_set_timeout(vm, timeout_us)`           | Set per-execution timeout in microseconds        |
+| `cdsl_vm_get_timeout(vm)`                       | Get current timeout (0 = unlimited)              |
+| `cdsl_vm_set_memory_limit(vm, limit_bytes)`     | Set per-execution memory allocation cap          |
+| `cdsl_vm_get_memory_limit(vm)`                  | Get current memory limit (0 = unlimited)         |
+| `cdsl_vm_set_trace_callback(vm, cb, user_data)` | Register step-by-step execution trace callback   |
 
 ### Rule Execution
 

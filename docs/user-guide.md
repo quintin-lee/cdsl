@@ -23,6 +23,11 @@
 - Custom Actions (15)
 - Error Handling (16)
 - Thread Safety (17)
+- Bytecode VM (18)
+- Sandboxing (19)
+- Static Analysis (20)
+- Execution Tracing (21)
+- Language Server (22) (LSP)
 
 ---
 
@@ -717,3 +722,140 @@ cdsl_error_list_free(errors);
 **Recommendation**: Create independent VM and Context instances per thread.
 Schema and Rule objects can be shared read-only across threads.
 For thread-safe hash map operations, use `cdsl_compile_cache_t`.
+
+---
+
+## 18. Bytecode VM
+
+The bytecode VM compiles DSL rule expressions into a flat instruction
+stream for faster execution via a stack-based virtual machine.
+
+### 18.1 Usage
+
+Bytecode is generated automatically by `cdsl_compile()` (the compilation
+cache).  When you call `cdsl_vm_execute_compiled()`, the cached bytecode
+is used instead of the recursive tree-walk evaluator.
+
+```c
+cdsl_compile_cache_t* cache = cdsl_compile_cache_create(128);
+cdsl_compiled_rule_t* compiled = cdsl_compile(cache, dsl_string, schema, NULL, 0);
+cdsl_rule_report_t* report = cdsl_vm_execute_compiled(vm, compiled, ctx);
+//  ↑ executes via bytecode VM (fast path)
+```
+
+For `cdsl_vm_execute()` (no caching), the recursive tree-walk evaluator
+is always used.
+
+### 18.2 Managing cache entries
+
+```c
+cdsl_compile_cache_remove(cache, dsl_string); // evict one entry
+cdsl_compile_cache_free(cache);               // evict all
+```
+
+### 18.3 Bytecode features
+
+- **Constant folding**: `2+3`, `@2024-01-10 - @2024-01-01` → evaluated at compile time
+- **Short-circuit AND/OR**: compiled to conditional jumps (no recursion)
+- **24-instruction stack ISA** including arithmetic, comparison, control flow, and function calls
+- **Low-level API**: `cdsl_bytecode_compile()`, `cdsl_bytecode_execute()`, `cdsl_bytecode_free()`
+
+---
+
+## 19. Sandboxing
+
+The VM supports per-execution resource quotas to prevent malicious or
+misconfigured DSL rules from exhausting system resources.
+
+### 19.1 Timeout
+
+```c
+cdsl_vm_set_timeout(vm, 5000000);  // 5-second timeout (in microseconds)
+```
+
+When the timeout is exceeded, execution aborts and returns
+`CDSL_STATUS_ERROR`.  Timeout is checked every 1024 bytecode instructions
+and at rule entry for tree-walk evaluation.
+
+### 19.2 Memory limit
+
+```c
+cdsl_vm_set_memory_limit(vm, 1048576);  // 1 MB per execution
+```
+
+Allocations exceeding this cap cause abort with `CDSL_STATUS_ERROR`.
+The counters are `_Atomic` for correct concurrent access.
+
+### 19.3 Read-only variables
+
+```c
+cdsl_schema_register_var_rw(schema, "config.api_key", CDSL_TYPE_STRING, 1 /* readonly */);
+cdsl_context_set_string(ctx, "config.api_key", "abc");  // ok (initial bind)
+cdsl_context_set_string(ctx, "config.api_key", "xyz");  // silently ignored (readonly)
+```
+
+---
+
+## 20. Static Analysis
+
+Beyond `cdsl_verify_rule()`, use `cdsl_analyze_rule()` to detect warnings:
+
+```c
+cdsl_error_list_t* warnings = cdsl_analyze_rule(rule, schema);
+if (warnings) {
+    for (int i = 0; i < warnings->count; i++)
+        printf("WARN: %s\n", warnings->errors[i]->message);
+    cdsl_error_list_free(warnings);
+}
+```
+
+**Detected issues:**
+- Dead CASE branches (always-true / always-false conditions)
+- Shadowed CASE conditions (identical comparisons)
+- Tautologies (WHEN that always triggers)
+- Contradictions (WHEN that never triggers)
+
+---
+
+## 21. Execution Tracing
+
+Register a callback to receive step-by-step execution events:
+
+```c
+void my_trace(const cdsl_trace_event_t* ev, void* ud) {
+    printf("[%s] %s → %d (%.0fus)\n",
+           ev->rule_name, ev->detail, ev->value.data.int_val, ev->timestamp_us);
+}
+
+cdsl_vm_set_trace_callback(vm, my_trace, NULL);
+cdsl_vm_execute(vm, rule, ctx);
+// Output: [check_age] WHEN → 1 (124.5us)
+// Output: [check_age] block → 0 (126.1us)
+// Output: [check_age] PASSED → 0 (127.3us)
+```
+
+---
+
+## 22. Language Server (LSP)
+
+The C-DSL Language Server provides real-time diagnostics and completions
+for editors supporting the Language Server Protocol (Neovim, VSCode, etc.).
+
+```bash
+# Build with LSP support
+cmake -DCDSL_BUILD_LSP=ON .. && make cdsl-lsp
+
+# Configure your editor (example: Neovim with lspconfig)
+# vim.api.nvim_create_autocmd('FileType', {
+#   pattern = 'dsl',
+#   callback = function()
+#     vim.lsp.start({ name = 'cdsl', cmd = { 'cdsl-lsp' } })
+#   end,
+# })
+```
+
+**Features:**
+- Parse errors and schema violations as in-editor diagnostics
+- Keyword, built-in function, schema variable, and action completions
+- Hover info showing variable types and read-only status
+- Full LSP lifecycle (initialize, didOpen/Change/Close, shutdown/exit)

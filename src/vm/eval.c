@@ -2,18 +2,27 @@
  * @file vm_eval.c
  * @brief Core expression evaluator and rule execution engine.
  *
- * Implements the heart of the C-DSL runtime: recursive expression
- * evaluation, simple rule (WHEN/THEN) execution, metric-based scoring
- * rule execution, tri-state reporting, and JSON report serialization.
+ * Implements the C-DSL runtime: recursive expression evaluation,
+ * simple rule (WHEN/THEN) execution, metric-based scoring rule
+ * execution, tri-state reporting, and JSON report serialization.
  *
- * Key features:
- * - Recursive expression tree walker with depth limit protection
- * - Short-circuit evaluation for AND/OR boolean operators
- * - String-aware comparison operators (==, !=)
- * - Metric scoring with weighted CASE/DEFAULT evaluation
- * - Critical-rule veto (any critical metric failing → FAILED)
- * - Threshold-based tri-state decisions (PASSED/PARTIAL/FAILED)
- * - Debug trace output for all evaluation steps
+ * ### Execution flow
+ *
+ *     cdsl_vm_execute()
+ *       ├── execute_metric_rule()   (rule->metrics != NULL)
+ *       └── execute_simple_rule()   (rule->when_expr  != NULL)
+ *            └── evaluate_condition()
+ *                 ├── cdsl_bytecode_execute()  (fast path)
+ *                 └── cdsl_eval_expr_internal() (tree-walk fallback)
+ *
+ * ### Type coercion in binary expressions
+ *
+ * Comparison: numerics promoted to double before comparison using
+ * `fabs(lv - rv) < 1e-9` for EQ.  Strings via `strcmp()`, dates
+ * via `time_t` arithmetic.
+ *
+ * Arithmetic: INT/FLOAT/LONG/BOOL promoted to widest type (FLOAT >
+ * LONG > INT).  Division by zero → CDSL_TYPE_VOID.
  *
  * @defgroup eval Expression Evaluator & Rule Execution
  * @{
