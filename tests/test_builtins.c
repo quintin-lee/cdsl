@@ -13,6 +13,8 @@
 #include <stdlib.h>
 #include <string.h>
 
+void test_builtin_array(void);
+
 /**
  * @brief Test the strlen built-in function.
  */

@@ -79,6 +79,16 @@ dot_expr(FILE* f, cdsl_expr_node_t* expr, int* id)
 			my_id,
 			(long)expr->data.long_val);
 		break;
+	case CDSL_EXPR_ARRAY:
+		fprintf(f,
+			"  n%d [label=\"[]\",shape=diamond,style=filled,fillcolor=lightgreen];\n",
+			my_id);
+		for (cdsl_arg_node_t* a = expr->data.array.elements; a; a = a->next) {
+			int child_id = *id;
+			dot_expr(f, a->expr, id);
+			fprintf(f, "  n%d -> n%d;\n", my_id, child_id);
+		}
+		break;
 	case CDSL_EXPR_ID:
 		fprintf(f,
 			"  n%d [label=\"%s\",shape=ellipse,style=filled,fillcolor=lightblue];\n",

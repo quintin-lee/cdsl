@@ -248,6 +248,32 @@ cdsl_eval_expr_internal(
 			fprintf(stderr, "[TRACE]   literal long: %ld\n", (long)expr->data.long_val);
 		}
 		break;
+	case CDSL_EXPR_ARRAY: {
+		cdsl_arg_node_t* arg = expr->data.array.elements;
+		int count = 0;
+		while (arg) {
+			count++;
+			arg = arg->next;
+		}
+		cdsl_array_t* arr = calloc(1, sizeof(cdsl_array_t));
+		if (arr) {
+			arr->items = calloc(count, sizeof(cdsl_value_t));
+			arr->count = count;
+			arr->capacity = count;
+			arg = expr->data.array.elements;
+			for (int i = 0; i < count; i++) {
+				arr->items[i] =
+				    cdsl_eval_expr_internal(arg->expr, ctx, vm, debug, depth + 1);
+				arg = arg->next;
+			}
+		}
+		result.type = CDSL_TYPE_ARRAY;
+		result.data.array_val = arr;
+		if (debug) {
+			fprintf(stderr, "[TRACE]   literal array: [%d elements]\n", count);
+		}
+		break;
+	}
 	case CDSL_EXPR_ID: {
 		cdsl_context_entry_t* e = cdsl_context_get_entry_internal(ctx, expr->data.id_val);
 		if (e) {
