@@ -124,7 +124,9 @@ typedef struct cdsl_vm {
 	/* ---- Sandboxing quotas ---- */
 	int64_t timeout_us;	     /**< Per-execution timeout in us; 0=unlimited */
 	int64_t memory_limit;	     /**< Per-execution allocation cap; 0=unlimited */
+	int64_t instruction_limit; /**< Max instructions allowed; 0=unlimited */
 	_Atomic int64_t alloc_bytes; /**< Current allocation counter */
+	_Atomic int64_t instruction_count; /**< Instructions executed */
 	_Atomic int error_state;     /**< Non-zero if execution was aborted */
 
 	/* ---- Tracing ---- */
@@ -268,6 +270,24 @@ void cdsl_vm_set_memory_limit(cdsl_vm_t* vm, int64_t limit_bytes);
  * @return    Limit in bytes, 0 if unlimited
  */
 int64_t cdsl_vm_get_memory_limit(const cdsl_vm_t* vm);
+
+/**
+ * @brief Set a per-execution instruction limit.
+ *
+ * When non-zero, cdsl_vm_execute() aborts if total instructions executed
+ * exceeds @p limit.
+ *
+ * @param vm    Target VM
+ * @param limit Max instructions (0 = unlimited)
+ */
+void cdsl_vm_set_instruction_limit(cdsl_vm_t* vm, int64_t limit);
+
+/**
+ * @brief Get the current instruction limit.
+ * @param vm  VM (NULL returns 0)
+ * @return    Instruction limit, 0 if unlimited
+ */
+int64_t cdsl_vm_get_instruction_limit(const cdsl_vm_t* vm);
 
 /* ---- Tracing ---- */
 

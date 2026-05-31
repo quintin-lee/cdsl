@@ -85,7 +85,7 @@ parse_date_internal(const char* s)
 }
 
 %token RULE META WHEN THEN METRIC CASE DEFAULT TEMPLATE EXTENDS
-%token LBRACE RBRACE LPAREN RPAREN ASSIGN COMMA
+%token LBRACE RBRACE LBRACKET RBRACKET LPAREN RPAREN ASSIGN COMMA
 %token PLUS MINUS STAR SLASH
 %token <id_val> IDENTIFIER
 %token <int_val> INT_LIT
@@ -191,6 +191,7 @@ expression:
     | BOOL_LIT                          { $$ = cdsl_create_expr_bool($1); }
     | STRING_LIT                        { $$ = cdsl_create_expr_string($1); }
     | DATE_LIT                          { $$ = cdsl_create_expr_date(parse_date_internal($1)); free($1); }
+    | LBRACKET argument_list RBRACKET   { $$ = cdsl_create_expr_array($2); }
     | IDENTIFIER LPAREN argument_list RPAREN  { $$ = cdsl_create_expr_call($1, $3); }
     | expression EQ expression          { $$ = cdsl_create_expr_binary(CDSL_OP_EQ, $1, $3); }
     | expression NE expression          { $$ = cdsl_create_expr_binary(CDSL_OP_NE, $1, $3); }

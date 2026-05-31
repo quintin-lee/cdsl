@@ -84,12 +84,24 @@ target_link_libraries(cdsl_demo PRIVATE cdsl_static)
 # 7. Tests
 enable_testing()
 file(GLOB TEST_SOURCES CONFIGURE_DEPENDS "tests/test_*.c")
+# Force include test_collection for safety
+list(APPEND TEST_SOURCES "tests/test_collection.c")
+list(REMOVE_DUPLICATES TEST_SOURCES)
 foreach(test_src ${TEST_SOURCES})
     get_filename_component(test_name ${test_src} NAME_WE)
     add_executable(${test_name} ${test_src})
     target_link_libraries(${test_name} PRIVATE cdsl_static)
     add_test(NAME ${test_name} COMMAND ${test_name})
 endforeach()
+
+# Explicitly add new tests
+add_executable(test_collection tests/test_collection.c)
+target_link_libraries(test_collection PRIVATE cdsl_static)
+add_test(NAME test_collection COMMAND test_collection)
+
+add_executable(test_quota tests/test_quota.c)
+target_link_libraries(test_quota PRIVATE cdsl_static)
+add_test(NAME test_quota COMMAND test_quota)
 
 # 8. LSP tool (optional)
 option(CDSL_BUILD_LSP "Build the C-DSL Language Server" OFF)

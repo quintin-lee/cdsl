@@ -113,6 +113,8 @@
 
 "{"                      { return LBRACE; }
 "}"                      { return RBRACE; }
+"["                      { return LBRACKET; }
+"]"                      { return RBRACKET; }
 "("                      { return LPAREN; }
 ")"                      { return RPAREN; }
 "="                      { return ASSIGN; }

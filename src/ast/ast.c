@@ -116,6 +116,15 @@ cdsl_create_expr_long(int64_t val)
 }
 
 cdsl_expr_node_t*
+cdsl_create_expr_array(cdsl_arg_node_t* elements)
+{
+	cdsl_expr_node_t* n = ast_alloc(sizeof(*n));
+	n->type = CDSL_EXPR_ARRAY;
+	n->data.array.elements = elements;
+	return n;
+}
+
+cdsl_expr_node_t*
 cdsl_create_expr_binary(cdsl_op_t op, cdsl_expr_node_t* left, cdsl_expr_node_t* right)
 {
 	cdsl_expr_node_t* n = ast_alloc(sizeof(*n));
@@ -360,6 +369,9 @@ cdsl_free_expr(cdsl_expr_node_t* expr)
 		free(expr->data.string_val);
 		break;
 	case CDSL_EXPR_DATE:
+		break;
+	case CDSL_EXPR_ARRAY:
+		cdsl_free_arg(expr->data.array.elements);
 		break;
 	case CDSL_EXPR_BINARY:
 		cdsl_free_expr(expr->data.binary.left);

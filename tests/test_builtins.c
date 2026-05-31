@@ -259,7 +259,43 @@ main(void)
 	test_builtin_string_utils();
 	test_builtin_math_utils();
 	test_builtin_misc();
+	test_builtin_array();
 
 	TEST_SUMMARY();
 	TEST_EXIT();
+}
+
+/**
+ * @brief Test array built-ins.
+ */
+void
+test_builtin_array(void)
+{
+	TEST_BEGIN("built-in array utilities");
+	cdsl_schema_t* schema = cdsl_schema_create();
+	cdsl_vm_t* vm = cdsl_vm_create(schema);
+	cdsl_context_t* ctx = cdsl_context_create(schema);
+
+	cdsl_rule_t* r_count = cdsl_parse_string("RULE r { WHEN count([1, 2, 3]) == 3 THEN block(\"ok\") }");
+	cdsl_rule_report_t* rpt = cdsl_vm_execute(vm, r_count, ctx);
+	TEST_ASSERT_INT(rpt->status, CDSL_STATUS_FAILED, "count([1, 2, 3]) == 3");
+	cdsl_report_free(rpt);
+	cdsl_free_rule(r_count);
+
+	cdsl_rule_t* r_sum = cdsl_parse_string("RULE r { WHEN sum([1, 2, 3]) == 6 THEN block(\"ok\") }");
+	rpt = cdsl_vm_execute(vm, r_sum, ctx);
+	TEST_ASSERT_INT(rpt->status, CDSL_STATUS_FAILED, "sum([1, 2, 3]) == 6");
+	cdsl_report_free(rpt);
+	cdsl_free_rule(r_sum);
+
+	cdsl_rule_t* r_typeof = cdsl_parse_string("RULE r { WHEN typeof([1, 2]) == \"ARRAY\" THEN block(\"ok\") }");
+	rpt = cdsl_vm_execute(vm, r_typeof, ctx);
+	TEST_ASSERT_INT(rpt->status, CDSL_STATUS_FAILED, "typeof([1, 2]) == ARRAY");
+	cdsl_report_free(rpt);
+	cdsl_free_rule(r_typeof);
+
+	cdsl_context_free(ctx);
+	cdsl_vm_free(vm);
+	cdsl_schema_free(schema);
+	TEST_END();
 }

@@ -31,6 +31,7 @@ typedef enum {
 	BC_PUSH_STRING,	 /**< Push string literal [operand: string_val — borrowed] */
 	BC_PUSH_DATE,	 /**< Push date literal [operand: date_val] */
 	BC_PUSH_LONG,	 /**< Push long literal [operand: long_val] */
+	BC_PUSH_ARRAY,	 /**< Create array from stack [operand: int_val (count)] */
 	BC_PUSH_VAR,	 /**< Load context variable [operand: string_val — name] */
 	BC_POP,		 /**< Discard top of stack */
 	BC_ADD,		 /**< Pop b, pop a, push a+b */
