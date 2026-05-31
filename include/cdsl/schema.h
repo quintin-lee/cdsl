@@ -95,5 +95,21 @@ bool cdsl_verify_rule(const cdsl_rule_t* rule,
  */
 cdsl_error_list_t* cdsl_verify_rule_detailed(const cdsl_rule_t* rule, const cdsl_schema_t* schema);
 
+/**
+ * @brief Perform static analysis on a rule for warnings.
+ *
+ * Detects issues not caught by verification, such as:
+ * - Implicit type conversions (e.g., INT → FLOAT promotion)
+ * - Unreachable CASE branches (dead code)
+ * - Always-true or always-false conditions
+ * - Shadowed CASE conditions
+ *
+ * @param rule Parsed AST rule to analyze
+ * @param schema Registered schema
+ * @return Warning list (must be freed with cdsl_error_list_free),
+ *         NULL if no warnings found. All entries have kind CDSL_ERR_WARNING.
+ */
+cdsl_error_list_t* cdsl_analyze_rule(const cdsl_rule_t* rule, const cdsl_schema_t* schema);
+
 #endif
 /** @} */

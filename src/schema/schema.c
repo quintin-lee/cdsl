@@ -456,4 +456,219 @@ cdsl_verify_rule_detailed(const cdsl_rule_t* rule, const cdsl_schema_t* schema)
 	}
 	return errors;
 }
+
+/* ---- static analysis ---- */
+
+#define ANALYZE_WARN(list, msg, hint)                                                              \
+	cdsl_error_list_add((list), cdsl_error_create(CDSL_ERR_WARNING, 0, 0, (msg), (hint)))
+
+static int
+expr_is_const_true(cdsl_expr_node_t* expr)
+{
+	if (!expr) {
+		return 0;
+	}
+	switch (expr->type) {
+	case CDSL_EXPR_BOOL:
+		return expr->data.bool_val;
+	case CDSL_EXPR_INT:
+		return expr->data.int_val != 0;
+	case CDSL_EXPR_BINARY: {
+		cdsl_op_t op = expr->data.binary.op;
+		cdsl_expr_node_t *l = expr->data.binary.left, *r = expr->data.binary.right;
+		if (!l || !r) {
+			return 0;
+		}
+		if (l->type != CDSL_EXPR_INT || r->type != CDSL_EXPR_INT) {
+			return 0;
+		}
+		switch (op) {
+		case CDSL_OP_EQ:
+			return l->data.int_val == r->data.int_val;
+		case CDSL_OP_NE:
+			return l->data.int_val != r->data.int_val;
+		case CDSL_OP_LT:
+			return l->data.int_val < r->data.int_val;
+		case CDSL_OP_GT:
+			return l->data.int_val > r->data.int_val;
+		case CDSL_OP_LE:
+			return l->data.int_val <= r->data.int_val;
+		case CDSL_OP_GE:
+			return l->data.int_val >= r->data.int_val;
+		default:
+			return 0;
+		}
+	}
+	default:
+		return 0;
+	}
+}
+
+static int
+expr_is_const_false(cdsl_expr_node_t* expr)
+{
+	if (!expr) {
+		return 0;
+	}
+	switch (expr->type) {
+	case CDSL_EXPR_BOOL:
+		return !expr->data.bool_val;
+	case CDSL_EXPR_INT:
+		return expr->data.int_val == 0;
+	case CDSL_EXPR_BINARY: {
+		cdsl_op_t op = expr->data.binary.op;
+		cdsl_expr_node_t *l = expr->data.binary.left, *r = expr->data.binary.right;
+		if (!l || !r) {
+			return 0;
+		}
+		if (l->type != CDSL_EXPR_INT || r->type != CDSL_EXPR_INT) {
+			return 0;
+		}
+		switch (op) {
+		case CDSL_OP_EQ:
+			return l->data.int_val != r->data.int_val;
+		case CDSL_OP_NE:
+			return l->data.int_val == r->data.int_val;
+		case CDSL_OP_LT:
+			return l->data.int_val >= r->data.int_val;
+		case CDSL_OP_GT:
+			return l->data.int_val <= r->data.int_val;
+		case CDSL_OP_LE:
+			return l->data.int_val > r->data.int_val;
+		case CDSL_OP_GE:
+			return l->data.int_val < r->data.int_val;
+		default:
+			return 0;
+		}
+	}
+	default:
+		return 0;
+	}
+}
+
+cdsl_error_list_t*
+cdsl_analyze_rule(const cdsl_rule_t* rule, const cdsl_schema_t* schema)
+{
+	(void)schema;
+	if (!rule) {
+		return NULL;
+	}
+
+	cdsl_error_list_t* w = cdsl_error_list_create();
+	if (!w) {
+		return NULL;
+	}
+
+	/* Dead CASE detection in metric rules */
+	if (rule->metrics) {
+		for (cdsl_metric_node_t* m = rule->metrics; m; m = m->next) {
+			int has_always_true = 0;
+			cdsl_case_node_t* first = m->case_list;
+			for (cdsl_case_node_t* c = m->case_list; c; c = c->next) {
+				if (!c->condition) {
+					continue;
+				}
+				if (has_always_true) {
+					char buf[200];
+					snprintf(buf,
+						 sizeof(buf),
+						 "CASE in '%s' unreachable: "
+						 "preceded by always-true condition",
+						 m->name);
+					ANALYZE_WARN(w, buf, "Reorder or remove CASE branches");
+					break;
+				}
+				if (expr_is_const_true(c->condition)) {
+					char buf[200];
+					snprintf(buf,
+						 sizeof(buf),
+						 "CASE in '%s' is always true; "
+						 "subsequent branches are dead code",
+						 m->name);
+					ANALYZE_WARN(w, buf, "Consider using DEFAULT instead");
+					has_always_true = 1;
+				} else if (expr_is_const_false(c->condition)) {
+					char buf[200];
+					snprintf(buf,
+						 sizeof(buf),
+						 "CASE in '%s' is always false; dead code",
+						 m->name);
+					ANALYZE_WARN(w, buf, "Remove or fix the condition");
+				}
+				/* Shadowed CASE: identical condition on same variable */
+				for (cdsl_case_node_t* d = first; d != c && !has_always_true;
+				     d = d->next) {
+					if (!d->condition || !c->condition) {
+						continue;
+					}
+					if (d->condition->type != CDSL_EXPR_BINARY ||
+					    c->condition->type != CDSL_EXPR_BINARY) {
+						continue;
+					}
+					cdsl_op_t op1 = d->condition->data.binary.op;
+					cdsl_op_t op2 = c->condition->data.binary.op;
+					cdsl_expr_node_t *l1, *r1, *l2, *r2;
+					l1 = d->condition->data.binary.left;
+					r1 = d->condition->data.binary.right;
+					l2 = c->condition->data.binary.left;
+					r2 = c->condition->data.binary.right;
+					if (!l1 || !r1 || !l2 || !r2) {
+						continue;
+					}
+					if (op1 != op2) {
+						continue;
+					}
+					if (l1->type != CDSL_EXPR_ID || l2->type != CDSL_EXPR_ID) {
+						continue;
+					}
+					if (strcmp(l1->data.id_val, l2->data.id_val) != 0) {
+						continue;
+					}
+					int same_val = 0;
+					if (r1->type == CDSL_EXPR_INT &&
+					    r2->type == CDSL_EXPR_INT) {
+						same_val = r1->data.int_val == r2->data.int_val;
+					}
+					if (r1->type == CDSL_EXPR_FLOAT &&
+					    r2->type == CDSL_EXPR_FLOAT) {
+						same_val = r1->data.float_val == r2->data.float_val;
+					}
+					if (same_val) {
+						char buf[200];
+						snprintf(buf,
+							 sizeof(buf),
+							 "CASE in '%s' shadows earlier identical "
+							 "condition; branch is unreachable",
+							 m->name);
+						ANALYZE_WARN(w, buf, "Remove duplicate CASE");
+						break;
+					}
+				}
+			}
+		}
+	}
+
+	/* Tautology/contradiction in simple rules */
+	if (rule->when_expr) {
+		if (expr_is_const_true(rule->when_expr)) {
+			ANALYZE_WARN(w,
+				     "WHEN condition is always true; rule triggers on every "
+				     "evaluation",
+				     "Review condition logic");
+		}
+		if (expr_is_const_false(rule->when_expr)) {
+			ANALYZE_WARN(w,
+				     "WHEN condition is always false; rule never triggers",
+				     "Review condition logic");
+		}
+	}
+
+	if (w->count == 0) {
+		cdsl_error_list_free(w);
+		return NULL;
+	}
+	return w;
+}
+
+#undef ANALYZE_WARN
 /** @} */

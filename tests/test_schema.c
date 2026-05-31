@@ -15,6 +15,8 @@
 #include <stdio.h>
 #include "test.h"
 
+void test_analyze_rule(void);
+
 // Test helper macros
 #define TEST_SCHEMA_BEGIN(name) TEST_BEGIN(name)
 #define TEST_SCHEMA_END() TEST_END()
@@ -365,6 +367,58 @@ main()
 	test_complex_rule_validation();
 	test_schema_performance();
 
+	test_analyze_rule();
 	TEST_SUMMARY();
 	TEST_EXIT();
+}
+
+void
+test_analyze_rule(void)
+{
+	TEST_BEGIN("static analysis warnings");
+	cdsl_schema_t* schema = cdsl_schema_create();
+	cdsl_schema_register_var(schema, "x", CDSL_TYPE_INT);
+	cdsl_schema_register_var(schema, "y", CDSL_TYPE_FLOAT);
+
+	/* Always-true WHEN */
+	cdsl_rule_t* r1 = cdsl_parse_string("RULE r { WHEN 1 == 1 THEN block(\"ok\") }");
+	cdsl_error_list_t* w1 = cdsl_analyze_rule(r1, schema);
+	TEST_ASSERT_NOT_NULL(w1, "always-true WHEN produces warning");
+	cdsl_error_list_free(w1);
+	cdsl_free_rule(r1);
+
+	/* Always-false WHEN */
+	cdsl_rule_t* r2 = cdsl_parse_string("RULE r { WHEN 2 == 3 THEN block(\"ok\") }");
+	cdsl_error_list_t* w2 = cdsl_analyze_rule(r2, schema);
+	TEST_ASSERT_NOT_NULL(w2, "always-false WHEN produces warning");
+	cdsl_error_list_free(w2);
+	cdsl_free_rule(r2);
+
+	/* Good rule — no warnings */
+	cdsl_rule_t* r3 = cdsl_parse_string("RULE r { WHEN x > 5 THEN block(\"ok\") }");
+	cdsl_error_list_t* w3 = cdsl_analyze_rule(r3, schema);
+	TEST_ASSERT_NULL(w3, "valid rule produces no warnings");
+	cdsl_free_rule(r3);
+
+	/* Dead metric CASE — always-false condition */
+	cdsl_rule_t* r4 = cdsl_parse_string(
+	    "RULE r { META { w = \"100\" } "
+	    "METRIC m { CASE 5 == 6 THEN score(0) CASE x > 10 THEN score(50) DEFAULT score(0) } }");
+	cdsl_error_list_t* w4 = cdsl_analyze_rule(r4, schema);
+	TEST_ASSERT_NOT_NULL(w4, "always-false CASE produces warning");
+	TEST_ASSERT_INT(w4->count, 1, "one warning for dead CASE");
+	cdsl_error_list_free(w4);
+	cdsl_free_rule(r4);
+
+	/* Always-true CASE shadows subsequent */
+	cdsl_rule_t* r5 = cdsl_parse_string(
+	    "RULE r { META { w = \"100\" } "
+	    "METRIC m { CASE 5 == 5 THEN score(0) CASE x > 10 THEN score(50) DEFAULT score(0) } }");
+	cdsl_error_list_t* w5 = cdsl_analyze_rule(r5, schema);
+	TEST_ASSERT_NOT_NULL(w5, "always-true CASE warns about shadowing");
+	cdsl_error_list_free(w5);
+	cdsl_free_rule(r5);
+
+	cdsl_schema_free(schema);
+	TEST_END();
 }
