@@ -384,10 +384,11 @@ builtin_abs(const char* name, cdsl_arg_node_t* args, cdsl_context_t* ctx, cdsl_v
 }
 
 /**
- * @brief built-in min(a, b): returns the smaller of two numeric values.
+ * @brief Shared numeric min/max core.
  */
 static cdsl_value_t
-builtin_min(const char* name, cdsl_arg_node_t* args, cdsl_context_t* ctx, cdsl_vm_t* vm)
+builtin_minmax(
+    const char* name, cdsl_arg_node_t* args, cdsl_context_t* ctx, cdsl_vm_t* vm, int want_max)
 {
 	(void)name;
 	cdsl_value_t res = {.type = CDSL_TYPE_INT, .data = {.int_val = 0}};
@@ -396,63 +397,43 @@ builtin_min(const char* name, cdsl_arg_node_t* args, cdsl_context_t* ctx, cdsl_v
 	}
 	cdsl_value_t a = cdsl_eval_expr_internal(args->expr, ctx, vm, 0, 0);
 	cdsl_value_t b = cdsl_eval_expr_internal(args->next->expr, ctx, vm, 0, 0);
-	int a_int =
-	    (a.type == CDSL_TYPE_INT || a.type == CDSL_TYPE_BOOL || a.type == CDSL_TYPE_FLOAT);
-	int b_int =
-	    (b.type == CDSL_TYPE_INT || b.type == CDSL_TYPE_BOOL || b.type == CDSL_TYPE_FLOAT);
-	if (!a_int || !b_int) {
+	int a_num = (a.type == CDSL_TYPE_INT || a.type == CDSL_TYPE_BOOL ||
+		     a.type == CDSL_TYPE_FLOAT || a.type == CDSL_TYPE_LONG);
+	int b_num = (b.type == CDSL_TYPE_INT || b.type == CDSL_TYPE_BOOL ||
+		     b.type == CDSL_TYPE_FLOAT || b.type == CDSL_TYPE_LONG);
+	if (!a_num || !b_num) {
 		return res;
 	}
 	double av = (a.type == CDSL_TYPE_FLOAT)	 ? a.data.float_val
+		    : (a.type == CDSL_TYPE_LONG) ? (double)a.data.long_val
 		    : (a.type == CDSL_TYPE_BOOL) ? (double)a.data.bool_val
 						 : (double)a.data.int_val;
 	double bv = (b.type == CDSL_TYPE_FLOAT)	 ? b.data.float_val
+		    : (b.type == CDSL_TYPE_LONG) ? (double)b.data.long_val
 		    : (b.type == CDSL_TYPE_BOOL) ? (double)b.data.bool_val
 						 : (double)b.data.int_val;
-	if (a.type == CDSL_TYPE_FLOAT || b.type == CDSL_TYPE_FLOAT) {
+	int is_float = (a.type == CDSL_TYPE_FLOAT || b.type == CDSL_TYPE_FLOAT);
+	double cmp_val = want_max ? ((av > bv) ? av : bv) : ((av < bv) ? av : bv);
+	if (is_float) {
 		res.type = CDSL_TYPE_FLOAT;
-		res.data.float_val = (av < bv) ? av : bv;
+		res.data.float_val = cmp_val;
 	} else {
 		res.type = CDSL_TYPE_INT;
-		res.data.int_val = (int)((av < bv) ? av : bv);
+		res.data.int_val = (int)cmp_val;
 	}
 	return res;
 }
 
-/**
- * @brief built-in max(a, b): returns the larger of two numeric values.
- */
+static cdsl_value_t
+builtin_min(const char* name, cdsl_arg_node_t* args, cdsl_context_t* ctx, cdsl_vm_t* vm)
+{
+	return builtin_minmax(name, args, ctx, vm, 0);
+}
+
 static cdsl_value_t
 builtin_max(const char* name, cdsl_arg_node_t* args, cdsl_context_t* ctx, cdsl_vm_t* vm)
 {
-	(void)name;
-	cdsl_value_t res = {.type = CDSL_TYPE_INT, .data = {.int_val = 0}};
-	if (!args || !args->next || !args->expr || !args->next->expr) {
-		return res;
-	}
-	cdsl_value_t a = cdsl_eval_expr_internal(args->expr, ctx, vm, 0, 0);
-	cdsl_value_t b = cdsl_eval_expr_internal(args->next->expr, ctx, vm, 0, 0);
-	int a_int =
-	    (a.type == CDSL_TYPE_INT || a.type == CDSL_TYPE_BOOL || a.type == CDSL_TYPE_FLOAT);
-	int b_int =
-	    (b.type == CDSL_TYPE_INT || b.type == CDSL_TYPE_BOOL || b.type == CDSL_TYPE_FLOAT);
-	if (!a_int || !b_int) {
-		return res;
-	}
-	double av = (a.type == CDSL_TYPE_FLOAT)	 ? a.data.float_val
-		    : (a.type == CDSL_TYPE_BOOL) ? (double)a.data.bool_val
-						 : (double)a.data.int_val;
-	double bv = (b.type == CDSL_TYPE_FLOAT)	 ? b.data.float_val
-		    : (b.type == CDSL_TYPE_BOOL) ? (double)b.data.bool_val
-						 : (double)b.data.int_val;
-	if (a.type == CDSL_TYPE_FLOAT || b.type == CDSL_TYPE_FLOAT) {
-		res.type = CDSL_TYPE_FLOAT;
-		res.data.float_val = (av > bv) ? av : bv;
-	} else {
-		res.type = CDSL_TYPE_INT;
-		res.data.int_val = (int)((av > bv) ? av : bv);
-	}
-	return res;
+	return builtin_minmax(name, args, ctx, vm, 1);
 }
 
 /**

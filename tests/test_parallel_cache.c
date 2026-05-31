@@ -109,5 +109,4 @@ main()
 
 	cdsl_compile_cache_free(cache);
 	printf("Parallel cache test PASSED.\n");
-	return 0;
 }

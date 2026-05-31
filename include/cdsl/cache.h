@@ -41,6 +41,13 @@ cdsl_compiled_rule_t* cdsl_compile(cdsl_compile_cache_t* cache,
 [[nodiscard]]
 cdsl_compile_cache_t* cdsl_compile_cache_create(int capacity);
 void cdsl_compile_cache_free(cdsl_compile_cache_t* cache);
+/**
+ * @brief Remove a compiled entry from the cache by DSL key.
+ * @param cache Compilation cache
+ * @param dsl_code DSL source string (must match exactly)
+ * @return 1 if entry was found and removed, 0 if not found
+ */
+int cdsl_compile_cache_remove(cdsl_compile_cache_t* cache, const char* dsl_code);
 
 #endif
 /** @} */
