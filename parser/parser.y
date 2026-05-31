@@ -24,6 +24,7 @@
 #include <string.h>
 #include <stdint.h>
 #include "cdsl/ast.h"
+#include "cdsl/util/error.h"
 
 #if defined(__GNUC__) || defined(__clang__)
 #pragma GCC diagnostic ignored "-Wunused-but-set-variable"
@@ -32,7 +33,7 @@
 /* Forward declaration for the reentrant lexer */
 typedef void* yyscan_t;
 int yylex(void* yylval_param, yyscan_t yyscanner);
-void yyerror(yyscan_t scanner, cdsl_rule_t** rule_ptr, int* error_count, const char *s);
+void yyerror(yyscan_t scanner, cdsl_rule_t** rule_ptr, int* error_count, struct cdsl_error_list* error_list, const char *s);
 
 /* Helper to get line number from scanner */
 extern int yyget_lineno(yyscan_t yyscanner);
@@ -63,10 +64,12 @@ parse_date_internal(const char* s)
 %}
 
 %define api.pure full
+%define parse.error verbose
 %lex-param {yyscan_t scanner}
 %parse-param {yyscan_t scanner}
 %parse-param {cdsl_rule_t** rule_ptr}
 %parse-param {int* error_count}
+%parse-param {struct cdsl_error_list* error_list}
 
 %union {
     int int_val;
@@ -231,15 +234,23 @@ argument_list_nonempty:
 /**
  * @brief Error handler called by Bison on parse errors.
  *
+ * Creates a structured cdsl_error_t and adds it to the error list
+ * (if non-NULL). Also increments the error count for legacy callers.
+ *
  * @param scanner Reentrant scanner handle
  * @param rule_ptr Output rule pointer (unused in error recovery)
  * @param error_count Error counter to increment
+ * @param error_list Structured error list (may be NULL)
  * @param s Error message from Bison
  */
-void yyerror(yyscan_t scanner, cdsl_rule_t** rule_ptr, int* error_count, const char *s) {
-    (void)rule_ptr;
-    fprintf(stderr, "Syntax error at line %d: %s\n", yyget_lineno(scanner), s);
-    (*error_count)++;
+void yyerror(yyscan_t scanner, cdsl_rule_t** rule_ptr, int* error_count, struct cdsl_error_list* error_list, const char *s) {
+	(void)rule_ptr;
+	int line = yyget_lineno(scanner);
+	if (error_list) {
+		cdsl_error_t* err = cdsl_error_create(CDSL_ERR_SYNTAX, line, 0, s, NULL);
+		cdsl_error_list_add(error_list, err);
+	}
+	(*error_count)++;
 }
 
 /** @} */

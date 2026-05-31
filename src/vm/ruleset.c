@@ -390,7 +390,7 @@ cdsl_ruleset_load_string(cdsl_ruleset_t* set,
 			 char* err_buf,
 			 int err_buf_sz)
 {
-	cdsl_rule_t* rule = cdsl_parse_string(dsl_code);
+	cdsl_rule_t* rule = cdsl_parse_string(dsl_code, NULL);
 	if (!rule) {
 		if (err_buf) {
 			snprintf(err_buf, err_buf_sz, "Parse error");

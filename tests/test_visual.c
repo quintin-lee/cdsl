@@ -36,7 +36,7 @@ test_rule_visualization()
 
 	// Create a simple rule
 	const char* rule_dsl = "RULE adult_check { WHEN user.age > 18 THEN log(\"Adult\") }";
-	cdsl_rule_t* rule = cdsl_parse_string(rule_dsl);
+	cdsl_rule_t* rule = cdsl_parse_string(rule_dsl, NULL);
 	TEST_ASSERT_NOT_NULL(rule, "Rule should parse");
 
 	// Add rule to ruleset
@@ -89,7 +89,7 @@ test_complex_ruleset_visualization()
 
 	cdsl_rule_t* rules_array[4];
 	for (int i = 0; i < 4; i++) {
-		rules_array[i] = cdsl_parse_string(rules[i]);
+		rules_array[i] = cdsl_parse_string(rules[i], NULL);
 		TEST_ASSERT_NOT_NULL(rules_array[i], "Rule should parse");
 		cdsl_ruleset_add(ruleset, rules_array[i], 1);
 	}
@@ -171,7 +171,7 @@ test_visualization_performance()
 		sprintf(
 		    rule_dsl, "RULE rule%d { WHEN var%d > %d THEN action1() }", i, (i % 3) + 1, i);
 
-		cdsl_rule_t* rule = cdsl_parse_string(rule_dsl);
+		cdsl_rule_t* rule = cdsl_parse_string(rule_dsl, NULL);
 		TEST_ASSERT_NOT_NULL(rule, "Rule should parse");
 		cdsl_ruleset_add(ruleset, rule, 1);
 	}

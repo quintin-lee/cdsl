@@ -98,7 +98,7 @@ cdsl_compile(cdsl_compile_cache_t* cache,
 	pthread_rwlock_unlock(&cache->lock);
 
 	/* 2. Slow path: Parse and verify outside lock */
-	cdsl_rule_t* rule = cdsl_parse_string(dsl_code);
+	cdsl_rule_t* rule = cdsl_parse_string(dsl_code, NULL);
 	if (!rule) {
 		if (err_buf) {
 			snprintf(err_buf, err_buf_sz, "Parse error");

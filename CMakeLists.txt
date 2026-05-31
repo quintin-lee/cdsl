@@ -91,6 +91,12 @@ foreach(test_src ${TEST_SOURCES})
     add_test(NAME ${test_name} COMMAND ${test_name})
 endforeach()
 
+# 8. LSP server (optional)
+option(CDSL_BUILD_LSP "Build the cdsl-lsp language server" OFF)
+if(CDSL_BUILD_LSP)
+    add_subdirectory(tools/cdsl-lsp)
+endif()
+
 install(TARGETS cdsl_static cdsl_shared
     EXPORT cdslTargets
     LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR}

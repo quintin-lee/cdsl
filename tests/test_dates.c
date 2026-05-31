@@ -25,7 +25,7 @@ test_date_parsing()
 	TEST_BEGIN("Date literal parsing");
 
 	const char* dsl = "RULE date_test { WHEN @2026-05-30 == @2026-05-30 THEN block(\"ok\") }";
-	cdsl_rule_t* rule = cdsl_parse_string(dsl);
+	cdsl_rule_t* rule = cdsl_parse_string(dsl, NULL);
 	TEST_ASSERT_NOT_NULL(rule, "Rule with date literal should parse");
 
 	TEST_ASSERT(rule->when_expr->type == CDSL_EXPR_BINARY, "Should be binary expression");
@@ -53,7 +53,7 @@ test_date_comparison()
 	    "RULE r5 { WHEN @2026-05-30 12:00:00 > @2026-05-30 08:00:00 THEN block() }"};
 
 	for (int i = 0; i < 5; i++) {
-		cdsl_rule_t* rule = cdsl_parse_string(dsls[i]);
+		cdsl_rule_t* rule = cdsl_parse_string(dsls[i], NULL);
 		TEST_ASSERT_NOT_NULL(rule, "Rule should parse");
 		cdsl_rule_report_t* rpt = cdsl_vm_execute(vm, rule, ctx);
 		TEST_ASSERT_INT(rpt->status, CDSL_STATUS_FAILED, "Comparison should be true");
@@ -78,13 +78,13 @@ test_date_builtins()
 
 	// Test now()
 	cdsl_rule_t* r_now =
-	    cdsl_parse_string("RULE r_now { WHEN now() > @2000-01-01 THEN block() }");
+	    cdsl_parse_string("RULE r_now { WHEN now() > @2000-01-01 THEN block() }", NULL);
 	cdsl_rule_report_t* rpt_now = cdsl_vm_execute(vm, r_now, ctx);
 	TEST_ASSERT_INT(rpt_now->status, CDSL_STATUS_FAILED, "now() should be after 2000");
 
 	// Test days_between()
 	cdsl_rule_t* r_days = cdsl_parse_string(
-	    "RULE r_days { WHEN days_between(@2026-01-11, @2026-01-01) == 10 THEN block() }");
+	    "RULE r_days { WHEN days_between(@2026-01-11, @2026-01-01) == 10 THEN block() }", NULL);
 	cdsl_rule_report_t* rpt_days = cdsl_vm_execute(vm, r_days, ctx);
 	TEST_ASSERT_INT(rpt_days->status, CDSL_STATUS_FAILED, "days_between should return 10");
 
@@ -125,7 +125,7 @@ test_date_arithmetic(void)
 
 	/* DATE + INT: 2024-01-01 + 30 → 2024-01-31 */
 	cdsl_rule_t* r1 =
-	    cdsl_parse_string("RULE da1 { WHEN start + 30 > @2024-01-30 THEN block(\"ok\") }");
+	    cdsl_parse_string("RULE da1 { WHEN start + 30 > @2024-01-30 THEN block(\"ok\") }", NULL);
 	cdsl_rule_report_t* rpt = cdsl_vm_execute(vm, r1, ctx);
 	TEST_ASSERT_INT(rpt->status, CDSL_STATUS_FAILED, "DATE + 30 works");
 	cdsl_report_free(rpt);
@@ -133,7 +133,7 @@ test_date_arithmetic(void)
 
 	/* DATE - INT: 2024-01-01 - 30 */
 	cdsl_rule_t* r2 =
-	    cdsl_parse_string("RULE da2 { WHEN start - 30 < @2024-01-01 THEN block(\"ok\") }");
+	    cdsl_parse_string("RULE da2 { WHEN start - 30 < @2024-01-01 THEN block(\"ok\") }", NULL);
 	rpt = cdsl_vm_execute(vm, r2, ctx);
 	TEST_ASSERT_INT(rpt->status, CDSL_STATUS_FAILED, "DATE - 30 works");
 	cdsl_report_free(rpt);
@@ -141,7 +141,7 @@ test_date_arithmetic(void)
 
 	/* DATE - DATE → INT (days): use simple rule to verify */
 	cdsl_rule_t* r3 = cdsl_parse_string(
-	    "RULE da3 { WHEN @2024-01-10 - @2024-01-01 == 9 THEN block(\"ok\") }");
+	    "RULE da3 { WHEN @2024-01-10 - @2024-01-01 == 9 THEN block(\"ok\") }", NULL);
 	rpt = cdsl_vm_execute(vm, r3, ctx);
 	TEST_ASSERT_INT(rpt->status, CDSL_STATUS_FAILED, "DATE - DATE = 9 days");
 	cdsl_report_free(rpt);

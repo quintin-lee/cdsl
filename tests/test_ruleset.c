@@ -53,9 +53,9 @@ test_ruleset_add_remove()
 	const char* rule2_dsl = "RULE rule2 { WHEN user.age < 65 THEN block(\"young\") }";
 	const char* rule3_dsl = "RULE rule3 { WHEN user.age == 30 THEN block(\"thirty\") }";
 
-	cdsl_rule_t* rule1 = cdsl_parse_string(rule1_dsl);
-	cdsl_rule_t* rule2 = cdsl_parse_string(rule2_dsl);
-	cdsl_rule_t* rule3 = cdsl_parse_string(rule3_dsl);
+	cdsl_rule_t* rule1 = cdsl_parse_string(rule1_dsl, NULL);
+	cdsl_rule_t* rule2 = cdsl_parse_string(rule2_dsl, NULL);
+	cdsl_rule_t* rule3 = cdsl_parse_string(rule3_dsl, NULL);
 
 	TEST_ASSERT_NOT_NULL(rule1, "Rule1 should parse");
 	TEST_ASSERT_NOT_NULL(rule2, "Rule2 should parse");
@@ -101,9 +101,9 @@ test_ruleset_priority_ordering()
 	const char* rule2_dsl = "RULE rule2 { WHEN user.age < 65 THEN block(\"young\") }";
 	const char* rule3_dsl = "RULE rule3 { WHEN user.age == 30 THEN block(\"thirty\") }";
 
-	cdsl_rule_t* rule1 = cdsl_parse_string(rule1_dsl);
-	cdsl_rule_t* rule2 = cdsl_parse_string(rule2_dsl);
-	cdsl_rule_t* rule3 = cdsl_parse_string(rule3_dsl);
+	cdsl_rule_t* rule1 = cdsl_parse_string(rule1_dsl, NULL);
+	cdsl_rule_t* rule2 = cdsl_parse_string(rule2_dsl, NULL);
+	cdsl_rule_t* rule3 = cdsl_parse_string(rule3_dsl, NULL);
 
 	// Add rules with different priorities (lower number = higher priority)
 	cdsl_ruleset_add(ruleset, rule1, 10); // Lowest priority
@@ -149,8 +149,8 @@ test_ruleset_batch_execution()
 	const char* rule1_dsl = "RULE rule1 { WHEN user.age > 18 THEN block(\"adult\") }";
 	const char* rule2_dsl = "RULE rule2 { WHEN user.age < 65 THEN block(\"young\") }";
 
-	cdsl_rule_t* rule1 = cdsl_parse_string(rule1_dsl);
-	cdsl_rule_t* rule2 = cdsl_parse_string(rule2_dsl);
+	cdsl_rule_t* rule1 = cdsl_parse_string(rule1_dsl, NULL);
+	cdsl_rule_t* rule2 = cdsl_parse_string(rule2_dsl, NULL);
 
 	cdsl_ruleset_add(ruleset, rule1, 1);
 	cdsl_ruleset_add(ruleset, rule2, 2);
@@ -195,9 +195,9 @@ test_ruleset_parallel_execution()
 	const char* rule2_dsl = "RULE rule2 { WHEN user.age < 65 THEN block(\"young\") }";
 	const char* rule3_dsl = "RULE rule3 { WHEN user.age == 25 THEN block(\"twenty_five\") }";
 
-	cdsl_rule_t* rule1 = cdsl_parse_string(rule1_dsl);
-	cdsl_rule_t* rule2 = cdsl_parse_string(rule2_dsl);
-	cdsl_rule_t* rule3 = cdsl_parse_string(rule3_dsl);
+	cdsl_rule_t* rule1 = cdsl_parse_string(rule1_dsl, NULL);
+	cdsl_rule_t* rule2 = cdsl_parse_string(rule2_dsl, NULL);
+	cdsl_rule_t* rule3 = cdsl_parse_string(rule3_dsl, NULL);
 
 	cdsl_ruleset_add(ruleset, rule1, 1);
 	cdsl_ruleset_add(ruleset, rule2, 2);
@@ -283,9 +283,9 @@ test_ruleset_dependency_management()
 	const char* rule3_dsl = "RULE rule3 { META { description = \"Third rule\" depends_on = "
 				"\"rule2,rule1\" } WHEN user.age > 20 THEN block(\"test3\") }";
 
-	cdsl_rule_t* rule1 = cdsl_parse_string(rule1_dsl);
-	cdsl_rule_t* rule2 = cdsl_parse_string(rule2_dsl);
-	cdsl_rule_t* rule3 = cdsl_parse_string(rule3_dsl);
+	cdsl_rule_t* rule1 = cdsl_parse_string(rule1_dsl, NULL);
+	cdsl_rule_t* rule2 = cdsl_parse_string(rule2_dsl, NULL);
+	cdsl_rule_t* rule3 = cdsl_parse_string(rule3_dsl, NULL);
 
 	cdsl_ruleset_add(ruleset, rule1, 1);
 	cdsl_ruleset_add(ruleset, rule2, 2);
@@ -331,8 +331,8 @@ test_ruleset_dependency_cycle()
 	const char* dsl2 =
 	    "RULE rule2 { META { depends_on = \"rule1\" } WHEN true THEN block(\"2\") }";
 
-	cdsl_ruleset_add(ruleset, cdsl_parse_string(dsl1), 1);
-	cdsl_ruleset_add(ruleset, cdsl_parse_string(dsl2), 2);
+	cdsl_ruleset_add(ruleset, cdsl_parse_string(dsl1, NULL), 1);
+	cdsl_ruleset_add(ruleset, cdsl_parse_string(dsl2, NULL), 2);
 
 	char err[512] = {0};
 	int valid = cdsl_ruleset_validate_deps(ruleset, err, sizeof(err));
@@ -428,8 +428,8 @@ test_complex_ruleset()
 				"  }"
 				"}";
 
-	cdsl_rule_t* rule1 = cdsl_parse_string(rule1_dsl);
-	cdsl_rule_t* rule2 = cdsl_parse_string(rule2_dsl);
+	cdsl_rule_t* rule1 = cdsl_parse_string(rule1_dsl, NULL);
+	cdsl_rule_t* rule2 = cdsl_parse_string(rule2_dsl, NULL);
 
 	cdsl_ruleset_add(ruleset, rule1, 1);
 	cdsl_ruleset_add(ruleset, rule2, 2);
@@ -478,7 +478,7 @@ test_ruleset_performance()
 		char dsl[256];
 		sprintf(dsl, "RULE test%d { WHEN user.age > %d THEN block(\"test%d\") }", i, i, i);
 
-		rules[i] = cdsl_parse_string(dsl);
+		rules[i] = cdsl_parse_string(dsl, NULL);
 		TEST_ASSERT_NOT_NULL(rules[i], "Rule should parse");
 
 		cdsl_ruleset_add(ruleset, rules[i], i + 1);

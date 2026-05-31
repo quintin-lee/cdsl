@@ -229,7 +229,7 @@ test_ast_memory_management()
 	TEST_ASSERT_NOT_NULL(parsed_rules, "Rule array allocation should succeed");
 
 	for (int i = 0; i < 3; i++) {
-		parsed_rules[i] = cdsl_parse_string(rules[i]);
+		parsed_rules[i] = cdsl_parse_string(rules[i], NULL);
 		TEST_ASSERT_NOT_NULL(parsed_rules[i], "Rule should parse");
 
 		// Verify rule
@@ -395,7 +395,7 @@ test_memory_leak_detection()
 	cdsl_schema_register_action(schema, "block", CDSL_TYPE_VOID, 1, CDSL_TYPE_STRING);
 
 	const char* dsl = "RULE test { WHEN user.age > 0 THEN block(\"test\") }";
-	cdsl_rule_t* rule = cdsl_parse_string(dsl);
+	cdsl_rule_t* rule = cdsl_parse_string(dsl, NULL);
 
 	cdsl_vm_t* vm = cdsl_vm_create(schema);
 	cdsl_context_t* ctx = cdsl_context_create(schema);
@@ -456,7 +456,7 @@ test_complex_memory_usage_pattern()
 		sprintf(
 		    dsl, "RULE test%d { WHEN user.field%d > 0 THEN action%d(\"test\") }", i, i, i);
 
-		rules[i] = cdsl_parse_string(dsl);
+		rules[i] = cdsl_parse_string(dsl, NULL);
 		TEST_ASSERT_NOT_NULL(rules[i], "Rule should parse");
 
 		// Verify rule
@@ -528,7 +528,7 @@ test_memory_stress_test()
 	for (int i = 0; i < 20; i++) {
 		char err[512] = {0};
 		const char* dsl = "RULE test { WHEN user.age > 0 THEN block(\"test\") }";
-		cdsl_rule_t* rule = cdsl_parse_string(dsl);
+		cdsl_rule_t* rule = cdsl_parse_string(dsl, NULL);
 
 		if (rule) {
 			bool valid = cdsl_verify_rule(rule, schemas[i], err, sizeof(err));

@@ -33,7 +33,7 @@ test_simple_rule_codegen()
 
 	const char* dsl = "RULE check_age { META { description = \"Age check\" } WHEN user.age >= "
 			  "18 THEN block(\"adult\") }";
-	cdsl_rule_t* rule = cdsl_parse_string(dsl);
+	cdsl_rule_t* rule = cdsl_parse_string(dsl, NULL);
 	TEST_ASSERT_NOT_NULL(rule, "Rule should parse");
 
 	// Generate C code
@@ -78,7 +78,7 @@ test_metric_rule_codegen()
 	    "  }"
 	    "}";
 
-	cdsl_rule_t* rule = cdsl_parse_string(dsl);
+	cdsl_rule_t* rule = cdsl_parse_string(dsl, NULL);
 	TEST_ASSERT_NOT_NULL(rule, "Metric rule should parse");
 
 	char* c_code = cdsl_codegen_rule_to_c(rule, schema);
@@ -122,7 +122,7 @@ test_template_inheritance_codegen()
 				   "  }"
 				   "}";
 
-	cdsl_rule_t* template_rule = cdsl_parse_string(template_dsl);
+	cdsl_rule_t* template_rule = cdsl_parse_string(template_dsl, NULL);
 	TEST_ASSERT_NOT_NULL(template_rule, "Template should parse");
 	cdsl_template_register(template_rule);
 
@@ -136,7 +136,7 @@ test_template_inheritance_codegen()
 			  "  }"
 			  "}";
 
-	cdsl_rule_t* rule = cdsl_parse_string(dsl);
+	cdsl_rule_t* rule = cdsl_parse_string(dsl, NULL);
 	TEST_ASSERT_NOT_NULL(rule, "Extended rule should parse");
 
 	char* c_code = cdsl_codegen_rule_to_c(rule, schema);
@@ -167,7 +167,7 @@ test_codegen_to_file()
 	cdsl_schema_register_action(schema, "block", CDSL_TYPE_VOID, 1, CDSL_TYPE_STRING);
 
 	const char* dsl = "RULE check_age { WHEN user.age >= 18 THEN block(\"adult\") }";
-	cdsl_rule_t* rule = cdsl_parse_string(dsl);
+	cdsl_rule_t* rule = cdsl_parse_string(dsl, NULL);
 	TEST_ASSERT_NOT_NULL(rule, "Rule should parse");
 
 	// Generate code to file
@@ -246,7 +246,7 @@ test_complex_rule_codegen()
 			  "  }"
 			  "}";
 
-	cdsl_rule_t* rule = cdsl_parse_string(dsl);
+	cdsl_rule_t* rule = cdsl_parse_string(dsl, NULL);
 	TEST_ASSERT_NOT_NULL(rule, "Complex rule should parse");
 
 	char* c_code = cdsl_codegen_rule_to_c(rule, schema);
@@ -281,7 +281,7 @@ test_codegen_error_handling()
 
 	// Test with NULL schema
 	const char* dsl = "RULE test { WHEN x > 0 THEN block(\"test\") }";
-	cdsl_rule_t* rule = cdsl_parse_string(dsl);
+	cdsl_rule_t* rule = cdsl_parse_string(dsl, NULL);
 	TEST_ASSERT_NOT_NULL(rule, "Rule should parse");
 
 	c_code = cdsl_codegen_rule_to_c(rule, NULL);
@@ -324,7 +324,7 @@ test_codegen_multiple_actions()
 			  "  }"
 			  "}";
 
-	cdsl_rule_t* rule = cdsl_parse_string(dsl);
+	cdsl_rule_t* rule = cdsl_parse_string(dsl, NULL);
 	TEST_ASSERT_NOT_NULL(rule, "Rule should parse");
 
 	char* c_code = cdsl_codegen_rule_to_c(rule, schema);
@@ -355,7 +355,7 @@ test_codegen_string_literals()
 	cdsl_schema_register_action(schema, "block", CDSL_TYPE_VOID, 1, CDSL_TYPE_STRING);
 
 	const char* dsl = "RULE test { WHEN user.name == \"Alice\" THEN block(\"Hello Alice!\") }";
-	cdsl_rule_t* rule = cdsl_parse_string(dsl);
+	cdsl_rule_t* rule = cdsl_parse_string(dsl, NULL);
 	TEST_ASSERT_NOT_NULL(rule, "Rule should parse");
 
 	char* c_code = cdsl_codegen_rule_to_c(rule, schema);
@@ -384,7 +384,7 @@ test_codegen_performance()
 	cdsl_schema_register_action(schema, "score", CDSL_TYPE_VOID, 1, CDSL_TYPE_INT);
 
 	const char* dsl = "RULE perf_test { WHEN user.age > 0 THEN score(10) }";
-	cdsl_rule_t* rule = cdsl_parse_string(dsl);
+	cdsl_rule_t* rule = cdsl_parse_string(dsl, NULL);
 	TEST_ASSERT_NOT_NULL(rule, "Rule should parse");
 
 	// Generate code multiple times
@@ -417,7 +417,7 @@ test_codegen_complex_expressions()
 			  "  THEN block(\"complex_condition\")"
 			  "}";
 
-	cdsl_rule_t* rule = cdsl_parse_string(dsl);
+	cdsl_rule_t* rule = cdsl_parse_string(dsl, NULL);
 	TEST_ASSERT_NOT_NULL(rule, "Rule should parse");
 
 	char* c_code = cdsl_codegen_rule_to_c(rule, schema);
@@ -452,8 +452,8 @@ test_ruleset_codegen()
 	const char* dsl1 = "RULE rule1 { WHEN user.age > 18 THEN score(10) }";
 	const char* dsl2 = "RULE rule2 { WHEN user.score > 50 THEN score(20) }";
 
-	cdsl_ruleset_add(ruleset, cdsl_parse_string(dsl1), 1);
-	cdsl_ruleset_add(ruleset, cdsl_parse_string(dsl2), 2);
+	cdsl_ruleset_add(ruleset, cdsl_parse_string(dsl1, NULL), 1);
+	cdsl_ruleset_add(ruleset, cdsl_parse_string(dsl2, NULL), 2);
 
 	// Generate H and C content
 	char* h_code = cdsl_codegen_ruleset_to_h(ruleset, schema, "my_rules");

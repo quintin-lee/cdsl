@@ -20,6 +20,7 @@
 
 %{
 #include "cdsl/ast.h"
+#include "cdsl/util/error.h"
 #include "parser.tab.h"
 #include <string.h>
 #include <stdlib.h>
@@ -31,6 +32,7 @@
 %option nounput
 %option reentrant
 %option bison-bridge
+%option extra-type="struct cdsl_error_list*"
 
 %x BLOCK_COMMENT
 
@@ -121,6 +123,13 @@
 ","                      { return COMMA; }
 
 [ \t\n\r]+              ;
-.                       { printf("Unknown token: %s\n", yytext); }
+.                       {
+                            if (yyextra) {
+                                char buf[128];
+                                snprintf(buf, sizeof(buf), "Unknown character: '%s'", yytext);
+                                cdsl_error_t* err = cdsl_error_create(CDSL_ERR_SYNTAX, yylineno, 0, buf, NULL);
+                                cdsl_error_list_add(yyextra, err);
+                            }
+                        }
 
 %%

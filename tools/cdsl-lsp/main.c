@@ -127,7 +127,7 @@ static void publish_diagnostics(void) {
 	int has_error = 0;
 
 	if (g_text[0]) {
-		cdsl_rule_t* rule = cdsl_parse_string(g_text);
+		cdsl_rule_t* rule = cdsl_parse_string(g_text, NULL);
 		if (!rule) {
 			snprintf(buf, sizeof(buf),
 				 "{\"range\":{\"start\":{\"line\":0,\"character\":0},"

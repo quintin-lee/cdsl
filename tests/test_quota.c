@@ -14,7 +14,7 @@ test_instruction_quota(void)
 	// 3+3 = 2 instructions (PUSH, ADD)
 	// ...
 	cdsl_rule_t* rule =
-	    cdsl_parse_string("RULE r { WHEN 1 + 2 + 3 + 4 + 5 + 6 + 7 == 28 THEN block(\"ok\") }");
+	    cdsl_parse_string("RULE r { WHEN 1 + 2 + 3 + 4 + 5 + 6 + 7 == 28 THEN block(\"ok\") }", NULL);
 
 	cdsl_vm_set_instruction_limit(vm, 5); // Very low limit
 	cdsl_rule_report_t* rpt = cdsl_vm_execute(vm, rule, ctx);

@@ -158,7 +158,7 @@ test_simple_rule_pass(void)
 	TEST_BEGIN("simple rule WHEN false -> PASSED");
 	cdsl_schema_t* schema = make_test_schema();
 	cdsl_rule_t* rule = cdsl_parse_string("RULE r1 { META { description = \"test\" } WHEN "
-					      "user.age > 100 THEN block(\"too_old\") }");
+					      "user.age > 100 THEN block(\"too_old\") }", NULL);
 	TEST_ASSERT_NOT_NULL(rule, "parsed");
 
 	cdsl_vm_t* vm = cdsl_vm_create(schema);
@@ -188,7 +188,7 @@ test_simple_rule_fail(void)
 	TEST_BEGIN("simple rule WHEN true -> FAILED");
 	cdsl_schema_t* schema = make_test_schema();
 	cdsl_rule_t* rule = cdsl_parse_string(
-	    "RULE r1 { META { description = \"test\" } WHEN user.age > 18 THEN block(\"adult\") }");
+	    "RULE r1 { META { description = \"test\" } WHEN user.age > 18 THEN block(\"adult\") }", NULL);
 	cdsl_vm_t* vm = cdsl_vm_create(schema);
 	cdsl_vm_register_action(vm, "block", test_action_cb);
 
@@ -229,7 +229,7 @@ test_metric_rule_scoring(void)
 					      "    CASE user.active == true THEN score(40)"
 					      "    DEFAULT score(0)"
 					      "  }"
-					      "}");
+					      "}", NULL);
 	TEST_ASSERT_NOT_NULL(rule, "parsed");
 
 	cdsl_vm_t* vm = cdsl_vm_create(schema);
@@ -273,7 +273,7 @@ test_metric_rule_partial(void)
 					      "    CASE user.active == true THEN score(40)"
 					      "    DEFAULT score(0)"
 					      "  }"
-					      "}");
+					      "}", NULL);
 	cdsl_vm_t* vm = cdsl_vm_create(schema);
 	cdsl_vm_register_action(vm, "score", test_action_cb);
 
@@ -315,7 +315,7 @@ test_critical_metric_veto(void)
 	    "    CASE user.age >= 0 THEN score(50)"
 	    "    DEFAULT score(0)"
 	    "  }"
-	    "}");
+	    "}", NULL);
 	cdsl_vm_t* vm = cdsl_vm_create(schema);
 	cdsl_vm_register_action(vm, "score", test_action_cb);
 	cdsl_vm_register_action(vm, "fail_metric", test_action_cb);
@@ -344,7 +344,7 @@ test_string_comparison(void)
 	TEST_BEGIN("string comparison in expression");
 	cdsl_schema_t* schema = make_test_schema();
 	cdsl_rule_t* rule = cdsl_parse_string("RULE strcmp { META { desc = \"str\" } WHEN "
-					      "user.name == \"Alice\" THEN block(\"match\") }");
+					      "user.name == \"Alice\" THEN block(\"match\") }", NULL);
 	cdsl_vm_t* vm = cdsl_vm_create(schema);
 	cdsl_vm_register_action(vm, "block", test_action_cb);
 
@@ -375,9 +375,9 @@ test_ruleset_batch(void)
 	cdsl_ruleset_t* set = cdsl_ruleset_create();
 
 	cdsl_rule_t* r1 = cdsl_parse_string(
-	    "RULE a { META { d = \"a\" } WHEN user.age > 100 THEN block(\"a\") }");
+	    "RULE a { META { d = \"a\" } WHEN user.age > 100 THEN block(\"a\") }", NULL);
 	cdsl_rule_t* r2 =
-	    cdsl_parse_string("RULE b { META { d = \"b\" } WHEN user.age < 0 THEN block(\"b\") }");
+	    cdsl_parse_string("RULE b { META { d = \"b\" } WHEN user.age < 0 THEN block(\"b\") }", NULL);
 	cdsl_ruleset_add(set, r1, 1);
 	cdsl_ruleset_add(set, r2, 2);
 
@@ -409,7 +409,7 @@ test_verify_detailed(void)
 	TEST_BEGIN("detailed verification finds unknown variable");
 	cdsl_schema_t* schema = make_test_schema();
 	cdsl_rule_t* rule = cdsl_parse_string(
-	    "RULE r { META { d = \"x\" } WHEN unknown.var == 1 THEN block(\"x\") }");
+	    "RULE r { META { d = \"x\" } WHEN unknown.var == 1 THEN block(\"x\") }", NULL);
 	cdsl_error_list_t* errors = cdsl_verify_rule_detailed(rule, schema);
 	TEST_ASSERT(errors->count > 0, "errors found for unknown var");
 	cdsl_error_list_free(errors);
@@ -471,7 +471,7 @@ test_report_json(void)
 
 	/* Simple rule: without weight metadata, this should pass */
 	cdsl_rule_t* rule =
-	    cdsl_parse_string("RULE json_test { WHEN user.age < 18 THEN block(\"minor\") }");
+	    cdsl_parse_string("RULE json_test { WHEN user.age < 18 THEN block(\"minor\") }", NULL);
 	TEST_ASSERT_NOT_NULL(rule, "rule parsed");
 
 	cdsl_rule_report_t* report = cdsl_vm_execute(vm, rule, ctx);
@@ -518,7 +518,7 @@ test_execution_edge_cases(void)
 
 	cdsl_rule_t* rule = cdsl_parse_string(
 	    "RULE divzero { "
-	    "METRIC m { CASE user.age / 0 >= 18 THEN score(50) DEFAULT score(0) } }");
+	    "METRIC m { CASE user.age / 0 >= 18 THEN score(50) DEFAULT score(0) } }", NULL);
 	if (rule) {
 		cdsl_rule_report_t* rpt = cdsl_vm_execute(vm, rule, ctx);
 		TEST_ASSERT(rpt != NULL, "divzero produces report");
@@ -551,7 +551,7 @@ test_long_type(void)
 
 	/* LONG literal in expression */
 	cdsl_rule_t* r1 =
-	    cdsl_parse_string("RULE l1 { WHEN 10000000000L > big.id THEN block(\"big\") }");
+	    cdsl_parse_string("RULE l1 { WHEN 10000000000L > big.id THEN block(\"big\") }", NULL);
 	cdsl_rule_report_t* rpt = cdsl_vm_execute(vm, r1, ctx);
 	TEST_ASSERT_INT(rpt->status, CDSL_STATUS_FAILED, "10000000000L > 9999999999 true");
 	cdsl_report_free(rpt);
@@ -559,7 +559,7 @@ test_long_type(void)
 
 	/* LONG arithmetic: LONG + INT → LONG */
 	cdsl_rule_t* r2 =
-	    cdsl_parse_string("RULE l2 { WHEN big.id + 1L == 10000000000L THEN block(\"sum\") }");
+	    cdsl_parse_string("RULE l2 { WHEN big.id + 1L == 10000000000L THEN block(\"sum\") }", NULL);
 	TEST_ASSERT_NOT_NULL(r2, "long arithmetic");
 	rpt = cdsl_vm_execute(vm, r2, ctx);
 	TEST_ASSERT_INT(rpt->status, CDSL_STATUS_FAILED, "9999999999 + 1 == 10000000000");
@@ -568,7 +568,7 @@ test_long_type(void)
 
 	/* LONG context variable lookup */
 	cdsl_rule_t* r3 =
-	    cdsl_parse_string("RULE l3 { WHEN big.id >= 5000000000L THEN block(\"large\") }");
+	    cdsl_parse_string("RULE l3 { WHEN big.id >= 5000000000L THEN block(\"large\") }", NULL);
 	TEST_ASSERT_NOT_NULL(r3, "long var lookup");
 	rpt = cdsl_vm_execute(vm, r3, ctx);
 	TEST_ASSERT_INT(rpt->status, CDSL_STATUS_FAILED, "big.id >= 5000000000 true");
@@ -578,7 +578,7 @@ test_long_type(void)
 	/* LONG multiplication in metric */
 	cdsl_rule_t* r4 =
 	    cdsl_parse_string("RULE l4 { META { w = \"100\" } METRIC m { CASE 9999999999L * 2L == "
-			      "19999999998L THEN score(100) DEFAULT score(0) } }");
+			      "19999999998L THEN score(100) DEFAULT score(0) } }", NULL);
 	TEST_ASSERT_NOT_NULL(r4, "long multiply");
 	rpt = cdsl_vm_execute(vm, r4, ctx);
 	TEST_ASSERT_INT(rpt->status, CDSL_STATUS_PASSED, "9999999999 * 2 == 19999999998");

@@ -279,7 +279,7 @@ test_schema_validation_error_reporting()
 	// Test rule with multiple errors
 	const char* dsl =
 	    "RULE test { WHEN invalid_var > \"invalid\" THEN unknown_action(\"arg1\", \"arg2\") }";
-	cdsl_rule_t* rule = cdsl_parse_string(dsl);
+	cdsl_rule_t* rule = cdsl_parse_string(dsl, NULL);
 	TEST_ASSERT_NOT_NULL(rule, "Rule should parse");
 
 	// Test detailed error collection

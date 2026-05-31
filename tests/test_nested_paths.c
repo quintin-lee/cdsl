@@ -52,7 +52,7 @@ test_dotted_identifier_execution()
 	cdsl_context_set_int(ctx, "user.profile.score", 95);
 
 	cdsl_rule_t* rule =
-	    cdsl_parse_string("RULE r1 { WHEN user.profile.score > 90 THEN block() }");
+	    cdsl_parse_string("RULE r1 { WHEN user.profile.score > 90 THEN block() }", NULL);
 	TEST_ASSERT_NOT_NULL(rule, "Rule should parse dotted identifier");
 
 	cdsl_rule_report_t* rpt = cdsl_vm_execute(vm, rule, ctx);

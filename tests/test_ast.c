@@ -122,7 +122,7 @@ test_ast_parse_limit(void)
 	if (large_input) {
 		memset(large_input, 'A', 69999);
 		large_input[69999] = '\0';
-		cdsl_rule_t* r = cdsl_parse_string(large_input);
+		cdsl_rule_t* r = cdsl_parse_string(large_input, NULL);
 		TEST_ASSERT_NULL(r, "parse too large string returns NULL");
 		free(large_input);
 	}

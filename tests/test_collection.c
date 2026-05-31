@@ -6,7 +6,7 @@ test_array_basic(void)
 {
 	TEST_BEGIN("array basic");
 	const char* dsl = "RULE array_rule { WHEN count([1, 2, 3]) == 3 THEN accept() }";
-	cdsl_rule_t* rule = cdsl_parse_string(dsl);
+	cdsl_rule_t* rule = cdsl_parse_string(dsl, NULL);
 	TEST_ASSERT_NOT_NULL(rule, "Parse rule");
 
 	cdsl_context_t* ctx = cdsl_context_create(NULL);
@@ -29,7 +29,7 @@ test_array_sum(void)
 {
 	TEST_BEGIN("array sum");
 	const char* dsl = "RULE sum_rule { WHEN sum([1, 2, 3]) == 6 THEN accept() }";
-	cdsl_rule_t* rule = cdsl_parse_string(dsl);
+	cdsl_rule_t* rule = cdsl_parse_string(dsl, NULL);
 	TEST_ASSERT_NOT_NULL(rule, "Parse rule");
 
 	cdsl_context_t* ctx = cdsl_context_create(NULL);

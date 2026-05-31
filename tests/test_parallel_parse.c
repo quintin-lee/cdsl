@@ -46,7 +46,7 @@ parse_worker(void* arg)
 		int template_idx = (id + i) % 3;
 		sprintf(dsl, DSL_TEMPLATES[template_idx], id, i);
 
-		cdsl_rule_t* rule = cdsl_parse_string(dsl);
+		cdsl_rule_t* rule = cdsl_parse_string(dsl, NULL);
 		if (!rule) {
 			fprintf(
 			    stderr, "Thread %d: Failed to parse iteration %d: %s\n", id, i, dsl);

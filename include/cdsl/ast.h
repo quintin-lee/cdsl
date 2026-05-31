@@ -13,6 +13,7 @@
 #define CDSL_AST_H
 
 #include "cdsl/util/arena.h"
+#include "cdsl/util/error.h"
 #include <stddef.h>
 #include <stdint.h>
 #include <time.h>
@@ -509,10 +510,14 @@ void cdsl_free_rule(cdsl_rule_t* rule);
  * The returned rule must be freed with cdsl_free_rule().
  *
  * @param dsl_code Null-terminated DSL source string
+ * @param errors   Optional output for parse errors (may be NULL).
+ *                 If non-NULL and no errors pointer currently exists,
+ *                 a new error list is allocated and returned.
+ *                 If an error list already exists, errors are appended.
  * @return Parsed rule, or NULL on parse error
  */
 [[nodiscard]]
-cdsl_rule_t* cdsl_parse_string(const char* dsl_code);
+cdsl_rule_t* cdsl_parse_string(const char* dsl_code, cdsl_error_list_t** errors);
 
 /** @name Template Registry */
 /** @{ */
