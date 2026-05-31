@@ -124,16 +124,16 @@ test_date_arithmetic(void)
 	cdsl_vm_t* vm = cdsl_vm_create(schema);
 
 	/* DATE + INT: 2024-01-01 + 30 → 2024-01-31 */
-	cdsl_rule_t* r1 =
-	    cdsl_parse_string("RULE da1 { WHEN start + 30 > @2024-01-30 THEN block(\"ok\") }", NULL);
+	cdsl_rule_t* r1 = cdsl_parse_string(
+	    "RULE da1 { WHEN start + 30 > @2024-01-30 THEN block(\"ok\") }", NULL);
 	cdsl_rule_report_t* rpt = cdsl_vm_execute(vm, r1, ctx);
 	TEST_ASSERT_INT(rpt->status, CDSL_STATUS_FAILED, "DATE + 30 works");
 	cdsl_report_free(rpt);
 	cdsl_free_rule(r1);
 
 	/* DATE - INT: 2024-01-01 - 30 */
-	cdsl_rule_t* r2 =
-	    cdsl_parse_string("RULE da2 { WHEN start - 30 < @2024-01-01 THEN block(\"ok\") }", NULL);
+	cdsl_rule_t* r2 = cdsl_parse_string(
+	    "RULE da2 { WHEN start - 30 < @2024-01-01 THEN block(\"ok\") }", NULL);
 	rpt = cdsl_vm_execute(vm, r2, ctx);
 	TEST_ASSERT_INT(rpt->status, CDSL_STATUS_FAILED, "DATE - 30 works");
 	cdsl_report_free(rpt);

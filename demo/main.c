@@ -23,7 +23,8 @@
 #include "cdsl/ai.h"
 
 static cdsl_rule_t*
-parse_dsl(const char* dsl) {
+parse_dsl(const char* dsl)
+{
 	cdsl_error_list_t* errs = NULL;
 	cdsl_rule_t* rule = cdsl_parse_string(dsl, &errs);
 	if (errs) {

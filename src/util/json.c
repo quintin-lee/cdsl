@@ -362,8 +362,8 @@ cdsl_json_free(cdsl_json_value_t* val)
 		break;
 	case CDSL_JSON_OBJECT:
 	case CDSL_JSON_ARRAY: {
-		cdsl_json_value_t* item =
-		    val->type == CDSL_JSON_OBJECT ? val->value.object.items : val->value.array.items;
+		cdsl_json_value_t* item = val->type == CDSL_JSON_OBJECT ? val->value.object.items
+									: val->value.array.items;
 		while (item) {
 			cdsl_json_value_t* next = item->next;
 			cdsl_json_free(item);

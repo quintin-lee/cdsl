@@ -101,7 +101,8 @@ test_bytecode_short_circuit(void)
 	cdsl_context_t* ctx = cdsl_context_create(schema);
 
 	/* AND short-circuit: true && true */
-	cdsl_rule_t* r1 = cdsl_parse_string("RULE r { WHEN 1 == 1 AND 2 == 2 THEN block(\"ok\") }", NULL);
+	cdsl_rule_t* r1 =
+	    cdsl_parse_string("RULE r { WHEN 1 == 1 AND 2 == 2 THEN block(\"ok\") }", NULL);
 	cdsl_bytecode_t bc1 = {0};
 	cdsl_bytecode_compile(r1, schema, &bc1);
 	cdsl_value_t v1 = cdsl_bytecode_execute(vm, &bc1, ctx);
@@ -110,7 +111,8 @@ test_bytecode_short_circuit(void)
 	cdsl_free_rule(r1);
 
 	/* AND short-circuit: false && anything */
-	cdsl_rule_t* r2 = cdsl_parse_string("RULE r { WHEN 1 == 2 AND 3 == 3 THEN block(\"ok\") }", NULL);
+	cdsl_rule_t* r2 =
+	    cdsl_parse_string("RULE r { WHEN 1 == 2 AND 3 == 3 THEN block(\"ok\") }", NULL);
 	cdsl_bytecode_t bc2 = {0};
 	cdsl_bytecode_compile(r2, schema, &bc2);
 	cdsl_value_t v2 = cdsl_bytecode_execute(vm, &bc2, ctx);
@@ -119,7 +121,8 @@ test_bytecode_short_circuit(void)
 	cdsl_free_rule(r2);
 
 	/* OR short-circuit */
-	cdsl_rule_t* r3 = cdsl_parse_string("RULE r { WHEN 1 == 1 OR 1 == 2 THEN block(\"ok\") }", NULL);
+	cdsl_rule_t* r3 =
+	    cdsl_parse_string("RULE r { WHEN 1 == 1 OR 1 == 2 THEN block(\"ok\") }", NULL);
 	cdsl_bytecode_t bc3 = {0};
 	cdsl_bytecode_compile(r3, schema, &bc3);
 	cdsl_value_t v3 = cdsl_bytecode_execute(vm, &bc3, ctx);
@@ -200,7 +203,8 @@ test_bytecode_vars(void)
 	cdsl_free_rule(r2);
 
 	/* String comparison */
-	cdsl_rule_t* r3 = cdsl_parse_string("RULE r { WHEN name == \"test\" THEN block(\"ok\") }", NULL);
+	cdsl_rule_t* r3 =
+	    cdsl_parse_string("RULE r { WHEN name == \"test\" THEN block(\"ok\") }", NULL);
 	cdsl_bytecode_t bc3 = {0};
 	cdsl_bytecode_compile(r3, schema, &bc3);
 	cdsl_value_t v3 = cdsl_bytecode_execute(vm, &bc3, ctx);
@@ -224,8 +228,8 @@ test_bytecode_date_arith(void)
 	cdsl_context_t* ctx = cdsl_context_create(schema);
 
 	/* DATE - DATE */
-	cdsl_rule_t* r1 =
-	    cdsl_parse_string("RULE r { WHEN @2024-01-10 - @2024-01-01 == 9 THEN block(\"ok\") }", NULL);
+	cdsl_rule_t* r1 = cdsl_parse_string(
+	    "RULE r { WHEN @2024-01-10 - @2024-01-01 == 9 THEN block(\"ok\") }", NULL);
 	TEST_ASSERT_NOT_NULL(r1, "date rule");
 	cdsl_bytecode_t bc1 = {0};
 	cdsl_bytecode_compile(r1, schema, &bc1);

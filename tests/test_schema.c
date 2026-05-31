@@ -238,7 +238,8 @@ test_schema_edge_cases()
 	TEST_SCHEMA_BEGIN("Schema edge cases");
 
 	// Test NULL schema handling
-	cdsl_rule_t* rule = cdsl_parse_string("RULE test { WHEN x > 0 THEN block(\"test\") }", NULL);
+	cdsl_rule_t* rule =
+	    cdsl_parse_string("RULE test { WHEN x > 0 THEN block(\"test\") }", NULL);
 	TEST_ASSERT_NOT_NULL(rule, "Rule should parse");
 
 	char err[512] = {0};
@@ -403,7 +404,8 @@ test_analyze_rule(void)
 	/* Dead metric CASE — always-false condition */
 	cdsl_rule_t* r4 = cdsl_parse_string(
 	    "RULE r { META { w = \"100\" } "
-	    "METRIC m { CASE 5 == 6 THEN score(0) CASE x > 10 THEN score(50) DEFAULT score(0) } }", NULL);
+	    "METRIC m { CASE 5 == 6 THEN score(0) CASE x > 10 THEN score(50) DEFAULT score(0) } }",
+	    NULL);
 	cdsl_error_list_t* w4 = cdsl_analyze_rule(r4, schema);
 	TEST_ASSERT_NOT_NULL(w4, "always-false CASE produces warning");
 	TEST_ASSERT_INT(w4->count, 1, "one warning for dead CASE");
@@ -413,7 +415,8 @@ test_analyze_rule(void)
 	/* Always-true CASE shadows subsequent */
 	cdsl_rule_t* r5 = cdsl_parse_string(
 	    "RULE r { META { w = \"100\" } "
-	    "METRIC m { CASE 5 == 5 THEN score(0) CASE x > 10 THEN score(50) DEFAULT score(0) } }", NULL);
+	    "METRIC m { CASE 5 == 5 THEN score(0) CASE x > 10 THEN score(50) DEFAULT score(0) } }",
+	    NULL);
 	cdsl_error_list_t* w5 = cdsl_analyze_rule(r5, schema);
 	TEST_ASSERT_NOT_NULL(w5, "always-true CASE warns about shadowing");
 	cdsl_error_list_free(w5);

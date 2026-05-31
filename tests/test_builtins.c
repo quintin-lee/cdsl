@@ -128,8 +128,8 @@ test_builtin_string_utils(void)
 	cdsl_free_rule(r_lower);
 
 	/* trim() — leading/trailing spaces removed */
-	cdsl_rule_t* r_trim =
-	    cdsl_parse_string("RULE r { WHEN trim(\"  abc  \") == \"abc\" THEN block(\"ok\") }", NULL);
+	cdsl_rule_t* r_trim = cdsl_parse_string(
+	    "RULE r { WHEN trim(\"  abc  \") == \"abc\" THEN block(\"ok\") }", NULL);
 	rpt = cdsl_vm_execute(vm, r_trim, ctx);
 	TEST_ASSERT_INT(rpt->status, CDSL_STATUS_FAILED, "trim works");
 	cdsl_report_free(rpt);
@@ -169,7 +169,8 @@ test_builtin_math_utils(void)
 	cdsl_context_t* ctx = cdsl_context_create(schema);
 
 	cdsl_rule_t* r_abs = cdsl_parse_string("RULE r { META { w = \"100\" } METRIC m { CASE "
-					       "abs(-5) == 5 THEN score(100) DEFAULT score(0) } }", NULL);
+					       "abs(-5) == 5 THEN score(100) DEFAULT score(0) } }",
+					       NULL);
 	cdsl_rule_report_t* rpt = cdsl_vm_execute(vm, r_abs, ctx);
 	TEST_ASSERT_INT(rpt->status, CDSL_STATUS_PASSED, "abs(-5) == 5");
 	cdsl_report_free(rpt);
@@ -177,7 +178,8 @@ test_builtin_math_utils(void)
 
 	cdsl_rule_t* r_min =
 	    cdsl_parse_string("RULE r { META { w = \"100\" } METRIC m { CASE min(10, 3) == 3 THEN "
-			      "score(100) DEFAULT score(0) } }", NULL);
+			      "score(100) DEFAULT score(0) } }",
+			      NULL);
 	rpt = cdsl_vm_execute(vm, r_min, ctx);
 	TEST_ASSERT_INT(rpt->status, CDSL_STATUS_PASSED, "min(10,3) == 3");
 	cdsl_report_free(rpt);
@@ -185,7 +187,8 @@ test_builtin_math_utils(void)
 
 	cdsl_rule_t* r_max =
 	    cdsl_parse_string("RULE r { META { w = \"100\" } METRIC m { CASE max(10, 3) == 10 THEN "
-			      "score(100) DEFAULT score(0) } }", NULL);
+			      "score(100) DEFAULT score(0) } }",
+			      NULL);
 	rpt = cdsl_vm_execute(vm, r_max, ctx);
 	TEST_ASSERT_INT(rpt->status, CDSL_STATUS_PASSED, "max(10,3) == 10");
 	cdsl_report_free(rpt);
@@ -193,7 +196,8 @@ test_builtin_math_utils(void)
 
 	cdsl_rule_t* r_round =
 	    cdsl_parse_string("RULE r { META { w = \"100\" } METRIC m { CASE round(3.14) == 3 THEN "
-			      "score(100) DEFAULT score(0) } }", NULL);
+			      "score(100) DEFAULT score(0) } }",
+			      NULL);
 	rpt = cdsl_vm_execute(vm, r_round, ctx);
 	TEST_ASSERT_INT(rpt->status, CDSL_STATUS_PASSED, "round(3.14) == 3");
 	cdsl_report_free(rpt);
@@ -216,8 +220,8 @@ test_builtin_misc(void)
 	cdsl_vm_t* vm = cdsl_vm_create(schema);
 	cdsl_context_t* ctx = cdsl_context_create(schema);
 
-	cdsl_rule_t* r_typeof =
-	    cdsl_parse_string("RULE r { WHEN typeof(\"hello\") == \"STRING\" THEN block(\"ok\") }", NULL);
+	cdsl_rule_t* r_typeof = cdsl_parse_string(
+	    "RULE r { WHEN typeof(\"hello\") == \"STRING\" THEN block(\"ok\") }", NULL);
 	cdsl_rule_report_t* rpt = cdsl_vm_execute(vm, r_typeof, ctx);
 	TEST_ASSERT_INT(rpt->status, CDSL_STATUS_FAILED, "typeof('hello') == STRING");
 	cdsl_report_free(rpt);
@@ -232,7 +236,8 @@ test_builtin_misc(void)
 
 	cdsl_rule_t* r_dadd =
 	    cdsl_parse_string("RULE r { WHEN is_before(\"2024-01-01\", date_add(\"2024-01-01\", "
-			      "7)) THEN block(\"ok\") }", NULL);
+			      "7)) THEN block(\"ok\") }",
+			      NULL);
 	rpt = cdsl_vm_execute(vm, r_dadd, ctx);
 	TEST_ASSERT_INT(rpt->status, CDSL_STATUS_FAILED, "date_add adds 7 days");
 	cdsl_report_free(rpt);
@@ -292,8 +297,8 @@ test_builtin_array(void)
 	cdsl_report_free(rpt);
 	cdsl_free_rule(r_sum);
 
-	cdsl_rule_t* r_typeof =
-	    cdsl_parse_string("RULE r { WHEN typeof([1, 2]) == \"ARRAY\" THEN block(\"ok\") }", NULL);
+	cdsl_rule_t* r_typeof = cdsl_parse_string(
+	    "RULE r { WHEN typeof([1, 2]) == \"ARRAY\" THEN block(\"ok\") }", NULL);
 	rpt = cdsl_vm_execute(vm, r_typeof, ctx);
 	TEST_ASSERT_INT(rpt->status, CDSL_STATUS_FAILED, "typeof([1, 2]) == ARRAY");
 	cdsl_report_free(rpt);

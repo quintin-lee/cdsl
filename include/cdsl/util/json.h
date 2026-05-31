@@ -12,12 +12,12 @@
  * @brief JSON value type.
  */
 typedef enum {
-	CDSL_JSON_NULL,   /**< null */
-	CDSL_JSON_BOOL,   /**< true / false */
+	CDSL_JSON_NULL,	  /**< null */
+	CDSL_JSON_BOOL,	  /**< true / false */
 	CDSL_JSON_NUMBER, /**< number */
 	CDSL_JSON_STRING, /**< string */
 	CDSL_JSON_OBJECT, /**< object */
-	CDSL_JSON_ARRAY   /**< array */
+	CDSL_JSON_ARRAY	  /**< array */
 } cdsl_json_type_t;
 
 /**

@@ -20,7 +20,10 @@ int yylex_init_extra(void* extra, yyscan_t* scanner);
 int yylex_destroy(yyscan_t scanner);
 struct yy_buffer_state* yy_scan_string(const char*, yyscan_t);
 void yy_delete_buffer(struct yy_buffer_state*, yyscan_t);
-int yyparse(yyscan_t scanner, cdsl_rule_t** rule_ptr, int* error_count, struct cdsl_error_list* error_list);
+int yyparse(yyscan_t scanner,
+	    cdsl_rule_t** rule_ptr,
+	    int* error_count,
+	    struct cdsl_error_list* error_list);
 
 cdsl_rule_t*
 cdsl_parse_string(const char* dsl_code, cdsl_error_list_t** errors)
@@ -34,9 +37,11 @@ cdsl_parse_string(const char* dsl_code, cdsl_error_list_t** errors)
 		}
 		if (errors && *errors) {
 			char buf[128];
-			snprintf(buf, sizeof(buf),
-				"DSL input length (%zu) exceeds maximum allowed (%d)",
-				strlen(dsl_code), CDSL_MAX_INPUT_LENGTH);
+			snprintf(buf,
+				 sizeof(buf),
+				 "DSL input length (%zu) exceeds maximum allowed (%d)",
+				 strlen(dsl_code),
+				 CDSL_MAX_INPUT_LENGTH);
 			cdsl_error_t* err = cdsl_error_create(CDSL_ERR_SYNTAX, 0, 0, buf, NULL);
 			cdsl_error_list_add(*errors, err);
 		}

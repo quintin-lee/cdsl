@@ -1127,10 +1127,12 @@ default_review(void* ctx,
 					    (v->type == CDSL_JSON_BOOL) ? v->value.bool_val : 0;
 				}
 				if ((v = find_json_key(root, "risk_score"))) {
-					rev->risk_score =
-					    (v->type == CDSL_JSON_NUMBER) ? (int)v->value.number_val : 0;
+					rev->risk_score = (v->type == CDSL_JSON_NUMBER)
+							      ? (int)v->value.number_val
+							      : 0;
 				}
-				if ((v = find_json_key(root, "reason")) && v->type == CDSL_JSON_STRING) {
+				if ((v = find_json_key(root, "reason")) &&
+				    v->type == CDSL_JSON_STRING) {
 					rev->reason = strdup(v->value.string_val);
 				}
 				if ((v = find_json_key(root, "suggestions")) &&
