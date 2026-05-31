@@ -53,13 +53,44 @@ struct cdsl_vm;
 struct cdsl_context;
 struct cdsl_compiled_rule;
 
+/**
+ * @brief Evaluate a rule and produce a report.
+ * @param vm       VM instance
+ * @param rule     Rule AST to evaluate
+ * @param ctx      Context with variable bindings
+ * @return Report with score, status, and per-metric results
+ */
 [[nodiscard]]
 cdsl_rule_report_t*
 cdsl_vm_execute(struct cdsl_vm* vm, const cdsl_rule_t* rule, struct cdsl_context* ctx);
+
+/**
+ * @brief Free a rule report and all owned fields.
+ * @param report Report to free (may be NULL)
+ */
 void cdsl_report_free(cdsl_rule_report_t* report);
+
+/**
+ * @brief Print a rule report to stdout.
+ * @param report Report to print
+ */
 void cdsl_report_print(const cdsl_rule_report_t* report);
+
+/**
+ * @brief Serialize a rule report to JSON string.
+ * @param report Report to serialize
+ * @return malloc'd JSON string, or NULL on error
+ */
 [[nodiscard]]
 char* cdsl_report_to_json(const cdsl_rule_report_t* report);
+
+/**
+ * @brief Evaluate a compiled rule and produce a report.
+ * @param vm       VM instance
+ * @param compiled Pre-compiled rule (bytecode)
+ * @param ctx      Context with variable bindings
+ * @return Report with score, status, and per-metric results
+ */
 [[nodiscard]]
 cdsl_rule_report_t* cdsl_vm_execute_compiled(struct cdsl_vm* vm,
 					     struct cdsl_compiled_rule* compiled,

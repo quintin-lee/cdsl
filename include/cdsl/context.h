@@ -54,23 +54,137 @@ typedef struct cdsl_context {
 	cdsl_hashmap_t* map;
 } cdsl_context_t;
 
+/**
+ * @brief Create a new execution context bound to a schema.
+ * @param schema Schema defining allowed variables
+ * @return New context, or NULL on allocation failure
+ */
 [[nodiscard]]
 cdsl_context_t* cdsl_context_create(const cdsl_schema_t* schema);
+
+/**
+ * @brief Free a context and all its variable bindings.
+ * @param ctx Context to free (may be NULL)
+ */
 void cdsl_context_free(cdsl_context_t* ctx);
+
+/**
+ * @brief Set an integer variable.
+ * @param ctx  Context
+ * @param name Variable name
+ * @param val  Value
+ */
 void cdsl_context_set_int(cdsl_context_t* ctx, const char* name, int val);
+
+/**
+ * @brief Set a float variable.
+ * @param ctx  Context
+ * @param name Variable name
+ * @param val  Value
+ */
 void cdsl_context_set_float(cdsl_context_t* ctx, const char* name, double val);
+
+/**
+ * @brief Set a boolean variable.
+ * @param ctx  Context
+ * @param name Variable name
+ * @param val  Value (nonzero = true)
+ */
 void cdsl_context_set_bool(cdsl_context_t* ctx, const char* name, int val);
+
+/**
+ * @brief Set a string variable (copies the string).
+ * @param ctx  Context
+ * @param name Variable name
+ * @param val  Value
+ */
 void cdsl_context_set_string(cdsl_context_t* ctx, const char* name, const char* val);
+
+/**
+ * @brief Set a date variable.
+ * @param ctx  Context
+ * @param name Variable name
+ * @param val  Unix timestamp
+ */
 void cdsl_context_set_date(cdsl_context_t* ctx, const char* name, time_t val);
+
+/**
+ * @brief Set a 64-bit long variable.
+ * @param ctx  Context
+ * @param name Variable name
+ * @param val  Value
+ */
 void cdsl_context_set_long(cdsl_context_t* ctx, const char* name, int64_t val);
+
+/**
+ * @brief Get an integer variable, or default if missing.
+ * @param ctx         Context
+ * @param name        Variable name
+ * @param default_val Fallback value
+ * @return Stored value or default
+ */
 int cdsl_context_get_int(const cdsl_context_t* ctx, const char* name, int default_val);
+
+/**
+ * @brief Get a float variable, or default if missing.
+ * @param ctx         Context
+ * @param name        Variable name
+ * @param default_val Fallback value
+ * @return Stored value or default
+ */
 double cdsl_context_get_float(const cdsl_context_t* ctx, const char* name, double default_val);
+
+/**
+ * @brief Get a boolean variable, or default if missing.
+ * @param ctx         Context
+ * @param name        Variable name
+ * @param default_val Fallback value
+ * @return Stored value or default
+ */
 int cdsl_context_get_bool(const cdsl_context_t* ctx, const char* name, int default_val);
+
+/**
+ * @brief Get a string variable, or default if missing.
+ * @param ctx         Context
+ * @param name        Variable name
+ * @param default_val Fallback value
+ * @return Stored value or default (owned by context, do not free)
+ */
 const char*
 cdsl_context_get_string(const cdsl_context_t* ctx, const char* name, const char* default_val);
+
+/**
+ * @brief Get a date variable, or default if missing.
+ * @param ctx         Context
+ * @param name        Variable name
+ * @param default_val Fallback value
+ * @return Unix timestamp or default
+ */
 time_t cdsl_context_get_date(const cdsl_context_t* ctx, const char* name, time_t default_val);
+
+/**
+ * @brief Get a 64-bit long variable, or default if missing.
+ * @param ctx         Context
+ * @param name        Variable name
+ * @param default_val Fallback value
+ * @return Stored value or default
+ */
 int64_t cdsl_context_get_long(const cdsl_context_t* ctx, const char* name, int64_t default_val);
+
+/**
+ * @brief Remove a variable from the context.
+ * @param ctx  Context
+ * @param name Variable name
+ * @return 0 on success, -1 if not found
+ */
 int cdsl_context_remove(cdsl_context_t* ctx, const char* name);
+
+/**
+ * @brief Load variables from a JSON string into the context.
+ * @param ctx      Context
+ * @param json_str JSON object string
+ * @return 0 on success, -1 on parse error
+ */
 int cdsl_context_load_json(cdsl_context_t* ctx, const char* json_str);
 
 /**
