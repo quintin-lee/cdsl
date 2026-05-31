@@ -68,6 +68,9 @@ codegen_expr(FILE* f, cdsl_expr_node_t* expr, const cdsl_schema_t* schema, const
 	case CDSL_EXPR_LONG:
 		fprintf(f, "%ldL", (long)expr->data.long_val);
 		break;
+	case CDSL_EXPR_ARRAY:
+		fprintf(f, "/* unsupported array */");
+		break;
 	case CDSL_EXPR_ID: {
 		cdsl_type_t t = CDSL_TYPE_INT;
 		if (schema) {

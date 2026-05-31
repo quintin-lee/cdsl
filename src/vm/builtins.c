@@ -484,9 +484,53 @@ builtin_typeof(const char* name, cdsl_arg_node_t* args, cdsl_context_t* ctx, cds
 	case CDSL_TYPE_DATE:
 		res.data.string_val = "DATE";
 		break;
+	case CDSL_TYPE_ARRAY:
+		res.data.string_val = "ARRAY";
+		break;
 	default:
 		res.data.string_val = "VOID";
 		break;
+	}
+	return res;
+}
+
+/**
+ * @brief built-in count(array): returns the number of elements in an array.
+ */
+static cdsl_value_t
+builtin_count(const char* name, cdsl_arg_node_t* args, cdsl_context_t* ctx, cdsl_vm_t* vm)
+{
+	(void)name;
+	cdsl_value_t res = {.type = CDSL_TYPE_INT, .data = {.int_val = 0}};
+	if (!args || !args->expr) {
+		return res;
+	}
+	cdsl_value_t v = cdsl_eval_expr_internal(args->expr, ctx, vm, 0, 0);
+	if (v.type == CDSL_TYPE_ARRAY && v.data.array_val) {
+		res.data.int_val = v.data.array_val->count;
+	}
+	return res;
+}
+
+/**
+ * @brief built-in sum(array): returns the sum of all elements in an array of integers.
+ */
+static cdsl_value_t
+builtin_sum(const char* name, cdsl_arg_node_t* args, cdsl_context_t* ctx, cdsl_vm_t* vm)
+{
+	(void)name;
+	cdsl_value_t res = {.type = CDSL_TYPE_INT, .data = {.int_val = 0}};
+	if (!args || !args->expr) {
+		return res;
+	}
+	cdsl_value_t v = cdsl_eval_expr_internal(args->expr, ctx, vm, 0, 0);
+	if (v.type == CDSL_TYPE_ARRAY && v.data.array_val) {
+		int sum = 0;
+		for (int i = 0; i < v.data.array_val->count; i++) {
+			if (v.data.array_val->items[i].type == CDSL_TYPE_INT)
+				sum += v.data.array_val->items[i].data.int_val;
+		}
+		res.data.int_val = sum;
 	}
 	return res;
 }
@@ -544,6 +588,8 @@ cdsl_vm_register_builtins(cdsl_vm_t* vm)
 	cdsl_vm_register_function(vm, "max", builtin_max);
 	cdsl_vm_register_function(vm, "round", builtin_round);
 	cdsl_vm_register_function(vm, "typeof", builtin_typeof);
+	cdsl_vm_register_function(vm, "count", builtin_count);
+	cdsl_vm_register_function(vm, "sum", builtin_sum);
 	cdsl_vm_register_function(vm, "date_add", builtin_date_add);
 }
 /** @} */

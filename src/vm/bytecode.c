@@ -509,6 +509,28 @@ compile_expr(cdsl_expr_node_t* expr,
 		bc_emit_long(bc, expr->data.long_val);
 		max_stack = 1;
 		break;
+	case CDSL_EXPR_ARRAY: {
+		int arg_stack = 0;
+		cdsl_arg_node_t* arg = expr->data.array.elements;
+		int arg_count = 0;
+		while (arg) {
+			int sub = 0;
+			compile_expr(arg->expr, schema, bc, &sub);
+			if (sub > arg_stack) {
+				arg_stack = sub;
+			}
+			arg = arg->next;
+			arg_count++;
+		}
+		if (!bc_ensure_cap(bc))
+			return 0;
+		bc_inst_t* inst = &bc->code[bc->count++];
+		memset(inst, 0, sizeof(*inst));
+		inst->op = BC_PUSH_ARRAY;
+		inst->operand.int_val = arg_count;
+		max_stack = arg_stack + 1;
+		break;
+	}
 	case CDSL_EXPR_ID:
 		bc_emit_var(bc, expr->data.id_val);
 		max_stack = 1;
@@ -790,6 +812,15 @@ cdsl_bytecode_execute(cdsl_vm_t* vm, const cdsl_bytecode_t* bc, cdsl_context_t* 
 	int loop_cnt = 0;
 
 	while (ip < end) {
+		/* instruction count check */
+		if (vm->instruction_limit > 0) {
+			int64_t count = atomic_fetch_add(&vm->instruction_count, 1) + 1;
+			if (count > vm->instruction_limit) {
+				vm->error_state = 1;
+				result.type = CDSL_TYPE_VOID;
+				goto done;
+			}
+		}
 		/* Periodic timeout/OOM check */
 		if ((++loop_cnt & 0x3FF) == 0 && cdsl_vm_check_abort(vm, t0)) {
 			result.type = CDSL_TYPE_VOID;
@@ -833,6 +864,23 @@ cdsl_bytecode_execute(cdsl_vm_t* vm, const cdsl_bytecode_t* bc, cdsl_context_t* 
 			PUSH(result);
 			ip++;
 			break;
+		case BC_PUSH_ARRAY: {
+			int count = ip->operand.int_val;
+			cdsl_array_t* arr = calloc(1, sizeof(cdsl_array_t));
+			if (arr) {
+				arr->items = calloc(count, sizeof(cdsl_value_t));
+				arr->count = count;
+				arr->capacity = count;
+				for (int i = count - 1; i >= 0; i--) {
+					arr->items[i] = POP();
+				}
+			}
+			result.type = CDSL_TYPE_ARRAY;
+			result.data.array_val = arr;
+			PUSH(result);
+			ip++;
+			break;
+		}
 		case BC_PUSH_VAR: {
 			cdsl_context_entry_t* e = cdsl_context_get_entry_internal(
 			    ctx, bc->constants[ip->operand.const_idx].data.string_val);
@@ -1121,6 +1169,13 @@ cdsl_bytecode_execute_rule(cdsl_vm_t* vm, const cdsl_bytecode_t* bc, cdsl_contex
 	cdsl_metric_result_t* current_mr = NULL;
 
 	while (ip < end) {
+		if (vm->instruction_limit > 0) {
+			int64_t count = atomic_fetch_add(&vm->instruction_count, 1) + 1;
+			if (count > vm->instruction_limit) {
+				report->status = CDSL_STATUS_ERROR;
+				goto done;
+			}
+		}
 		if ((++loop_cnt & 0x3FF) == 0 && cdsl_vm_check_abort(vm, t0)) {
 			report->status = CDSL_STATUS_ERROR;
 			goto done;

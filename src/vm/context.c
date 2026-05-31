@@ -63,6 +63,26 @@ cdsl_context_create(const cdsl_schema_t* schema)
 }
 
 void
+cdsl_value_free(cdsl_value_t* val)
+{
+	if (!val) {
+		return;
+	}
+	if (val->type == CDSL_TYPE_STRING && val->data.string_val) {
+		free(val->data.string_val);
+		val->data.string_val = NULL;
+	} else if (val->type == CDSL_TYPE_ARRAY && val->data.array_val) {
+		cdsl_array_t* arr = val->data.array_val;
+		for (int i = 0; i < arr->count; i++) {
+			cdsl_value_free(&arr->items[i]);
+		}
+		free(arr->items);
+		free(arr);
+		val->data.array_val = NULL;
+	}
+}
+
+void
 cdsl_context_free(cdsl_context_t* ctx)
 {
 	if (!ctx) {
@@ -73,9 +93,7 @@ cdsl_context_free(cdsl_context_t* ctx)
 	while (e) {
 		cdsl_context_entry_t* next = e->next;
 		free(e->name);
-		if (e->value.type == CDSL_TYPE_STRING) {
-			free(e->value.data.string_val);
-		}
+		cdsl_value_free(&e->value);
 		free(e);
 		e = next;
 	}
@@ -161,9 +179,7 @@ cdsl_context_set_int(cdsl_context_t* ctx, const char* name, int val)
 		return;
 	}
 	if (e) {
-		if (e->value.type == CDSL_TYPE_STRING) {
-			free(e->value.data.string_val);
-		}
+		cdsl_value_free(&e->value);
 		e->value.type = CDSL_TYPE_INT;
 		e->value.data.int_val = val;
 	} else {
@@ -196,9 +212,7 @@ cdsl_context_set_float(cdsl_context_t* ctx, const char* name, double val)
 		return;
 	}
 	if (e) {
-		if (e->value.type == CDSL_TYPE_STRING) {
-			free(e->value.data.string_val);
-		}
+		cdsl_value_free(&e->value);
 		e->value.type = CDSL_TYPE_FLOAT;
 		e->value.data.float_val = val;
 	} else {
@@ -231,9 +245,7 @@ cdsl_context_set_bool(cdsl_context_t* ctx, const char* name, int val)
 		return;
 	}
 	if (e) {
-		if (e->value.type == CDSL_TYPE_STRING) {
-			free(e->value.data.string_val);
-		}
+		cdsl_value_free(&e->value);
 		e->value.type = CDSL_TYPE_BOOL;
 		e->value.data.bool_val = val;
 	} else {
@@ -266,9 +278,7 @@ cdsl_context_set_string(cdsl_context_t* ctx, const char* name, const char* val)
 		return;
 	}
 	if (e) {
-		if (e->value.type == CDSL_TYPE_STRING) {
-			free(e->value.data.string_val);
-		}
+		cdsl_value_free(&e->value);
 		e->value.type = CDSL_TYPE_STRING;
 		e->value.data.string_val = strdup(val);
 	} else {
@@ -306,9 +316,7 @@ cdsl_context_set_date(cdsl_context_t* ctx, const char* name, time_t val)
 		return;
 	}
 	if (e) {
-		if (e->value.type == CDSL_TYPE_STRING) {
-			free(e->value.data.string_val);
-		}
+		cdsl_value_free(&e->value);
 		e->value.type = CDSL_TYPE_DATE;
 		e->value.data.date_val = val;
 	} else {
@@ -341,9 +349,7 @@ cdsl_context_set_long(cdsl_context_t* ctx, const char* name, int64_t val)
 		return;
 	}
 	if (e) {
-		if (e->value.type == CDSL_TYPE_STRING) {
-			free(e->value.data.string_val);
-		}
+		cdsl_value_free(&e->value);
 		e->value.type = CDSL_TYPE_LONG;
 		e->value.data.long_val = val;
 	} else {
@@ -638,6 +644,21 @@ cdsl_vm_get_memory_limit(const cdsl_vm_t* vm)
 {
 	return vm ? vm->memory_limit : 0;
 }
+
+void
+cdsl_vm_set_instruction_limit(cdsl_vm_t* vm, int64_t limit)
+{
+	if (vm) {
+		vm->instruction_limit = limit;
+	}
+}
+
+int64_t
+cdsl_vm_get_instruction_limit(const cdsl_vm_t* vm)
+{
+	return vm ? vm->instruction_limit : 0;
+}
+
 
 void
 cdsl_vm_free(cdsl_vm_t* vm)

@@ -16,6 +16,13 @@
 /**
  * @brief Runtime value wrapper.
  */
+
+typedef struct cdsl_array {
+    struct cdsl_value* items;
+    int count;
+    int capacity;
+} cdsl_array_t;
+
 typedef struct cdsl_value {
 	cdsl_type_t type;
 	union {
@@ -25,6 +32,7 @@ typedef struct cdsl_value {
 		char* string_val;
 		time_t date_val;
 		int64_t long_val;
+		cdsl_array_t* array_val;
 	} data;
 } cdsl_value_t;
 
@@ -64,6 +72,12 @@ time_t cdsl_context_get_date(const cdsl_context_t* ctx, const char* name, time_t
 int64_t cdsl_context_get_long(const cdsl_context_t* ctx, const char* name, int64_t default_val);
 int cdsl_context_remove(cdsl_context_t* ctx, const char* name);
 int cdsl_context_load_json(cdsl_context_t* ctx, const char* json_str);
+
+/**
+ * @brief Free memory held by a value (e.g. array, string).
+ * @param val Value to free
+ */
+void cdsl_value_free(cdsl_value_t* val);
 
 #endif
 /** @} */

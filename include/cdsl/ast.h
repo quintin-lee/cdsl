@@ -45,6 +45,7 @@ typedef enum {
 	CDSL_TYPE_STRING, /**< Null-terminated string */
 	CDSL_TYPE_DATE,	  /**< Date/Time value (ISO 8601) */
 	CDSL_TYPE_LONG,	  /**< 64-bit signed integer (int64_t) */
+	CDSL_TYPE_ARRAY,  /**< Array of values */
 	CDSL_TYPE_VOID	  /**< Void / no value */
 } cdsl_type_t;
 
@@ -84,6 +85,7 @@ typedef enum {
 	CDSL_EXPR_STRING, /**< String literal ("...") */
 	CDSL_EXPR_DATE,	  /**< Date literal (@2026-05-30) */
 	CDSL_EXPR_LONG,	  /**< Long integer literal (123L) */
+	CDSL_EXPR_ARRAY,  /**< Array literal ([...]) */
 	CDSL_EXPR_BINARY, /**< Binary operation (e.g. a + b, x == y) */
 	CDSL_EXPR_UNARY,  /**< Unary operation (e.g. !expr) */
 	CDSL_EXPR_CALL	  /**< Function call (e.g. strlen("hello")) */
@@ -110,6 +112,9 @@ typedef struct cdsl_expr_node {
 		char* string_val; /**< String value (CDSL_EXPR_STRING) */
 		time_t date_val;  /**< Date value (CDSL_EXPR_DATE) */
 		int64_t long_val; /**< Long integer value (CDSL_EXPR_LONG) */
+		struct {
+			struct cdsl_arg_node* elements; /**< Array elements */
+		} array;	  /**< Array expression data (CDSL_EXPR_ARRAY) */
 		struct {
 			cdsl_op_t op;		      /**< Operator */
 			struct cdsl_expr_node* left;  /**< Left operand */
@@ -276,6 +281,13 @@ cdsl_expr_node_t* cdsl_create_expr_date(time_t val);
  * @return Newly allocated expression node
  */
 cdsl_expr_node_t* cdsl_create_expr_long(int64_t val);
+
+/**
+ * @brief Create an array literal expression.
+ * @param elements Linked list of array elements (ownership transferred)
+ * @return Newly allocated expression node
+ */
+cdsl_expr_node_t* cdsl_create_expr_array(cdsl_arg_node_t* elements);
 
 /**
  * @brief Create a binary operation expression (e.g., a + b).
