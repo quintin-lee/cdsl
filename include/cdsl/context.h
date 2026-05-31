@@ -18,9 +18,9 @@
  */
 
 typedef struct cdsl_array {
-    struct cdsl_value* items;
-    int count;
-    int capacity;
+	struct cdsl_value* items;
+	int count;
+	int capacity;
 } cdsl_array_t;
 
 typedef struct cdsl_value {

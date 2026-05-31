@@ -522,8 +522,9 @@ compile_expr(cdsl_expr_node_t* expr,
 			arg = arg->next;
 			arg_count++;
 		}
-		if (!bc_ensure_cap(bc))
+		if (!bc_ensure_cap(bc)) {
 			return 0;
+		}
 		bc_inst_t* inst = &bc->code[bc->count++];
 		memset(inst, 0, sizeof(*inst));
 		inst->op = BC_PUSH_ARRAY;

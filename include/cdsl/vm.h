@@ -122,12 +122,12 @@ typedef struct cdsl_vm {
 	int max_expr_depth;		   /**< Max expression nesting (default 64) */
 
 	/* ---- Sandboxing quotas ---- */
-	int64_t timeout_us;	     /**< Per-execution timeout in us; 0=unlimited */
-	int64_t memory_limit;	     /**< Per-execution allocation cap; 0=unlimited */
-	int64_t instruction_limit; /**< Max instructions allowed; 0=unlimited */
-	_Atomic int64_t alloc_bytes; /**< Current allocation counter */
+	int64_t timeout_us;		   /**< Per-execution timeout in us; 0=unlimited */
+	int64_t memory_limit;		   /**< Per-execution allocation cap; 0=unlimited */
+	int64_t instruction_limit;	   /**< Max instructions allowed; 0=unlimited */
+	_Atomic int64_t alloc_bytes;	   /**< Current allocation counter */
 	_Atomic int64_t instruction_count; /**< Instructions executed */
-	_Atomic int error_state;     /**< Non-zero if execution was aborted */
+	_Atomic int error_state;	   /**< Non-zero if execution was aborted */
 
 	/* ---- Tracing ---- */
 	cdsl_trace_cb_t trace_cb; /**< Optional trace callback (NULL=disabled) */

@@ -527,8 +527,9 @@ builtin_sum(const char* name, cdsl_arg_node_t* args, cdsl_context_t* ctx, cdsl_v
 	if (v.type == CDSL_TYPE_ARRAY && v.data.array_val) {
 		int sum = 0;
 		for (int i = 0; i < v.data.array_val->count; i++) {
-			if (v.data.array_val->items[i].type == CDSL_TYPE_INT)
+			if (v.data.array_val->items[i].type == CDSL_TYPE_INT) {
 				sum += v.data.array_val->items[i].data.int_val;
+			}
 		}
 		res.data.int_val = sum;
 	}

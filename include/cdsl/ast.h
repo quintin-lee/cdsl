@@ -114,7 +114,7 @@ typedef struct cdsl_expr_node {
 		int64_t long_val; /**< Long integer value (CDSL_EXPR_LONG) */
 		struct {
 			struct cdsl_arg_node* elements; /**< Array elements */
-		} array;	  /**< Array expression data (CDSL_EXPR_ARRAY) */
+		} array; /**< Array expression data (CDSL_EXPR_ARRAY) */
 		struct {
 			cdsl_op_t op;		      /**< Operator */
 			struct cdsl_expr_node* left;  /**< Left operand */

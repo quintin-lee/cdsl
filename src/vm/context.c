@@ -659,7 +659,6 @@ cdsl_vm_get_instruction_limit(const cdsl_vm_t* vm)
 	return vm ? vm->instruction_limit : 0;
 }
 
-
 void
 cdsl_vm_free(cdsl_vm_t* vm)
 {
