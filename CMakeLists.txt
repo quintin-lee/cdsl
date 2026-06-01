@@ -81,6 +81,9 @@ add_library(cdsl ALIAS cdsl_static)
 add_executable(cdsl_demo demo/main.c)
 target_link_libraries(cdsl_demo PRIVATE cdsl_static)
 
+add_executable(cdsl_official_review demo/official_review.c)
+target_link_libraries(cdsl_official_review PRIVATE cdsl_static)
+
 # 7. Tests
 enable_testing()
 file(GLOB TEST_SOURCES CONFIGURE_DEPENDS "tests/test_*.c")
