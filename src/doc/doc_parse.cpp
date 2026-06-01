@@ -614,10 +614,10 @@ static void json_append_paragraph(std::string& out, const char* style_name,
         out += buf;
         if (para->page_number > 0) {
             snprintf(buf, sizeof(buf), "          ,\"page_number\": %d\n", para->page_number);
+            out += buf;
         } else {
             out += "          ,\"page_number\": null\n";
         }
-        out += buf;
         snprintf(buf, sizeof(buf),
             "          ,\"bbox_mm\": [%.1f, %.1f, %.1f, %.1f]\n",
             para->bbox_x_mm, para->bbox_y_mm,
@@ -1212,13 +1212,8 @@ get_paragraph_positions(lok::Document* doc, Paragraph* paras,
         return;
     }
 
-    const double twip_to_mm = 25.4 / 1440.0;
+    const     double twip_to_mm = 25.4 / 1440.0;
     double page_h_mm = page.page_height_mm > 0 ? page.page_height_mm : 297.0;
-    double usable_h_mm = page_h_mm - page.margin_top_mm - page.margin_bottom_mm;
-
-    double prev_y_mm = -1.0;
-    int    current_page = 1;
-    int    consecutive_failures = 0;
 
     for (int i = 0; i < count; i++) {
         if (i > 0) {
@@ -1227,16 +1222,12 @@ get_paragraph_positions(lok::Document* doc, Paragraph* paras,
         }
 
         if (pump_until_updated(doc, cap)) {
-            consecutive_failures = 0;
             paras[i].bbox_x_mm = cap.x_twip * twip_to_mm;
             paras[i].bbox_y_mm = cap.y_twip * twip_to_mm;
             double line_h_mm = cap.h_twip * twip_to_mm;
 
-            if (i > 0 && paras[i].bbox_y_mm < prev_y_mm - usable_h_mm * 0.5)
-                current_page++;
-            paras[i].page_index  = current_page;
-            paras[i].page_number = page.has_page_number_start ? (current_page + page.page_number_start - 1) : 0;
-            prev_y_mm = paras[i].bbox_y_mm;
+            paras[i].page_index  = 1 + (int)(paras[i].bbox_y_mm / page_h_mm);
+            paras[i].page_number = page.has_page_number_start ? (paras[i].page_index + page.page_number_start - 1) : 0;
 
             double indent = paras[i].bbox_x_mm - page.margin_left_mm;
             if (indent < 0) indent = 0;
@@ -1292,10 +1283,7 @@ get_paragraph_positions(lok::Document* doc, Paragraph* paras,
                 }
             }
         } else {
-            consecutive_failures++;
-            if (consecutive_failures > 3) {
-                break;
-            }
+            break;
         }
     }
 
