@@ -177,7 +177,8 @@ struct PageInfo {
     int    paragraph_count = 0;
     int    word_count = 0;
     int    character_count = 0;
-    int    page_number_start = 1;
+    bool   has_page_number_start = false;
+    int    page_number_start = 0;
     std::string title;
     std::string creator;
     std::string created;
@@ -461,7 +462,7 @@ static void parse_page_layout(XmlParser& xp, PageInfo& page) {
             if ((v = xp.attr("fo:margin-bottom"))) page.margin_bottom_mm = parse_length_mm(v);
             if ((v = xp.attr("fo:margin-left")))   page.margin_left_mm = parse_length_mm(v);
             if ((v = xp.attr("fo:margin-right")))  page.margin_right_mm = parse_length_mm(v);
-            if ((v = xp.attr("style:page-number"))) page.page_number_start = atoi(v);
+            if ((v = xp.attr("style:page-number"))) { page.page_number_start = atoi(v); page.has_page_number_start = true; }
         }
         int depth = 1;
         while (depth > 0 && xp.next() != XmlParser::END) {
@@ -611,7 +612,11 @@ static void json_append_paragraph(std::string& out, const char* style_name,
     if (para) {
         snprintf(buf, sizeof(buf), "          ,\"page_index\": %d\n", para->page_index);
         out += buf;
-        snprintf(buf, sizeof(buf), "          ,\"page_number\": %d\n", para->page_number);
+        if (para->page_number > 0) {
+            snprintf(buf, sizeof(buf), "          ,\"page_number\": %d\n", para->page_number);
+        } else {
+            out += "          ,\"page_number\": null\n";
+        }
         out += buf;
         snprintf(buf, sizeof(buf),
             "          ,\"bbox_mm\": [%.1f, %.1f, %.1f, %.1f]\n",
@@ -1230,7 +1235,7 @@ get_paragraph_positions(lok::Document* doc, Paragraph* paras,
             if (i > 0 && paras[i].bbox_y_mm < prev_y_mm - usable_h_mm * 0.5)
                 current_page++;
             paras[i].page_index  = current_page;
-            paras[i].page_number = current_page + page.page_number_start - 1;
+            paras[i].page_number = page.has_page_number_start ? (current_page + page.page_number_start - 1) : 0;
             prev_y_mm = paras[i].bbox_y_mm;
 
             double indent = paras[i].bbox_x_mm - page.margin_left_mm;
