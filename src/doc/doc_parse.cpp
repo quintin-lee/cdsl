@@ -154,6 +154,8 @@ struct ParaProps {
     std::string border_bottom;
     std::string border_left;
     std::string border_right;
+    int         outline_level = 0;
+    std::string language;
 };
 
 struct Style {
@@ -181,6 +183,7 @@ struct PageInfo {
     std::string modified;
     std::string header_text;
     std::string footer_text;
+    std::vector<std::string> bookmarks;
 };
 
 struct TextBlock {
@@ -326,6 +329,10 @@ static void merge_style(const Style& parent, Style& child) {
         child.para.border_left = parent.para.border_left;
     if (child.para.border_right.empty() && !parent.para.border_right.empty())
         child.para.border_right = parent.para.border_right;
+    if (child.para.outline_level == 0 && parent.para.outline_level != 0)
+        child.para.outline_level = parent.para.outline_level;
+    if (child.para.language.empty() && !parent.para.language.empty())
+        child.para.language = parent.para.language;
 }
 
 /* Walk the style inheritance chain recursively and merge parent properties. */
@@ -396,6 +403,9 @@ static void parse_para_props_elem(XmlParser& xp, ParaProps& props) {
         props.border_left = v;
         props.border_right = v;
     }
+    if ((v = xp.attr("text:outline-level")))  props.outline_level = atoi(v);
+    if ((v = xp.attr("fo:language")))         props.language = v;
+    else if ((v = xp.attr("style:language")))  props.language = v;
 }
 
 /* Parse a <style:style> element */
@@ -587,6 +597,13 @@ static void json_append_paragraph(std::string& out, const char* style_name,
         out += "          ,\"border_left\": \"" + props.border_left + "\"\n";
     if (!props.border_right.empty())
         out += "          ,\"border_right\": \"" + props.border_right + "\"\n";
+    if (props.outline_level > 0) {
+        snprintf(buf, sizeof(buf), "          ,\"outline_level\": %d\n", props.outline_level);
+        out += buf;
+    }
+    if (!props.language.empty()) {
+        out += "          ,\"language\": \"" + props.language + "\"\n";
+    }
 
     if (para) {
         snprintf(buf, sizeof(buf),
@@ -818,6 +835,10 @@ static bool parse_fodt_body(XmlParser& xp, PageInfo& page,
                         if (href) current_hyperlink = href;
                         para_depth++;
                         continue;
+                    }
+                    if (xp.match("text:bookmark") || xp.match("text:bookmark-start")) {
+                        const char* bn = xp.attr("text:name");
+                        if (bn) page.bookmarks.push_back(bn);
                     }
                     if (xp.match("text:span")) {
                         // text span with potential style override
@@ -1527,7 +1548,12 @@ cdsl_doc_extract_to_json(const char* path)
 		if (fi > 0) out += ",\n";
 		json_append_footnote(out, footnotes[fi]);
 	}
-	out += "\n    ],\n    \"metadata\": {\n";
+	out += "\n    ],\n    \"bookmarks\": [";
+	for (size_t bi = 0; bi < page.bookmarks.size(); bi++) {
+		if (bi > 0) out += ", ";
+		out += "\"" + page.bookmarks[bi] + "\"";
+	}
+	out += "],\n    \"metadata\": {\n";
 	char b[256];
 	snprintf(b, sizeof(b), "      \"page_count\": %d,\n      \"paragraph_count\": %d,\n      \"word_count\": %d,\n      \"character_count\": %d",
 	         page.page_count, page.paragraph_count, page.word_count, page.character_count);
