@@ -28,6 +28,7 @@
 - Static Analysis (20)
 - Execution Tracing (21)
 - Language Server (22) (LSP)
+- Document Parsing (23)
 
 ---
 
@@ -859,3 +860,131 @@ cmake -DCDSL_BUILD_LSP=ON .. && make cdsl-lsp
 - Keyword, built-in function, schema variable, and action completions
 - Hover info showing variable types and read-only status
 - Full LSP lifecycle (initialize, didOpen/Change/Close, shutdown/exit)
+
+---
+
+## 23. Document Parsing (Word .docx)
+
+Extract structured content from Word documents for rule-based evaluation.
+
+### 23.1 Initialization
+
+```c
+#include <cdsl/doc.h>
+
+// Initialize LibreOffice runtime (idempotent, thread-safe)
+if (!cdsl_doc_init()) {
+    fprintf(stderr, "Failed to initialize LibreOfficeKit\n");
+    return;
+}
+
+// ... use parser ...
+
+// Shut down when done
+cdsl_doc_shutdown();
+```
+
+### 23.2 Extract Plain Text
+
+```c
+char* text = cdsl_doc_extract_text("/path/to/document.docx");
+if (text) {
+    printf("Document text:\n%s\n", text);
+    cdsl_doc_free_string(text);
+}
+```
+
+### 23.3 Extract Structured JSON
+
+```c
+char* json = cdsl_doc_extract_to_json("/path/to/document.docx");
+if (json) {
+    printf("Structured JSON:\n%s\n", json);
+
+    // The JSON is compatible with cdsl_context_load_json()
+    cdsl_context_t* ctx = cdsl_context_create(schema);
+    cdsl_context_load_json(ctx, json);
+
+    // Now use ctx for rule evaluation
+    // e.g., cdsl_context_get_int(ctx, "document.metadata.page_count", 0);
+
+    cdsl_context_free(ctx);
+    cdsl_doc_free_string(json);
+}
+```
+
+### 23.4 JSON Output Structure
+
+```json
+{
+  "document": {
+    "pages": [
+      {
+        "page_number": 1,
+        "width_mm": 210,
+        "height_mm": 297,
+        "margin_top_mm": 20,
+        "margin_bottom_mm": 20,
+        "margin_left_mm": 30,
+        "margin_right_mm": 30,
+        "paragraphs": [
+          {
+            "style": "Standard",
+            "alignment": "left",
+            "spacing_before_mm": 0,
+            "spacing_after_mm": 0,
+            "line_spacing": 1.15,
+            "indent_first_line_mm": 0,
+            "bbox_mm": [35.0, 25.0, 145.0, 4.7],
+            "text_blocks": [
+              {
+                "text": "Hello, C-DSL!",
+                "font_name": "Liberation Serif",
+                "font_size_pt": 12.0,
+                "bold": false,
+                "italic": false,
+                "underline": false,
+                "strikethrough": false,
+                "color": "#000000",
+                "bbox_mm": [35.0, 25.0, 145.0, 4.7]
+              }
+            ]
+          }
+        ]
+      }
+    ],
+    "metadata": {
+      "page_count": 1,
+      "paragraph_count": 2,
+      "word_count": 13,
+      "character_count": 79
+    },
+    "full_text": "Hello, C-DSL!\nThis is a test document."
+  }
+}
+```
+
+### 23.5 Evaluate Document Content with Rules
+
+```c
+// Define a schema for document properties
+cdsl_schema_t* doc_schema = cdsl_schema_create();
+cdsl_schema_register_var(doc_schema, "document.metadata.page_count", CDSL_TYPE_INT);
+cdsl_schema_register_var(doc_schema, "document.metadata.paragraph_count", CDSL_TYPE_INT);
+cdsl_schema_register_var(doc_schema, "document.metadata.word_count", CDSL_TYPE_INT);
+cdsl_schema_register_var(doc_schema, "document.full_text", CDSL_TYPE_STRING);
+
+// Parse document structure into context
+char* json = cdsl_doc_extract_to_json("report.docx");
+cdsl_context_t* ctx = cdsl_context_create(doc_schema);
+cdsl_context_load_json(ctx, json);
+
+// Evaluate against rules
+cdsl_rule_report_t* rpt = cdsl_vm_execute(vm, doc_rule, ctx);
+
+cdsl_report_print(rpt);
+cdsl_report_free(rpt);
+cdsl_context_free(ctx);
+cdsl_doc_free_string(json);
+```
+

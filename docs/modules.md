@@ -12,7 +12,8 @@ cdsl/
 │   ├── ast          — Abstract syntax tree construction (src/ast/)
 │   ├── schema       — Schema verification and type checking (src/schema/)
 │   ├── execution    — VM engine: context, vm, report, cache, ruleset, codegen, visual (src/vm/)
-│   └── ai           — AI translation and safety review (src/ai/)
+│   ├── ai           — AI translation and safety review (src/ai/)
+│   └── doc          — Word document parsing via LibreOffice (src/doc/)
 │
 ├── Infrastructure (src/util/)
 │   ├── json         — Zero-dependency JSON parser
@@ -372,3 +373,50 @@ A separate-chaining hash table with djb2 hashing:
 - Optional destructor callback per entry for value cleanup
 - Used by: template registry, compile cache
 - Not thread-safe
+
+---
+
+## 6. Document Module (`<cdsl/doc.h>` / `src/doc/`)
+
+### Responsibility
+
+Word (.docx) document parsing via LibreOfficeKit. Extracts text, page layout, paragraph styles, text formatting, and metadata into structured JSON compatible with `cdsl_context_load_json()`.
+
+### Source Layout
+
+| File                    | Responsibility                              |
+|-------------------------|---------------------------------------------|
+| `src/doc/doc_parse.cpp` | LOK integration, FODT parsing, JSON assembly |
+| `src/doc/xml_parser.cpp`| Custom pull-style XML parser for Flat ODF   |
+| `src/doc/xml_parser.h`  | XmlParser class declaration                  |
+
+### Data Flow
+
+```
+.docx file → LibreOfficeKit → Flat ODF (FODT) → XmlParser
+                                                    │
+                          ┌─────────────────────────┘
+                          ▼
+              parse_fodt_document()
+              ├── office:meta → PageInfo (page count, word count, etc.)
+              ├── style:style → Style database (inheritance chain)
+              ├── style:page-layout → page dimensions, margins
+              └── office:text → Paragraph[] → TextBlock[]
+                                     │
+                                     ▼
+                        get_paragraph_positions()
+                        (LOK cursor + UNO GoDown → bbox_mm)
+                                     │
+                                     ▼
+                        cdsl_doc_extract_to_json()
+                        (hierarchical JSON with pages, paragraphs,
+                         text_blocks, metadata, full_text)
+```
+
+### Style Inheritance
+
+ODF styles can inherit properties from parent styles via `style:parent-style-name`. `resolve_style()` recursively walks the chain, and `merge_style()` copies parent values only when the child has zero/empty/false for a given property. This is resolved post-parse to respect document ordering constraints.
+
+### Thread Safety
+
+All public API functions are thread-safe. LibreOfficeKit API calls (documentLoad, saveAs, paintTile, postUnoCommand) are serialized by a global mutex. XML parsing and JSON construction run outside the critical section for concurrency.

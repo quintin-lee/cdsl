@@ -1,6 +1,30 @@
+/*
+ * Minimal pull-style XML parser for FODT (Flat ODF XML) documents.
+ *
+ * This component avoids third-party XML libraries to align with C-DSL's
+ * zero-external-dependency design constraint. It handles only well-formed
+ * XML element, text, and attribute tokens, sufficient for Flat OpenDocument
+ * format parsing.
+ *
+ * Architecture:
+ *   XmlParser (public)  — position cursor, next(), match(), attr()
+ *   advanceTag()        — consume <element attrs="..." /> or </end>
+ *   advanceText()       — consume raw text up to next '<'
+ *   skipWhitespace()    — skip whitespace boundary characters
+ *
+ * Thread safety: XmlParser instances are NOT thread-safe by themselves.
+ * Each instance operates on a read-only memory buffer. The attr() method
+ * uses a round-robin pool of 8 static buffers to survive up to 8 concurrent
+ * attr() calls in the same expression (e.g., saving attrs into separate
+ * variables before the next attr() overwrites the single static buffer).
+ */
 #include "xml_parser.h"
 #include <cstring>
 #include <cstdlib>
+
+/* ------------------------------------------------------------------ */
+/*  Construction                                                       */
+/* ------------------------------------------------------------------ */
 
 XmlParser::XmlParser(const char* data, size_t len)
     : pos_(data), end_(data + len), cur_type_(END),
@@ -84,6 +108,10 @@ void XmlParser::advanceTag() {
     }
 }
 
+/* ------------------------------------------------------------------ */
+/*  Text extraction                                                    */
+/* ------------------------------------------------------------------ */
+
 void XmlParser::advanceText() {
     cur_text_ = pos_;
     while (pos_ < end_ && *pos_ != '<')
@@ -95,6 +123,10 @@ void XmlParser::advanceText() {
     }
     cur_type_ = TEXT;
 }
+
+/* ------------------------------------------------------------------ */
+/*  Token iterator (pull model)                                        */
+/* ------------------------------------------------------------------ */
 
 XmlParser::Type XmlParser::next() {
     if (pending_tag_) {
@@ -116,6 +148,10 @@ XmlParser::Type XmlParser::next() {
     advanceText();
     return cur_type_;
 }
+
+/* ------------------------------------------------------------------ */
+/*  Query helpers                                                      */
+/* ------------------------------------------------------------------ */
 
 bool XmlParser::match(const char* qname) const {
     size_t n = strlen(qname);

@@ -24,6 +24,7 @@
 | Arena (6)                                          | `<cdsl/util/arena.h>`   | Arena memory allocator              |
 | Hashmap (7)                                        | `<cdsl/util/hashmap.h>` | Hash table                          |
 | JSON (8)                                           | `<cdsl/util/json.h>`    | JSON parser                         |
+| Document (9)                                       | `<cdsl/doc.h>`          | Word document parsing via LibreOffice |
 
 ---
 
@@ -602,3 +603,64 @@ typedef struct {
 | `cdsl_json_array_length(val)`  | Return number of elements in JSON array        |
 | `cdsl_json_get_object(val, k)` | Get child object by key (NULL if not found)    |
 | `cdsl_json_get_array(val, i)`  | Get array element by index (NULL if out of range)|
+
+---
+
+## 9. Document Module
+
+### Functions
+
+#### `cdsl_doc_init`
+
+```c
+int cdsl_doc_init(void);
+```
+
+Initializes the LibreOfficeKit runtime. Thread-safe and idempotent — may be called from multiple threads. Only the first successful call spawns the headless LibreOffice process.
+
+| Returns | Condition          |
+|---------|--------------------|
+| 1       | Initialized (or already initialized) |
+| 0       | Initialization failed |
+
+#### `cdsl_doc_shutdown`
+
+```c
+void cdsl_doc_shutdown(void);
+```
+
+Shuts down the LibreOfficeKit runtime and frees all resources. Thread-safe — waits for any in-progress extraction to complete.
+
+#### `cdsl_doc_extract_text`
+
+```c
+char* cdsl_doc_extract_text(const char* path);
+```
+
+Extracts plain text content from a .docx file. Returns a NUL-terminated string that must be freed with `cdsl_doc_free_string()`. Returns NULL on error.
+
+#### `cdsl_doc_extract_to_json`
+
+```c
+char* cdsl_doc_extract_to_json(const char* path);
+```
+
+Parses a .docx file and returns a hierarchical JSON string with page dimensions, paragraph properties, text styles, bounding boxes, and metadata. The returned JSON is compatible with `cdsl_context_load_json()`. Must be freed with `cdsl_doc_free_string()`. Returns NULL on error.
+
+#### `cdsl_doc_free_string`
+
+```c
+void cdsl_doc_free_string(char* str);
+```
+
+Frees a string returned by `cdsl_doc_extract_text()` or `cdsl_doc_extract_to_json()`. Safe to call with NULL.
+
+### Thread Safety
+
+| Function                   | Thread-safe | Notes                                  |
+|----------------------------|-------------|----------------------------------------|
+| `cdsl_doc_init()`          | ✓           | Double-checked locking; idempotent     |
+| `cdsl_doc_shutdown()`      | ✓           | Mutex-protected                        |
+| `cdsl_doc_extract_text()`  | ✓           | LOK calls serialized by internal mutex |
+| `cdsl_doc_extract_to_json()`| ✓          | Same mutex; parsing runs outside lock  |
+| `cdsl_doc_free_string()`   | ✓           | Just free(); no global state           |

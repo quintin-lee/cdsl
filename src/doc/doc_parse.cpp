@@ -189,7 +189,17 @@ struct Paragraph {
     int    page_num = 0;
 };
 
-/* Bounded style database */
+/* Bounded style database.
+ *
+ * ODF styles can form an inheritance chain via style:parent-style-name.
+ * Styles are parsed in document order (which respects the ODF spec where
+ * parent styles are declared before children). After all style elements
+ * are parsed, resolve_style() recursively walks the parent chain and
+ * merge_style() fills in missing property values from parent to child.
+ *
+ * The merge strategy is "child wins": a property is only copied from
+ * parent when the child's corresponding field is zero/empty/false.
+ */
 #define MAX_STYLES 512
 static Style g_style_db[MAX_STYLES];
 static int   g_style_count = 0;
@@ -209,7 +219,7 @@ static Style* add_style(const char* name) {
     return s;
 }
 
-/* Merge parent style properties into child (child values win) */
+/* Fill missing child properties from parent; child values always win. */
 static void merge_style(const Style& parent, Style& child) {
     if (child.para.alignment.empty() && !parent.para.alignment.empty())
         child.para.alignment = parent.para.alignment;
@@ -241,7 +251,7 @@ static void merge_style(const Style& parent, Style& child) {
         child.text.color = parent.text.color;
 }
 
-/* Resolve a style name (with inheritance chain) */
+/* Walk the style inheritance chain recursively and merge parent properties. */
 static Style resolve_style(const char* name) {
     Style* s = find_style(name);
     if (!s) return Style{};
@@ -651,7 +661,32 @@ static bool parse_fodt_document(const char* fodt, size_t fodt_len,
 /*  Paragraph position extraction via LOK rendering                    */
 /* ------------------------------------------------------------------ */
 
-/* LOK callback captures cursor rectangle (TWIPs: "x, y, w, h") */
+/*
+ * Position estimation uses LibreOfficeKit's UNO command dispatch and
+ * cursor visibility callback to enumerate paragraph bounding boxes.
+ *
+ * Workflow:
+ *   1. Register a LOK_CALLBACK_INVALIDATE_VISIBLE_CURSOR callback.
+ *   2. Send ".uno:GoDown" UNO commands to step through paragraphs.
+ *   3. paintTile() triggers both rendering layout and callback dispatch.
+ *   4. The callback reports cursor position in TWIPs (1/20 of a point,
+ *      1/1440 of an inch). Convert to mm via twip_to_mm = 25.4 / 1440.
+ *
+ * Bounding box derivation:
+ *   - bbox_x = cursor X (TWIPs → mm)
+ *   - bbox_y = cursor Y (TWIPs → mm)
+ *   - bbox_w = content_width - indent (mm)
+ *   - bbox_h = estimated lines × line_height (mm)
+ *
+ * Lines are estimated from character count divided by characters-per-line.
+ * Characters-per-line comes from content_width / font_advance, where
+ * font_advance approximates average character width as 0.5 × line height.
+ *
+ * Text blocks within the same paragraph get proportional horizontal slices.
+ *
+ * Thread safety: called inside g_mutex critical section (caller holds lock).
+ */
+
 struct CursorCapture {
     double x_twip = 0, y_twip = 0, w_twip = 0, h_twip = 0;
     bool   updated = false;

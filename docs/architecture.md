@@ -29,6 +29,7 @@ C-DSL is a three-layer rule engine framework built in C23. It transforms natural
 | Parser          | Bison 3.8+                  |
 | Documentation   | Doxygen + Markdown          |
 | Testing         | Custom lightweight framework |
+| Document Parsing| LibreOfficeKit (LOK SDK)    |
 | CI              | GitHub Actions              |
 
 ---
@@ -164,11 +165,19 @@ The Execution Layer interprets the verified AST against a runtime context. It ha
 - **Visualization**: generates Graphviz DOT graphs for single rules and complete rulesets
 - **Performance monitoring**: tracks execution count, metric evaluations, and timing via `cdsl_stats_t`
 
----
+### 2.4 Document Parsing Layer
 
-## 3. Data Flow
+**Files**: `src/doc/doc_parse.cpp`, `src/doc/xml_parser.cpp`, `src/doc/xml_parser.h`, `include/cdsl/doc.h`
 
-### 3.1 Simple Rule
+The document parsing layer integrates with LibreOfficeKit (LOK) to extract structured content from Word (.docx) documents for rule evaluation.
+
+**Architecture**:
+1. **LibreOfficeKit Integration** — spawns a headless LibreOffice process via `lok_cpp_init()`. The global office instance is protected by a mutex for thread-safe serialized access.
+2. **FODT Export** — documents are exported to Flat ODF XML (`.fodt`) format, which contains page dimensions, paragraph styles, and text content in a single flat XML file.
+3. **Custom XML Parser** — A pull-style SAX-like `XmlParser` parses the FODT XML without external dependencies. It extracts style definitions, paragraph properties, text spans, and metadata statistics.
+4. **Style Inheritance** — ODF styles form `style:parent-style-name` chains. `resolve_style()` recursively walks the chain and `merge_style()` fills in missing property values from parent to child.
+5. **Position Estimation** — `get_paragraph_positions()` sends `.uno:GoDown` UNO commands and captures `LOK_CALLBACK_INVALIDATE_VISIBLE_CURSOR` callbacks to estimate paragraph and text block bounding boxes in millimeters.
+6. **JSON Output** — `cdsl_doc_extract_to_json()` assembles the final hierarchical JSON with pages, paragraphs, text blocks, metadata, and full text, all compatible with `cdsl_context_load_json()`.
 
 ```
 Input: RULE check { WHEN user.age > 18 THEN block("adult") }
