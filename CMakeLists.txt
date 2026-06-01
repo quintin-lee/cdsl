@@ -1,8 +1,10 @@
 cmake_minimum_required(VERSION 3.14)
-project(cdsl VERSION 1.0.0 LANGUAGES C)
+project(cdsl VERSION 1.0.0 LANGUAGES C CXX)
 
 set(CMAKE_C_STANDARD 23)
 set(CMAKE_C_STANDARD_REQUIRED ON)
+set(CMAKE_CXX_STANDARD 17)
+set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
 # 1. Flex & Bison
@@ -17,6 +19,20 @@ else()
     message(WARNING "libcurl not found - AI bridge will fallback to popen(\"curl ...\")")
 endif()
 
+# LibreOffice SDK for document parsing
+set(CDSL_LO_INCLUDE_DIR "/usr/include/libreoffice")
+set(CDSL_LO_LIB_DIR "/usr/lib/libreoffice/program")
+if(EXISTS "${CDSL_LO_INCLUDE_DIR}/LibreOfficeKit/LibreOfficeKit.h" AND
+   EXISTS "${CDSL_LO_LIB_DIR}/libuno_sal.so.3")
+    message(STATUS "Found LibreOffice SDK - document parsing enabled (CDSL_USE_LIBREOFFICE)")
+    list(APPEND CDSL_LO_SOURCES "src/doc/doc_parse.cpp" "src/doc/xml_parser.cpp")
+    set(CDSL_LO_INCLUDE_DIRS "${CDSL_LO_INCLUDE_DIR}")
+    set(CDSL_USE_LIBREOFFICE TRUE)
+else()
+    message(STATUS "LibreOffice SDK not found at ${CDSL_LO_INCLUDE_DIR} - document parsing disabled")
+    set(CDSL_USE_LIBREOFFICE FALSE)
+endif()
+
 bison_target(MyParser parser/parser.y ${CMAKE_CURRENT_BINARY_DIR}/parser.tab.c)
 flex_target(MyLexer parser/lexer.l ${CMAKE_CURRENT_BINARY_DIR}/lexer.c)
 add_flex_bison_dependency(MyLexer MyParser)
@@ -26,6 +42,9 @@ list(APPEND CDSL_SOURCES
     ${BISON_MyParser_OUTPUTS}
     ${FLEX_MyLexer_OUTPUTS}
 )
+if(CDSL_USE_LIBREOFFICE)
+    list(APPEND CDSL_SOURCES ${CDSL_LO_SOURCES})
+endif()
 
 # 2. Object library (avoids compiling sources twice for static+shared)
 find_package(Threads REQUIRED)
@@ -38,6 +57,12 @@ target_include_directories(cdsl_objects PRIVATE
 if(CURL_FOUND)
     target_link_libraries(cdsl_objects PRIVATE CURL::libcurl)
     target_compile_definitions(cdsl_objects PRIVATE CDSL_USE_CURL)
+endif()
+if(CDSL_USE_LIBREOFFICE)
+    set_source_files_properties(src/doc/doc_parse.cpp PROPERTIES LANGUAGE CXX)
+    target_include_directories(cdsl_objects PRIVATE ${CDSL_LO_INCLUDE_DIRS})
+    target_compile_definitions(cdsl_objects PRIVATE CDSL_USE_LIBREOFFICE)
+    target_compile_definitions(cdsl_objects PRIVATE LOK_USE_UNSTABLE_API)
 endif()
 
 if(MSVC)
@@ -92,6 +117,10 @@ foreach(test_src ${TEST_SOURCES})
     add_executable(${test_name} ${test_src})
     target_link_libraries(${test_name} PRIVATE cdsl_static)
     add_test(NAME ${test_name} COMMAND ${test_name})
+    if(${test_name} STREQUAL "test_doc")
+        target_compile_definitions(${test_name} PRIVATE
+            TEST_FIXTURES_DIR="${CMAKE_SOURCE_DIR}/tests/fixtures")
+    endif()
 endforeach()
 
 # 8. LSP server (optional)
@@ -156,8 +185,10 @@ if(CLANG_FORMAT)
         "include/*/*.h"
         "include/*/*/*.h"
         "src/*.c"
+        "src/*.cpp"
         "src/*.h"
         "src/*/*.c"
+        "src/*/*.cpp"
         "src/*/*.h"
         "demo/*.c"
         "tests/*.c"

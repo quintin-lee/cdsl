@@ -30,5 +30,8 @@
 /* AI bridge */
 #include "cdsl/ai.h"
 
+/* Document parser (requires LibreOffice SDK) */
+#include "cdsl/doc.h"
+
 #endif
 /** @} */
