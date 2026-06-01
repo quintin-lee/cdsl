@@ -190,7 +190,7 @@ struct Paragraph {
 };
 
 /* Bounded style database */
-#define MAX_STYLES 256
+#define MAX_STYLES 512
 static Style g_style_db[MAX_STYLES];
 static int   g_style_count = 0;
 
@@ -201,6 +201,8 @@ static Style* find_style(const char* name) {
     return nullptr;
 }
 static Style* add_style(const char* name) {
+    Style* existing = find_style(name);
+    if (existing) return existing;
     if (g_style_count >= MAX_STYLES) return nullptr;
     Style* s = &g_style_db[g_style_count++];
     s->name = name;
@@ -211,19 +213,32 @@ static Style* add_style(const char* name) {
 static void merge_style(const Style& parent, Style& child) {
     if (child.para.alignment.empty() && !parent.para.alignment.empty())
         child.para.alignment = parent.para.alignment;
-    if (child.para.margin_top_mm == 0)    child.para.margin_top_mm = parent.para.margin_top_mm;
-    if (child.para.margin_bottom_mm == 0) child.para.margin_bottom_mm = parent.para.margin_bottom_mm;
-    if (child.para.margin_left_mm == 0)   child.para.margin_left_mm = parent.para.margin_left_mm;
-    if (child.para.margin_right_mm == 0)  child.para.margin_right_mm = parent.para.margin_right_mm;
-    if (child.para.indent_first_line_mm == 0) child.para.indent_first_line_mm = parent.para.indent_first_line_mm;
-    if (child.para.line_spacing == 0)     child.para.line_spacing = parent.para.line_spacing;
-    if (child.text.font_name.empty())     child.text.font_name = parent.text.font_name;
-    if (child.text.font_size_pt == 0)     child.text.font_size_pt = parent.text.font_size_pt;
-    if (!child.text.bold)                 child.text.bold = parent.text.bold;
-    if (!child.text.italic)               child.text.italic = parent.text.italic;
-    if (!child.text.underline)            child.text.underline = parent.text.underline;
-    if (!child.text.strikethrough)        child.text.strikethrough = parent.text.strikethrough;
-    if (child.text.color.empty())         child.text.color = parent.text.color;
+    if (child.para.margin_top_mm == 0 && parent.para.margin_top_mm != 0)
+        child.para.margin_top_mm = parent.para.margin_top_mm;
+    if (child.para.margin_bottom_mm == 0 && parent.para.margin_bottom_mm != 0)
+        child.para.margin_bottom_mm = parent.para.margin_bottom_mm;
+    if (child.para.margin_left_mm == 0 && parent.para.margin_left_mm != 0)
+        child.para.margin_left_mm = parent.para.margin_left_mm;
+    if (child.para.margin_right_mm == 0 && parent.para.margin_right_mm != 0)
+        child.para.margin_right_mm = parent.para.margin_right_mm;
+    if (child.para.indent_first_line_mm == 0 && parent.para.indent_first_line_mm != 0)
+        child.para.indent_first_line_mm = parent.para.indent_first_line_mm;
+    if (child.para.line_spacing == 0 && parent.para.line_spacing != 0)
+        child.para.line_spacing = parent.para.line_spacing;
+    if (child.text.font_name.empty() && !parent.text.font_name.empty())
+        child.text.font_name = parent.text.font_name;
+    if (child.text.font_size_pt == 0 && parent.text.font_size_pt != 0)
+        child.text.font_size_pt = parent.text.font_size_pt;
+    if (!child.text.bold && parent.text.bold)
+        child.text.bold = parent.text.bold;
+    if (!child.text.italic && parent.text.italic)
+        child.text.italic = parent.text.italic;
+    if (!child.text.underline && parent.text.underline)
+        child.text.underline = parent.text.underline;
+    if (!child.text.strikethrough && parent.text.strikethrough)
+        child.text.strikethrough = parent.text.strikethrough;
+    if (child.text.color.empty() && !parent.text.color.empty())
+        child.text.color = parent.text.color;
 }
 
 /* Resolve a style name (with inheritance chain) */
@@ -597,6 +612,13 @@ static bool parse_fodt_document(const char* fodt, size_t fodt_len,
                     }
                 } else if (xp.type() == XmlParser::END_ELEMENT) d--;
             }
+            // Resolve parent style chain after parsing all style elements
+            for (int i = 0; i < g_style_count; i++) {
+                if (!g_style_db[i].parent.empty()) {
+                    Style parent = resolve_style(g_style_db[i].parent.c_str());
+                    merge_style(parent, g_style_db[i]);
+                }
+            }
         } else if (xp.match("office:master-styles")) {
             // skip
             int d = 1;
@@ -688,6 +710,10 @@ static void get_paragraph_positions(lok::Document* doc, Paragraph* paras,
             paras[i].bbox_y_mm = cap.y_twip * twip_to_mm;
             double line_h_mm = cap.h_twip * twip_to_mm;
 
+            double page_h_mm = page.page_height_mm > 0 ? page.page_height_mm : 297.0;
+            int current_page_num = 1 + (int)(paras[i].bbox_y_mm / page_h_mm);
+            paras[i].page_num = current_page_num;
+
             double indent = paras[i].bbox_x_mm - page.margin_left_mm;
             if (indent < 0) indent = 0;
             paras[i].bbox_w_mm = content_w_mm - indent;
@@ -713,6 +739,14 @@ static void get_paragraph_positions(lok::Document* doc, Paragraph* paras,
                 paras[i].blocks[0].bbox_y_mm = paras[i].bbox_y_mm;
                 paras[i].blocks[0].bbox_w_mm = paras[i].bbox_w_mm;
                 paras[i].blocks[0].bbox_h_mm = paras[i].bbox_h_mm;
+                Style st = resolve_style(paras[i].style_name.c_str());
+                if (paras[i].blocks[0].props.font_name.empty()) paras[i].blocks[0].props.font_name = st.text.font_name;
+                if (paras[i].blocks[0].props.font_size_pt == 0) paras[i].blocks[0].props.font_size_pt = st.text.font_size_pt;
+                if (!paras[i].blocks[0].props.bold) paras[i].blocks[0].props.bold = st.text.bold;
+                if (!paras[i].blocks[0].props.italic) paras[i].blocks[0].props.italic = st.text.italic;
+                if (!paras[i].blocks[0].props.underline) paras[i].blocks[0].props.underline = st.text.underline;
+                if (!paras[i].blocks[0].props.strikethrough) paras[i].blocks[0].props.strikethrough = st.text.strikethrough;
+                if (paras[i].blocks[0].props.color.empty()) paras[i].blocks[0].props.color = st.text.color;
             } else if (paras[i].num_blocks > 1) {
                 double current_x = paras[i].bbox_x_mm;
                 for (int b = 0; b < paras[i].num_blocks; b++) {
@@ -722,6 +756,15 @@ static void get_paragraph_positions(lok::Document* doc, Paragraph* paras,
                     paras[i].blocks[b].bbox_w_mm = paras[i].bbox_w_mm * pct;
                     paras[i].blocks[b].bbox_h_mm = paras[i].bbox_h_mm;
                     current_x += paras[i].blocks[b].bbox_w_mm;
+
+                    Style st = resolve_style(paras[i].style_name.c_str());
+                    if (paras[i].blocks[b].props.font_name.empty()) paras[i].blocks[b].props.font_name = st.text.font_name;
+                    if (paras[i].blocks[b].props.font_size_pt == 0) paras[i].blocks[b].props.font_size_pt = st.text.font_size_pt;
+                    if (!paras[i].blocks[b].props.bold) paras[i].blocks[b].props.bold = st.text.bold;
+                    if (!paras[i].blocks[b].props.italic) paras[i].blocks[b].props.italic = st.text.italic;
+                    if (!paras[i].blocks[b].props.underline) paras[i].blocks[b].props.underline = st.text.underline;
+                    if (!paras[i].blocks[b].props.strikethrough) paras[i].blocks[b].props.strikethrough = st.text.strikethrough;
+                    if (paras[i].blocks[b].props.color.empty()) paras[i].blocks[b].props.color = st.text.color;
                 }
             }
         }
@@ -962,37 +1005,78 @@ cdsl_doc_extract_to_json(const char* path)
 	pos += snprintf(json_out + pos, buf_sz - pos,
 	    "{\n"
 	    "  \"document\": {\n"
-	    "    \"pages\": [\n"
-	    "      {\n"
-	    "        \"page_number\": 1,\n"
-	    "        \"width_mm\": %.0f,\n"
-	    "        \"height_mm\": %.0f,\n"
-	    "        \"margin_top_mm\": %.0f,\n"
-	    "        \"margin_bottom_mm\": %.0f,\n"
-	    "        \"margin_left_mm\": %.0f,\n"
-	    "        \"margin_right_mm\": %.0f,\n"
-	    "        \"paragraphs\": [\n",
-	    page.page_width_mm, page.page_height_mm,
-	    page.margin_top_mm, page.margin_bottom_mm,
-	    page.margin_left_mm, page.margin_right_mm);
+	    "    \"pages\": [\n");
 
-	// Each paragraph
+	// Dynamically group paragraphs by their physical page_num
+	// If a paragraph doesn't have a computed page_num (0), fallback to page_num=1
+	int current_render_page = 1;
+	bool has_started_page = false;
+	bool has_started_para = false;
+
 	for (int pi = 0; pi < num_paras; pi++) {
-		if (pi > 0) {
-                        if (pos < buf_sz - 2) { json_out[pos++] = ','; json_out[pos++] = '\n'; }
-		}
 		const Paragraph& para = paragraphs[pi];
+		int para_page = para.page_num > 0 ? para.page_num : 1;
+
+		if (!has_started_page || para_page != current_render_page) {
+			if (has_started_page) {
+				// Close previous page
+				pos += snprintf(json_out + pos, buf_sz - pos, "\n        ]\n      }");
+			}
+			if (pi > 0) {
+				pos += snprintf(json_out + pos, buf_sz - pos, ",\n");
+			}
+			current_render_page = para_page;
+			pos += snprintf(json_out + pos, buf_sz - pos,
+			    "      {\n"
+			    "        \"page_number\": %d,\n"
+			    "        \"width_mm\": %.0f,\n"
+			    "        \"height_mm\": %.0f,\n"
+			    "        \"margin_top_mm\": %.0f,\n"
+			    "        \"margin_bottom_mm\": %.0f,\n"
+			    "        \"margin_left_mm\": %.0f,\n"
+			    "        \"margin_right_mm\": %.0f,\n"
+			    "        \"paragraphs\": [\n",
+			    current_render_page,
+			    page.page_width_mm, page.page_height_mm,
+			    page.margin_top_mm, page.margin_bottom_mm,
+			    page.margin_left_mm, page.margin_right_mm);
+			has_started_page = true;
+			has_started_para = false;
+		}
+
+		if (has_started_para) {
+			if (pos < buf_sz - 2) { json_out[pos++] = ','; json_out[pos++] = '\n'; }
+		}
 		pos = json_append_paragraph(json_out, buf_sz, pos,
 		                             para.style_name.empty() ? nullptr : para.style_name.c_str(),
 		                             para.props,
 		                             para.blocks, para.num_blocks,
 		                             &para);
+		has_started_para = true;
+	}
+
+	if (has_started_page) {
+		pos += snprintf(json_out + pos, buf_sz - pos, "\n        ]\n      }\n");
+	} else {
+		// fallback: at least one empty page element if no paragraphs parsed
+		pos += snprintf(json_out + pos, buf_sz - pos,
+		    "      {\n"
+		    "        \"page_number\": 1,\n"
+		    "        \"width_mm\": %.0f,\n"
+		    "        \"height_mm\": %.0f,\n"
+		    "        \"margin_top_mm\": %.0f,\n"
+		    "        \"margin_bottom_mm\": %.0f,\n"
+		    "        \"margin_left_mm\": %.0f,\n"
+		    "        \"margin_right_mm\": %.0f,\n"
+		    "        \"paragraphs\": []\n"
+		    "      }\n",
+		    page.page_width_mm, page.page_height_mm,
+		    page.margin_top_mm, page.margin_bottom_mm,
+		    page.margin_left_mm, page.margin_right_mm);
 	}
 
 	// Close pages array and page object
 	pos += snprintf(json_out + pos, buf_sz - pos,
-	    "\n        ]\n"
-	    "      }\n"
 	    "    ],\n"
 	    "    \"metadata\": {\n"
 	    "      \"page_count\": %d,\n"

@@ -146,12 +146,13 @@ const char* XmlParser::attr(const char* local) const {
                 const char* val_end = val;
                 while (val_end < end_ && *val_end != quote)
                     val_end++;
-                // We can't return a dynamically allocated string from attr(),
-                // so we use thread-local or static storage.
-                // For FODT parsing this is fine since we consume one attr at a time.
-                static char buf[4096];
+                static char bufs[8][4096];
+                static int buf_idx = 0;
+                char* buf = bufs[buf_idx];
+                buf_idx = (buf_idx + 1) % 8;
+
                 size_t vlen = (size_t)(val_end - val);
-                if (vlen >= sizeof(buf)) vlen = sizeof(buf) - 1;
+                if (vlen >= 4096) vlen = 4096 - 1;
                 memcpy(buf, val, vlen);
                 buf[vlen] = '\0';
                 // Decode common XML entities in the copy

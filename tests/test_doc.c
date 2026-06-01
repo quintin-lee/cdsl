@@ -39,6 +39,16 @@ test_extract_json()
 	TEST_ASSERT(strstr(json, "\"document\"") != NULL, "JSON should contain document root");
 	TEST_ASSERT(strstr(json, "\"full_text\"") != NULL, "JSON should contain full_text");
 	TEST_ASSERT(strstr(json, "\"width_mm\"") != NULL, "JSON should contain width_mm");
+	TEST_ASSERT(strstr(json, "\"page_number\"") != NULL, "JSON should contain page_number");
+	TEST_ASSERT(strstr(json, "\"metadata\"") != NULL, "JSON should contain metadata");
+	TEST_ASSERT(strstr(json, "\"page_count\"") != NULL, "JSON should contain page_count");
+	TEST_ASSERT(strstr(json, "\"paragraph_count\"") != NULL,
+		    "JSON should contain paragraph_count");
+	TEST_ASSERT(strstr(json, "\"word_count\"") != NULL, "JSON should contain word_count");
+	TEST_ASSERT(strstr(json, "\"character_count\"") != NULL,
+		    "JSON should contain character_count");
+	TEST_ASSERT(strstr(json, "\"text_blocks\"") != NULL, "JSON should contain text_blocks");
+	TEST_ASSERT(strstr(json, "\"bbox_mm\"") != NULL, "JSON should contain bbox_mm");
 	TEST_ASSERT(strstr(json, "Hello, C-DSL") != NULL,
 		    "JSON full_text should contain expected content");
 
