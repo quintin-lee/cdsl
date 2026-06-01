@@ -166,11 +166,16 @@ struct PageInfo {
     int    paragraph_count = 0;
     int    word_count = 0;
     int    character_count = 0;
+    std::string title;
+    std::string creator;
+    std::string created;
+    std::string modified;
 };
 
 struct TextBlock {
     std::string text;
     TextProps   props;
+    std::string hyperlink_url;
     double bbox_x_mm = 0;
     double bbox_y_mm = 0;
     double bbox_w_mm = 0;
@@ -187,6 +192,50 @@ struct Paragraph {
     double bbox_w_mm = 0;
     double bbox_h_mm = 0;
     int    page_num = 0;
+};
+
+#define MAX_CELLS_PER_ROW 256
+
+struct TableCell {
+    std::string text;
+    int          colspan = 1;
+    int          rowspan = 1;
+};
+
+struct TableRow {
+    TableCell cells[MAX_CELLS_PER_ROW];
+    int       num_cells = 0;
+};
+
+struct TableInfo {
+    std::string style_name;
+    TableRow    rows[256];
+    int         num_rows = 0;
+};
+
+struct ListItem {
+    std::string text;
+    int         level = 1;
+};
+
+struct ListInfo {
+    std::string style_name;
+    ListItem    items[256];
+    int         num_items = 0;
+};
+
+struct ImageInfo {
+    std::string alt_text;
+    double width_mm = 0;
+    double height_mm = 0;
+    double x_mm = 0;
+    double y_mm = 0;
+    int    page_num = 0;
+};
+
+struct FootnoteInfo {
+    std::string citation;
+    std::string body;
 };
 
 /* Bounded style database.
@@ -396,6 +445,11 @@ static size_t json_append_text_block(char* buf, size_t sz, size_t pos,
     if (!props.color.empty()) {
         pos += snprintf(buf + pos, sz - pos, "      ,\"color\": \"%s\"\n", props.color.c_str());
     }
+    if (block && !block->hyperlink_url.empty()) {
+        pos += snprintf(buf + pos, sz - pos, "      ,\"hyperlink_url\": \"");
+        pos = json_escape_append(buf, sz, pos, block->hyperlink_url.c_str());
+        if (pos < sz - 2) { buf[pos++] = '"'; buf[pos++] = '\n'; }
+    }
     if (block) {
         pos += snprintf(buf + pos, sz - pos,
             "      ,\"bbox_mm\": [%.1f, %.1f, %.1f, %.1f]\n",
@@ -449,12 +503,165 @@ static size_t json_append_paragraph(char* buf, size_t sz, size_t pos,
     return pos;
 }
 
+static size_t json_append_table(char* buf, size_t sz, size_t pos, const TableInfo& table)
+{
+    pos += snprintf(buf + pos, sz - pos, "    {\n");
+    pos += snprintf(buf + pos, sz - pos, "      \"style\": \"%s\",\n",
+        table.style_name.empty() ? "Default" : table.style_name.c_str());
+    pos += snprintf(buf + pos, sz - pos, "      \"rows\": [\n");
+    for (int r = 0; r < table.num_rows; r++) {
+        if (r > 0) { pos += snprintf(buf + pos, sz - pos, ",\n"); }
+        pos += snprintf(buf + pos, sz - pos, "        {\"cells\":[");
+        for (int c = 0; c < table.rows[r].num_cells; c++) {
+            if (c > 0) buf[pos++] = ',';
+            pos += snprintf(buf + pos, sz - pos, "{\"text\":\"");
+            pos = json_escape_append(buf, sz, pos, table.rows[r].cells[c].text.c_str());
+            pos += snprintf(buf + pos, sz - pos, "\"");
+            if (table.rows[r].cells[c].colspan > 1)
+                pos += snprintf(buf + pos, sz - pos, ",\"colspan\":%d", table.rows[r].cells[c].colspan);
+            if (table.rows[r].cells[c].rowspan > 1)
+                pos += snprintf(buf + pos, sz - pos, ",\"rowspan\":%d", table.rows[r].cells[c].rowspan);
+            buf[pos++] = '}';
+        }
+        pos += snprintf(buf + pos, sz - pos, "]}");
+    }
+    pos += snprintf(buf + pos, sz - pos, "\n      ]\n    }");
+    return pos;
+}
+
+static size_t json_append_list(char* buf, size_t sz, size_t pos, const ListInfo& list)
+{
+    pos += snprintf(buf + pos, sz - pos, "    {\n");
+    pos += snprintf(buf + pos, sz - pos, "      \"style\": \"%s\",\n",
+        list.style_name.empty() ? "Default" : list.style_name.c_str());
+    pos += snprintf(buf + pos, sz - pos, "      \"items\": [\n");
+    for (int i = 0; i < list.num_items; i++) {
+        if (i > 0) { pos += snprintf(buf + pos, sz - pos, ",\n"); }
+        pos += snprintf(buf + pos, sz - pos, "        {\"text\":\"");
+        pos = json_escape_append(buf, sz, pos, list.items[i].text.c_str());
+        pos += snprintf(buf + pos, sz - pos, "\",\"level\":%d}", list.items[i].level);
+    }
+    pos += snprintf(buf + pos, sz - pos, "\n      ]\n    }");
+    return pos;
+}
+
+static size_t json_append_image(char* buf, size_t sz, size_t pos, const ImageInfo& img)
+{
+    pos += snprintf(buf + pos, sz - pos, "    {\n");
+    pos += snprintf(buf + pos, sz - pos, "      \"width_mm\": %.1f,\n", img.width_mm);
+    pos += snprintf(buf + pos, sz - pos, "      \"height_mm\": %.1f,\n", img.height_mm);
+    pos += snprintf(buf + pos, sz - pos, "      \"x_mm\": %.1f,\n", img.x_mm);
+    pos += snprintf(buf + pos, sz - pos, "      \"y_mm\": %.1f", img.y_mm);
+    if (!img.alt_text.empty()) {
+        pos += snprintf(buf + pos, sz - pos, ",\n      \"alt_text\": \"");
+        pos = json_escape_append(buf, sz, pos, img.alt_text.c_str());
+        buf[pos++] = '"';
+    }
+    pos += snprintf(buf + pos, sz - pos, "\n    }");
+    return pos;
+}
+
+static bool parse_fodt_table(XmlParser& xp, TableInfo& table) {
+    table.num_rows = 0;
+    int depth = 1;
+    while (depth > 0 && xp.next() != XmlParser::END) {
+        if (xp.type() == XmlParser::END_ELEMENT) { depth--; continue; }
+        if (xp.type() != XmlParser::START_ELEMENT) continue;
+        if (xp.match("table:table-row")) {
+            if (table.num_rows >= 256) { /* skip */ int d=1; while(d>0&&xp.next()!=XmlParser::END){if(xp.type()==XmlParser::START_ELEMENT)d++;else if(xp.type()==XmlParser::END_ELEMENT)d--;} continue; }
+            TableRow& row = table.rows[table.num_rows++];
+            int rd = 1;
+            while (rd > 0 && xp.next() != XmlParser::END) {
+                if (xp.type() == XmlParser::END_ELEMENT) { rd--; continue; }
+                if (xp.type() != XmlParser::START_ELEMENT) continue;
+                if (xp.match("table:table-cell") || xp.match("table:covered-table-cell")) {
+                    if (row.num_cells >= MAX_CELLS_PER_ROW) { int d=1; while(d>0&&xp.next()!=XmlParser::END){if(xp.type()==XmlParser::START_ELEMENT)d++;else if(xp.type()==XmlParser::END_ELEMENT)d--;} continue; }
+                    TableCell& cell = row.cells[row.num_cells++];
+                    const char* v;
+                    if ((v = xp.attr("table:number-columns-spanned"))) cell.colspan = atoi(v);
+                    if ((v = xp.attr("table:number-rows-spanned")))    cell.rowspan = atoi(v);
+                    int cd = 1; std::string ct;
+                    while (cd > 0 && xp.next() != XmlParser::END) {
+                        if (xp.type() == XmlParser::END_ELEMENT) { cd--; continue; }
+                        if (xp.type() == XmlParser::START_ELEMENT) {
+                            if (xp.match("text:p")) { int pd=1; while(pd>0&&xp.next()!=XmlParser::END){if(xp.type()==XmlParser::END_ELEMENT){pd--;continue;}if(xp.type()==XmlParser::START_ELEMENT){pd++;continue;}if(xp.type()==XmlParser::TEXT&&xp.textContent())ct.append(xp.textContent(),xp.textLength());} }
+                            else { cd++; }
+                            continue;
+                        }
+                        if (xp.type() == XmlParser::TEXT && xp.textContent()) ct.append(xp.textContent(), xp.textLength());
+                    }
+                    cell.text = ct;
+                } else { int d=1; while(d>0&&xp.next()!=XmlParser::END){if(xp.type()==XmlParser::START_ELEMENT)d++;else if(xp.type()==XmlParser::END_ELEMENT)d--;} }
+            }
+        } else { int d=1; while(d>0&&xp.next()!=XmlParser::END){if(xp.type()==XmlParser::START_ELEMENT)d++;else if(xp.type()==XmlParser::END_ELEMENT)d--;} }
+    }
+    return true;
+}
+
+static bool parse_fodt_list(XmlParser& xp, ListInfo& list) {
+    list.num_items = 0;
+    int depth = 1;
+    while (depth > 0 && xp.next() != XmlParser::END) {
+        if (xp.type() == XmlParser::END_ELEMENT) { depth--; continue; }
+        if (xp.type() != XmlParser::START_ELEMENT) continue;
+        if (xp.match("text:list-item")) {
+            if (list.num_items >= 256) { int d=1; while(d>0&&xp.next()!=XmlParser::END){if(xp.type()==XmlParser::START_ELEMENT)d++;else if(xp.type()==XmlParser::END_ELEMENT)d--;} continue; }
+            ListItem& item = list.items[list.num_items++];
+            int id=1; std::string it;
+            while (id > 0 && xp.next() != XmlParser::END) {
+                if (xp.type() == XmlParser::END_ELEMENT) { id--; continue; }
+                if (xp.type() == XmlParser::START_ELEMENT) {
+                    if (xp.match("text:p") || xp.match("text:h")) { int pd=1; while(pd>0&&xp.next()!=XmlParser::END){if(xp.type()==XmlParser::END_ELEMENT){pd--;continue;}if(xp.type()==XmlParser::START_ELEMENT){if(xp.match("text:span")){int sd=1;while(sd>0&&xp.next()!=XmlParser::END){if(xp.type()==XmlParser::END_ELEMENT){sd--;continue;}if(xp.type()==XmlParser::START_ELEMENT){sd++;continue;}if(xp.type()==XmlParser::TEXT&&xp.textContent())it.append(xp.textContent(),xp.textLength());}}else{pd++;}continue;}if(xp.type()==XmlParser::TEXT&&xp.textContent())it.append(xp.textContent(),xp.textLength());} }
+                    else { id++; }
+                    continue;
+                }
+                if (xp.type() == XmlParser::TEXT && xp.textContent()) it.append(xp.textContent(), xp.textLength());
+            }
+            item.text = it;
+        } else { int d=1; while(d>0&&xp.next()!=XmlParser::END){if(xp.type()==XmlParser::START_ELEMENT)d++;else if(xp.type()==XmlParser::END_ELEMENT)d--;} }
+    }
+    return true;
+}
+
+static bool parse_fodt_image(XmlParser& xp, ImageInfo& image) {
+    const char* v;
+    if ((v = xp.attr("svg:width")))  image.width_mm  = parse_length_mm(v);
+    if ((v = xp.attr("svg:height"))) image.height_mm = parse_length_mm(v);
+    if ((v = xp.attr("svg:x")))      image.x_mm      = parse_length_mm(v);
+    if ((v = xp.attr("svg:y")))      image.y_mm      = parse_length_mm(v);
+    int depth = 1;
+    while (depth > 0 && xp.next() != XmlParser::END) {
+        if (xp.type() == XmlParser::END_ELEMENT) { depth--; continue; }
+        if (xp.type() != XmlParser::START_ELEMENT) continue;
+        if (xp.match("draw:image")) {
+            int dd = 1;
+            while (dd > 0 && xp.next() != XmlParser::END) {
+                if (xp.type() == XmlParser::START_ELEMENT) {
+                    if (xp.match("svg:title") || xp.match("svg:desc")) {
+                        int td = 1;
+                        while (td > 0 && xp.next() != XmlParser::END) {
+                            if (xp.type() == XmlParser::END_ELEMENT) { td--; continue; }
+                            if (xp.type() == XmlParser::START_ELEMENT) { td++; continue; }
+                            if (xp.type() == XmlParser::TEXT && xp.textContent()) image.alt_text.append(xp.textContent(), xp.textLength());
+                        }
+                    } else { dd++; }
+                } else if (xp.type() == XmlParser::END_ELEMENT) dd--;
+            }
+        }
+        depth++;
+    }
+    return true;
+}
+
 /* ------------------------------------------------------------------ */
 /*  FODT body parser: walk <office:text> → <text:p> → <text:span>     */
 /* ------------------------------------------------------------------ */
 
 static bool parse_fodt_body(XmlParser& xp, PageInfo& page,
-                             Paragraph* out_paras, int& out_count)
+                             Paragraph* out_paras, int& out_count,
+                             TableInfo* out_tables = nullptr, int* out_table_count = nullptr,
+                             ListInfo* out_lists = nullptr, int* out_list_count = nullptr,
+                             ImageInfo* out_images = nullptr, int* out_image_count = nullptr)
 {
     out_count = 0;
     int depth = 1;
@@ -483,9 +690,16 @@ static bool parse_fodt_body(XmlParser& xp, PageInfo& page,
 
             // Parse paragraph children for text
             int para_depth = 1;
+            std::string current_hyperlink;
             while (para_depth > 0 && xp.next() != XmlParser::END) {
                 if (xp.type() == XmlParser::END_ELEMENT) { para_depth--; continue; }
                 if (xp.type() == XmlParser::START_ELEMENT) {
+                    if (xp.match("text:a")) {
+                        const char* href = xp.attr("xlink:href");
+                        if (href) current_hyperlink = href;
+                        para_depth++;
+                        continue;
+                    }
                     if (xp.match("text:span")) {
                         // text span with potential style override
                         const char* span_style = xp.attr("text:style-name");
@@ -517,6 +731,7 @@ static bool parse_fodt_body(XmlParser& xp, PageInfo& page,
                                 if (dec) tb.text = dec;
                                 else tb.text = span_text;
                                 tb.props = span_props;
+                                tb.hyperlink_url = current_hyperlink;
                             }
                             free(dec);
                         }
@@ -543,15 +758,24 @@ static bool parse_fodt_body(XmlParser& xp, PageInfo& page,
                     if (para.num_blocks < 256) {
                         TextBlock& tb = para.blocks[para.num_blocks++];
                         if (dec) tb.text = dec;
+                        tb.hyperlink_url = current_hyperlink;
                         free(dec);
                     }
                 }
             }
             out_count++;
         } else if (xp.match("text:section")) {
-            // section can contain more paragraphs - recurse
-            if (!parse_fodt_body(xp, page, out_paras, out_count))
+            if (!parse_fodt_body(xp, page, out_paras, out_count, out_tables, out_table_count, out_lists, out_list_count, out_images, out_image_count))
                 return false;
+        } else if (xp.match("text:table") && out_tables && out_table_count) {
+            if (*out_table_count < 256) { parse_fodt_table(xp, out_tables[(*out_table_count)++]); }
+            else { int d=1; while(d>0&&xp.next()!=XmlParser::END){if(xp.type()==XmlParser::START_ELEMENT)d++;else if(xp.type()==XmlParser::END_ELEMENT)d--;} }
+        } else if (xp.match("text:list") && out_lists && out_list_count) {
+            if (*out_list_count < 256) { parse_fodt_list(xp, out_lists[(*out_list_count)++]); }
+            else { int d=1; while(d>0&&xp.next()!=XmlParser::END){if(xp.type()==XmlParser::START_ELEMENT)d++;else if(xp.type()==XmlParser::END_ELEMENT)d--;} }
+        } else if (xp.match("draw:frame") && out_images && out_image_count) {
+            if (*out_image_count < 256) { parse_fodt_image(xp, out_images[(*out_image_count)++]); }
+            else { int d=1; while(d>0&&xp.next()!=XmlParser::END){if(xp.type()==XmlParser::START_ELEMENT)d++;else if(xp.type()==XmlParser::END_ELEMENT)d--;} }
         } else {
             // Other elements inside body - skip
             int d = 1;
@@ -570,7 +794,10 @@ static bool parse_fodt_body(XmlParser& xp, PageInfo& page,
 
 static bool parse_fodt_document(const char* fodt, size_t fodt_len,
                                  PageInfo& page, Paragraph* out_paras, int& out_count,
-                                 std::string& full_text)
+                                 std::string& full_text,
+                                 TableInfo* out_tables = nullptr, int* out_table_count = nullptr,
+                                 ListInfo* out_lists = nullptr, int* out_list_count = nullptr,
+                                 ImageInfo* out_images = nullptr, int* out_image_count = nullptr)
 {
     init_style_db();
     out_count = 0;
@@ -641,7 +868,7 @@ static bool parse_fodt_document(const char* fodt, size_t fodt_len,
             while (d > 0 && xp.next() != XmlParser::END) {
                 if (xp.type() == XmlParser::START_ELEMENT) {
                     if (xp.match("office:text")) {
-                        if (!parse_fodt_body(xp, page, out_paras, out_count))
+                        if (!parse_fodt_body(xp, page, out_paras, out_count, out_tables, out_table_count, out_lists, out_list_count, out_images, out_image_count))
                             return false;
                     } else {
                         int dd = 1;
@@ -654,6 +881,24 @@ static bool parse_fodt_document(const char* fodt, size_t fodt_len,
             }
         }
     }
+
+    {
+        auto extract_tag = [&](const char* tag) -> std::string {
+            std::string o = std::string("<") + tag + ">";
+            std::string c = std::string("</") + tag + ">";
+            const char* s = (const char*)memmem(fodt, fodt_len, o.c_str(), o.size());
+            if (!s) return {};
+            s += o.size();
+            const char* e = (const char*)memmem(s, fodt_len-(s-fodt), c.c_str(), c.size());
+            if (!e) return {};
+            return std::string(s, e-s);
+        };
+        page.title    = extract_tag("dc:title");
+        page.creator  = extract_tag("dc:creator");
+        page.created  = extract_tag("meta:creation-date");
+        page.modified = extract_tag("dc:date");
+    }
+
     return true;
 }
 
@@ -982,6 +1227,12 @@ cdsl_doc_extract_to_json(const char* path)
 	PageInfo   page;
 	std::vector<Paragraph> paragraphs(256);
 	int        num_paras = 0;
+	std::vector<TableInfo> tables(256);
+	int        num_tables = 0;
+	std::vector<ListInfo> lists(256);
+	int        num_lists = 0;
+	std::vector<ImageInfo> images(256);
+	int        num_images = 0;
 	std::string full_text;
 
 	{
@@ -1016,7 +1267,7 @@ cdsl_doc_extract_to_json(const char* path)
 		fclose(ff);
 		remove(fodt_path);
 
-		if (!parse_fodt_document(fodt, (size_t)fodt_size, page, paragraphs.data(), num_paras, full_text)) {
+		if (!parse_fodt_document(fodt, (size_t)fodt_size, page, paragraphs.data(), num_paras, full_text, tables.data(), &num_tables, lists.data(), &num_lists, images.data(), &num_images)) {
 			free(fodt);
 			return nullptr;
 		}
@@ -1111,18 +1362,62 @@ cdsl_doc_extract_to_json(const char* path)
 	}
 
 	// Close pages array and page object
+	pos += snprintf(json_out + pos, buf_sz - pos, "    ],\n");
+
+	pos += snprintf(json_out + pos, buf_sz - pos, "    \"tables\": [\n");
+	for (int ti = 0; ti < num_tables; ti++) {
+		if (ti > 0) { pos += snprintf(json_out + pos, buf_sz - pos, ",\n"); }
+		pos = json_append_table(json_out, buf_sz, pos, tables[ti]);
+	}
+	pos += snprintf(json_out + pos, buf_sz - pos, "\n    ],\n");
+
+	pos += snprintf(json_out + pos, buf_sz - pos, "    \"lists\": [\n");
+	for (int li = 0; li < num_lists; li++) {
+		if (li > 0) { pos += snprintf(json_out + pos, buf_sz - pos, ",\n"); }
+		pos = json_append_list(json_out, buf_sz, pos, lists[li]);
+	}
+	pos += snprintf(json_out + pos, buf_sz - pos, "\n    ],\n");
+
+	pos += snprintf(json_out + pos, buf_sz - pos, "    \"images\": [\n");
+	for (int ii = 0; ii < num_images; ii++) {
+		if (ii > 0) { pos += snprintf(json_out + pos, buf_sz - pos, ",\n"); }
+		pos = json_append_image(json_out, buf_sz, pos, images[ii]);
+	}
+	pos += snprintf(json_out + pos, buf_sz - pos, "\n    ],\n");
+
 	pos += snprintf(json_out + pos, buf_sz - pos,
-	    "    ],\n"
 	    "    \"metadata\": {\n"
 	    "      \"page_count\": %d,\n"
 	    "      \"paragraph_count\": %d,\n"
 	    "      \"word_count\": %d,\n"
-	    "      \"character_count\": %d\n"
-	    "    },\n"
-	    "    \"full_text\": \"",
+	    "      \"character_count\": %d",
 	    page.page_count, page.paragraph_count,
 	    page.word_count, page.character_count);
 
+	if (!page.title.empty()) {
+		pos += snprintf(json_out + pos, buf_sz - pos, ",\n      \"title\": \"");
+		pos = json_escape_append(json_out, buf_sz, pos, page.title.c_str());
+		pos += snprintf(json_out + pos, buf_sz - pos, "\"");
+	}
+	if (!page.creator.empty()) {
+		pos += snprintf(json_out + pos, buf_sz - pos, ",\n      \"creator\": \"");
+		pos = json_escape_append(json_out, buf_sz, pos, page.creator.c_str());
+		pos += snprintf(json_out + pos, buf_sz - pos, "\"");
+	}
+	if (!page.created.empty()) {
+		pos += snprintf(json_out + pos, buf_sz - pos, ",\n      \"created\": \"");
+		pos = json_escape_append(json_out, buf_sz, pos, page.created.c_str());
+		pos += snprintf(json_out + pos, buf_sz - pos, "\"");
+	}
+	if (!page.modified.empty()) {
+		pos += snprintf(json_out + pos, buf_sz - pos, ",\n      \"modified\": \"");
+		pos = json_escape_append(json_out, buf_sz, pos, page.modified.c_str());
+		pos += snprintf(json_out + pos, buf_sz - pos, "\"");
+	}
+
+	pos += snprintf(json_out + pos, buf_sz - pos,
+	    "\n    },\n"
+	    "    \"full_text\": \"");
 	// Build full_text from paragraphs
 	for (int pi = 0; pi < num_paras; pi++) {
 		const Paragraph& para = paragraphs[pi];
