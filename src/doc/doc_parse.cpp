@@ -1170,6 +1170,9 @@ static bool parse_fodt_document(const char* fodt, size_t fodt_len,
 struct CursorCapture {
     double x_twip = 0, y_twip = 0, w_twip = 0, h_twip = 0;
     bool   updated = false;
+    bool   has_coords = false;
+    int    logical_page = 0;
+    int    total_pages = 0;
 };
 
 static void cursor_callback(int type, const char* payload, void* data) {
@@ -1179,7 +1182,21 @@ static void cursor_callback(int type, const char* payload, void* data) {
         int n = sscanf(payload, "%lf, %lf, %lf, %lf", &x, &y, &w, &h);
         if (n >= 2) {
             cap->x_twip = x; cap->y_twip = y; cap->w_twip = w; cap->h_twip = h;
+            cap->has_coords = true;
             cap->updated = true;
+        }
+    }
+    /* Parse status bar text for page info: "Page X of Y" */
+    if (type == LOK_CALLBACK_STATE_CHANGED && payload) {
+        const char* page_prefix = "Page ";
+        const char* p = strstr(payload, page_prefix);
+        if (p) {
+            p += 5;
+            int pnum = 0, total = 0;
+            if (sscanf(p, "%d of %d", &pnum, &total) >= 1) {
+                cap->logical_page = pnum;
+                cap->total_pages = total;
+            }
         }
     }
 }
@@ -1212,12 +1229,12 @@ get_paragraph_positions(lok::Document* doc, Paragraph* paras,
         return;
     }
 
-    const     double twip_to_mm = 25.4 / 1440.0;
+    const double twip_to_mm = 25.4 / 1440.0;
 
-    int current_page = 1;
     for (int i = 0; i < count; i++) {
         if (i > 0) {
             cap.updated = false;
+            cap.has_coords = false;
             doc->postUnoCommand(".uno:GoDown", nullptr, false);
         }
 
@@ -1226,10 +1243,8 @@ get_paragraph_positions(lok::Document* doc, Paragraph* paras,
             paras[i].bbox_y_mm = cap.y_twip * twip_to_mm;
             double line_h_mm = cap.h_twip * twip_to_mm;
 
-            if (i > 0 && paras[i].bbox_y_mm < paras[i-1].bbox_y_mm)
-                current_page++;
-            paras[i].page_index  = current_page;
-            paras[i].page_number = page.has_page_number_start ? (current_page + page.page_number_start - 1) : 0;
+            paras[i].page_index  = cap.logical_page > 0 ? cap.logical_page : (i + 1);
+            paras[i].page_number = page.has_page_number_start ? (paras[i].page_index + page.page_number_start - 1) : 0;
 
             double indent = paras[i].bbox_x_mm - page.margin_left_mm;
             if (indent < 0) indent = 0;
