@@ -26,6 +26,7 @@
 #include <memory>
 #include <mutex>
 #include <string>
+#include <vector>
 #include <unistd.h>
 
 /* ------------------------------------------------------------------ */
@@ -170,6 +171,10 @@ struct PageInfo {
 struct TextBlock {
     std::string text;
     TextProps   props;
+    double bbox_x_mm = 0;
+    double bbox_y_mm = 0;
+    double bbox_w_mm = 0;
+    double bbox_h_mm = 0;
 };
 
 struct Paragraph {
@@ -177,6 +182,11 @@ struct Paragraph {
     ParaProps     props;
     TextBlock     blocks[256];
     int           num_blocks = 0;
+    double bbox_x_mm = 0;
+    double bbox_y_mm = 0;
+    double bbox_w_mm = 0;
+    double bbox_h_mm = 0;
+    int    page_num = 0;
 };
 
 /* Bounded style database */
@@ -333,7 +343,8 @@ static size_t json_escape_append(char* buf, size_t sz, size_t pos, const char* s
 /* ------------------------------------------------------------------ */
 
 static size_t json_append_text_block(char* buf, size_t sz, size_t pos,
-                                      const char* text, const TextProps& props)
+                                      const char* text, const TextProps& props,
+                                      const TextBlock* block = nullptr)
 {
     pos += snprintf(buf + pos, sz - pos, "{\n");
     if (text) {
@@ -360,13 +371,20 @@ static size_t json_append_text_block(char* buf, size_t sz, size_t pos,
     if (!props.color.empty()) {
         pos += snprintf(buf + pos, sz - pos, "      ,\"color\": \"%s\"\n", props.color.c_str());
     }
+    if (block) {
+        pos += snprintf(buf + pos, sz - pos,
+            "      ,\"bbox_mm\": [%.1f, %.1f, %.1f, %.1f]\n",
+            block->bbox_x_mm, block->bbox_y_mm,
+            block->bbox_w_mm, block->bbox_h_mm);
+    }
     if (pos + 1 < sz) buf[pos++] = '}';
     return pos;
 }
 
 static size_t json_append_paragraph(char* buf, size_t sz, size_t pos,
-                                     const char* style_name, const ParaProps& props,
-                                     const TextBlock* blocks, int num_blocks)
+                                      const char* style_name, const ParaProps& props,
+                                      const TextBlock* blocks, int num_blocks,
+                                      const Paragraph* para)
 {
     pos += snprintf(buf + pos, sz - pos, "        {\n");
     if (style_name) {
@@ -387,11 +405,19 @@ static size_t json_append_paragraph(char* buf, size_t sz, size_t pos,
     if (props.indent_first_line_mm > 0)
         pos += snprintf(buf + pos, sz - pos, "          ,\"indent_first_line_mm\": %.1f\n", props.indent_first_line_mm);
 
+    if (para) {
+        pos += snprintf(buf + pos, sz - pos,
+            "          ,\"bbox_mm\": [%.1f, %.1f, %.1f, %.1f]\n",
+            para->bbox_x_mm, para->bbox_y_mm,
+            para->bbox_w_mm, para->bbox_h_mm);
+    }
+
     pos += snprintf(buf + pos, sz - pos, "          ,\"text_blocks\": [\n");
     for (int i = 0; i < num_blocks; i++) {
         if (i > 0) { if (pos < sz - 1) buf[pos++] = ','; buf[pos++] = '\n'; }
         pos = json_append_text_block(buf, sz, pos,
-                                      blocks[i].text.c_str(), blocks[i].props);
+                                      blocks[i].text.c_str(), blocks[i].props,
+                                      &blocks[i]);
     }
     pos += snprintf(buf + pos, sz - pos, "\n          ]\n");
     if (pos + 1 < sz) buf[pos++] = '}';
@@ -600,6 +626,111 @@ static bool parse_fodt_document(const char* fodt, size_t fodt_len,
 }
 
 /* ------------------------------------------------------------------ */
+/*  Paragraph position extraction via LOK rendering                    */
+/* ------------------------------------------------------------------ */
+
+/* LOK callback captures cursor rectangle (TWIPs: "x, y, w, h") */
+struct CursorCapture {
+    double x_twip = 0, y_twip = 0, w_twip = 0, h_twip = 0;
+    bool   updated = false;
+};
+
+static void cursor_callback(int type, const char* payload, void* data) {
+    auto* cap = static_cast<CursorCapture*>(data);
+    if (type == LOK_CALLBACK_INVALIDATE_VISIBLE_CURSOR && payload && *payload) {
+        double x = 0, y = 0, w = 0, h = 0;
+        int n = sscanf(payload, "%lf, %lf, %lf, %lf", &x, &y, &w, &h);
+        if (n >= 2) {
+            cap->x_twip = x; cap->y_twip = y; cap->w_twip = w; cap->h_twip = h;
+            cap->updated = true;
+        }
+    }
+}
+
+/* Navigate paragraphs via LOK, capturing cursor rectangles (TWIPs).
+ * paintTile() triggers layout AND pumps pending UNO commands (GoDown). */
+static bool pump_until_updated(lok::Document* doc, CursorCapture& cap, int max_attempts = 10) {
+    unsigned char buf[64];
+    for (int attempt = 0; attempt < max_attempts; attempt++) {
+        if (cap.updated) return true;
+        doc->paintTile(buf, 1, 1, 0, 0, 100, 100);
+        usleep(1000);
+    }
+    return cap.updated;
+}
+
+static void get_paragraph_positions(lok::Document* doc, Paragraph* paras,
+                                    int count, const PageInfo& page)
+{
+    if (count <= 0 || !doc) return;
+
+    CursorCapture cap;
+    doc->registerCallback(cursor_callback, &cap);
+    doc->initializeForRendering(nullptr);
+
+    const double content_w_mm = page.page_width_mm
+        - page.margin_left_mm - page.margin_right_mm;
+    if (content_w_mm <= 0) {
+        doc->registerCallback(nullptr, nullptr);
+        return;
+    }
+
+    const double twip_to_mm = 25.4 / 1440.0;
+
+    for (int i = 0; i < count; i++) {
+        if (i > 0) {
+            cap.updated = false;
+            doc->postUnoCommand(".uno:GoDown", nullptr, false);
+        }
+
+        if (pump_until_updated(doc, cap)) {
+            paras[i].bbox_x_mm = cap.x_twip * twip_to_mm;
+            paras[i].bbox_y_mm = cap.y_twip * twip_to_mm;
+            double line_h_mm = cap.h_twip * twip_to_mm;
+
+            double indent = paras[i].bbox_x_mm - page.margin_left_mm;
+            if (indent < 0) indent = 0;
+            paras[i].bbox_w_mm = content_w_mm - indent;
+
+            int total_chars = 0;
+            for (int b = 0; b < paras[i].num_blocks; b++)
+                total_chars += (int)paras[i].blocks[b].text.length();
+
+            if (total_chars > 0 && line_h_mm > 0) {
+                double font_advance_mm = line_h_mm * 0.5;
+                if (font_advance_mm <= 0) font_advance_mm = 2.0;
+                int cpl = (int)(content_w_mm / font_advance_mm);
+                if (cpl < 1) cpl = 1;
+                int lines = (total_chars + cpl - 1) / cpl;
+                if (lines < 1) lines = 1;
+                paras[i].bbox_h_mm = lines * line_h_mm;
+            } else {
+                paras[i].bbox_h_mm = line_h_mm;
+            }
+
+            if (paras[i].num_blocks == 1) {
+                paras[i].blocks[0].bbox_x_mm = paras[i].bbox_x_mm;
+                paras[i].blocks[0].bbox_y_mm = paras[i].bbox_y_mm;
+                paras[i].blocks[0].bbox_w_mm = paras[i].bbox_w_mm;
+                paras[i].blocks[0].bbox_h_mm = paras[i].bbox_h_mm;
+            } else if (paras[i].num_blocks > 1) {
+                double current_x = paras[i].bbox_x_mm;
+                for (int b = 0; b < paras[i].num_blocks; b++) {
+                    double pct = total_chars > 0 ? (double)paras[i].blocks[b].text.length() / total_chars : 0.0;
+                    paras[i].blocks[b].bbox_x_mm = current_x;
+                    paras[i].blocks[b].bbox_y_mm = paras[i].bbox_y_mm;
+                    paras[i].blocks[b].bbox_w_mm = paras[i].bbox_w_mm * pct;
+                    paras[i].blocks[b].bbox_h_mm = paras[i].bbox_h_mm;
+                    current_x += paras[i].blocks[b].bbox_w_mm;
+                }
+            }
+        }
+    }
+
+    doc->registerCallback(nullptr, nullptr);
+}
+
+/* ------------------------------------------------------------------ */
 /*  JSON helpers                                                       */
 /* ------------------------------------------------------------------ */
 
@@ -768,8 +899,13 @@ cdsl_doc_extract_to_json(const char* path)
 	snprintf(fodt_url, sizeof(fodt_url), "file://%s", fodt_path);
 
 	/* ------------------------------------------------------------------ */
-	/*  LOK critical section: load + FODT export                           */
+	/*  LOK critical section: load → FODT export → parse → positions      */
 	/* ------------------------------------------------------------------ */
+	PageInfo   page;
+	std::vector<Paragraph> paragraphs(256);
+	int        num_paras = 0;
+	std::string full_text;
+
 	{
 		std::lock_guard<std::mutex> lock(g_mutex);
 		if (!g_office) {
@@ -785,49 +921,33 @@ cdsl_doc_extract_to_json(const char* path)
 			remove(fodt_path);
 			return nullptr;
 		}
-		doc.reset();
-	}
 
-	/* ------------------------------------------------------------------ */
-	/*  Read FODT into memory                                              */
-	/* ------------------------------------------------------------------ */
-	FILE* ff = fopen(fodt_path, "rb");
-	if (!ff) {
-		remove(fodt_path);
-		return nullptr;
-	}
-	fseek(ff, 0, SEEK_END);
-	long fodt_size = ftell(ff);
-	fseek(ff, 0, SEEK_SET);
-
-	char* fodt = (char*)malloc((size_t)fodt_size + 1);
-	if (!fodt) {
+		/* Read FODT into memory (doc stays open for position extraction) */
+		FILE* ff = fopen(fodt_path, "rb");
+		if (!ff) {
+			remove(fodt_path);
+			return nullptr;
+		}
+		fseek(ff, 0, SEEK_END);
+		long fodt_size = ftell(ff);
+		fseek(ff, 0, SEEK_SET);
+		char* fodt = (char*)malloc((size_t)fodt_size + 1);
+		if (!fodt) { fclose(ff); remove(fodt_path); return nullptr; }
+		size_t nf = fread(fodt, 1, (size_t)fodt_size, ff);
+		fodt[nf] = '\0';
 		fclose(ff);
 		remove(fodt_path);
-		return nullptr;
-	}
-	size_t nf = fread(fodt, 1, (size_t)fodt_size, ff);
-	fodt[nf] = '\0';
-	fclose(ff);
-	remove(fodt_path);
 
-	/* ------------------------------------------------------------------ */
-	/*  Parse FODT with XmlParser into hierarchical structure              */
-	/* ------------------------------------------------------------------ */
-	PageInfo   page;
-	Paragraph  paragraphs[256];
-	int        num_paras = 0;
-	std::string full_text;
-
-	if (!parse_fodt_document(fodt, (size_t)fodt_size, page, paragraphs, num_paras, full_text)) {
+		if (!parse_fodt_document(fodt, (size_t)fodt_size, page, paragraphs.data(), num_paras, full_text)) {
+			free(fodt);
+			return nullptr;
+		}
 		free(fodt);
-		return nullptr;
-	}
-	free(fodt);
 
-	fprintf(stderr, "DEBUG: parsed %d paragraphs, page_width=%.0f, text='%.60s'\n",
-		num_paras, page.page_width_mm,
-		num_paras > 0 && paragraphs[0].num_blocks > 0 ? paragraphs[0].blocks[0].text.c_str() : "(empty)");
+		/* Extract rendered paragraph positions from the open LOK document */
+		if (num_paras > 0 && doc)
+			get_paragraph_positions(doc.get(), paragraphs.data(), num_paras, page);
+	}
 
 	/* ------------------------------------------------------------------ */
 	/*  Build output JSON                                                  */
@@ -865,7 +985,8 @@ cdsl_doc_extract_to_json(const char* path)
 		pos = json_append_paragraph(json_out, buf_sz, pos,
 		                             para.style_name.empty() ? nullptr : para.style_name.c_str(),
 		                             para.props,
-		                             para.blocks, para.num_blocks);
+		                             para.blocks, para.num_blocks,
+		                             &para);
 	}
 
 	// Close pages array and page object
