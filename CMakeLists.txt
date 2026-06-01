@@ -109,6 +109,9 @@ target_link_libraries(cdsl_demo PRIVATE cdsl_static)
 add_executable(cdsl_official_review demo/official_review.c)
 target_link_libraries(cdsl_official_review PRIVATE cdsl_static)
 
+add_executable(cdsl_word_parser demo/word_parser.c)
+target_link_libraries(cdsl_word_parser PRIVATE cdsl_static)
+
 # 7. Tests
 enable_testing()
 file(GLOB TEST_SOURCES CONFIGURE_DEPENDS "tests/test_*.c")

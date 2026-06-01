@@ -67,6 +67,7 @@ The demo executes 6 scenarios demonstrating all major features:
 | 4 | JSON Context           | Variable bindings from JSON string        |
 | 5 | Simple Rules           | Independent pass/fail checks              |
 | 6 | RuleSet Batch          | Priority-ordered multi-rule execution     |
+| 7 | Word Parser            | Word document parsing to structured JSON  |
 
 ### 1.4 Run Tests
 

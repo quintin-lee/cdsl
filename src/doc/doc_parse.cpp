@@ -185,8 +185,7 @@ struct TextBlock {
 struct Paragraph {
     std::string   style_name;
     ParaProps     props;
-    TextBlock     blocks[256];
-    int           num_blocks = 0;
+    std::vector<TextBlock> blocks;
     double bbox_x_mm = 0;
     double bbox_y_mm = 0;
     double bbox_w_mm = 0;
@@ -409,156 +408,187 @@ static void parse_page_layout(XmlParser& xp, PageInfo& page) {
     }
 }
 
-/* Forward decl for existing JSON escape helper */
-static size_t json_escape_append(char* buf, size_t sz, size_t pos, const char* str);
-
 /* ------------------------------------------------------------------ */
 /*  JSON output builders                                              */
 /* ------------------------------------------------------------------ */
 
-static size_t json_append_text_block(char* buf, size_t sz, size_t pos,
-                                      const char* text, const TextProps& props,
-                                      const TextBlock* block = nullptr)
+static void json_escape(std::string& out, const char* str)
 {
-    pos += snprintf(buf + pos, sz - pos, "{\n");
+	if (!str) return;
+	for (size_t i = 0; str[i]; i++) {
+		unsigned char c = (unsigned char)str[i];
+		switch (c) {
+		case '"':  out += "\\\""; break;
+		case '\\': out += "\\\\"; break;
+		case '\n': out += "\\n";  break;
+		case '\r': out += "\\r";  break;
+		case '\t': out += "\\t";  break;
+		default:
+			if (c >= 0x20) out += (char)c;
+			break;
+		}
+	}
+}
+
+static void json_append_text_block(std::string& out, const char* text,
+                                   const TextProps& props, const TextBlock* block = nullptr)
+{
+    out += "{\n";
     if (text) {
-        pos += snprintf(buf + pos, sz - pos, "      \"text\": \"");
-        pos = json_escape_append(buf, sz, pos, text);
-        if (pos < sz - 2) { buf[pos++] = '"'; buf[pos++] = '\n'; }
+        out += "      \"text\": \"";
+        json_escape(out, text);
+        out += "\"\n";
     }
     if (!props.font_name.empty()) {
-        pos += snprintf(buf + pos, sz - pos, "      ,\"font_name\": \"");
-        pos = json_escape_append(buf, sz, pos, props.font_name.c_str());
-        if (pos < sz - 2) { buf[pos++] = '"'; buf[pos++] = '\n'; }
+        out += "      ,\"font_name\": \"";
+        json_escape(out, props.font_name.c_str());
+        out += "\"\n";
     }
     if (props.font_size_pt > 0) {
-        pos += snprintf(buf + pos, sz - pos, "      ,\"font_size_pt\": %.1f\n", props.font_size_pt);
+        char buf[64];
+        snprintf(buf, sizeof(buf), "      ,\"font_size_pt\": %.1f\n", props.font_size_pt);
+        out += buf;
     }
-    if (props.bold)
-        pos += snprintf(buf + pos, sz - pos, "      ,\"bold\": true\n");
-    if (props.italic)
-        pos += snprintf(buf + pos, sz - pos, "      ,\"italic\": true\n");
-    if (props.underline)
-        pos += snprintf(buf + pos, sz - pos, "      ,\"underline\": true\n");
-    if (props.strikethrough)
-        pos += snprintf(buf + pos, sz - pos, "      ,\"strikethrough\": true\n");
+    if (props.bold)          out += "      ,\"bold\": true\n";
+    if (props.italic)        out += "      ,\"italic\": true\n";
+    if (props.underline)     out += "      ,\"underline\": true\n";
+    if (props.strikethrough) out += "      ,\"strikethrough\": true\n";
     if (!props.color.empty()) {
-        pos += snprintf(buf + pos, sz - pos, "      ,\"color\": \"%s\"\n", props.color.c_str());
+        out += "      ,\"color\": \"";
+        json_escape(out, props.color.c_str());
+        out += "\"\n";
     }
     if (block && !block->hyperlink_url.empty()) {
-        pos += snprintf(buf + pos, sz - pos, "      ,\"hyperlink_url\": \"");
-        pos = json_escape_append(buf, sz, pos, block->hyperlink_url.c_str());
-        if (pos < sz - 2) { buf[pos++] = '"'; buf[pos++] = '\n'; }
+        out += "      ,\"hyperlink_url\": \"";
+        json_escape(out, block->hyperlink_url.c_str());
+        out += "\"\n";
     }
     if (block) {
-        pos += snprintf(buf + pos, sz - pos,
+        char buf[128];
+        snprintf(buf, sizeof(buf),
             "      ,\"bbox_mm\": [%.1f, %.1f, %.1f, %.1f]\n",
             block->bbox_x_mm, block->bbox_y_mm,
             block->bbox_w_mm, block->bbox_h_mm);
+        out += buf;
     }
-    if (pos + 1 < sz) buf[pos++] = '}';
-    return pos;
+    out += "}";
 }
 
-static size_t json_append_paragraph(char* buf, size_t sz, size_t pos,
-                                      const char* style_name, const ParaProps& props,
-                                      const TextBlock* blocks, int num_blocks,
-                                      const Paragraph* para)
+static void json_append_paragraph(std::string& out, const char* style_name,
+                                  const ParaProps& props, const TextBlock* blocks,
+                                  int num_blocks, const Paragraph* para)
 {
-    pos += snprintf(buf + pos, sz - pos, "        {\n");
+    out += "        {\n";
     if (style_name) {
-        pos += snprintf(buf + pos, sz - pos, "          \"style\": \"%s\"", style_name);
+        out += "          \"style\": \"";
+        json_escape(out, style_name);
+        out += "\"";
         if (!props.alignment.empty() || props.margin_top_mm > 0 || props.margin_bottom_mm > 0 ||
             props.margin_left_mm > 0 || props.indent_first_line_mm > 0 || props.line_spacing > 0)
-            buf[pos++] = ',';
-        buf[pos++] = '\n';
+            out += ",";
+        out += "\n";
     }
-    if (!props.alignment.empty())
-        pos += snprintf(buf + pos, sz - pos, "          ,\"alignment\": \"%s\"\n", props.alignment.c_str());
-    if (props.margin_top_mm > 0)
-        pos += snprintf(buf + pos, sz - pos, "          ,\"spacing_before_mm\": %.1f\n", props.margin_top_mm);
-    if (props.margin_bottom_mm > 0)
-        pos += snprintf(buf + pos, sz - pos, "          ,\"spacing_after_mm\": %.1f\n", props.margin_bottom_mm);
-    if (props.line_spacing > 0)
-        pos += snprintf(buf + pos, sz - pos, "          ,\"line_spacing\": %.2f\n", props.line_spacing);
-    if (props.indent_first_line_mm > 0)
-        pos += snprintf(buf + pos, sz - pos, "          ,\"indent_first_line_mm\": %.1f\n", props.indent_first_line_mm);
+    if (!props.alignment.empty()) {
+        out += "          ,\"alignment\": \"";
+        json_escape(out, props.alignment.c_str());
+        out += "\"\n";
+    }
+    char buf[128];
+    if (props.margin_top_mm > 0) {
+        snprintf(buf, sizeof(buf), "          ,\"spacing_before_mm\": %.1f\n", props.margin_top_mm);
+        out += buf;
+    }
+    if (props.margin_bottom_mm > 0) {
+        snprintf(buf, sizeof(buf), "          ,\"spacing_after_mm\": %.1f\n", props.margin_bottom_mm);
+        out += buf;
+    }
+    if (props.line_spacing > 0) {
+        snprintf(buf, sizeof(buf), "          ,\"line_spacing\": %.2f\n", props.line_spacing);
+        out += buf;
+    }
+    if (props.indent_first_line_mm > 0) {
+        snprintf(buf, sizeof(buf), "          ,\"indent_first_line_mm\": %.1f\n", props.indent_first_line_mm);
+        out += buf;
+    }
 
     if (para) {
-        pos += snprintf(buf + pos, sz - pos,
+        snprintf(buf, sizeof(buf),
             "          ,\"bbox_mm\": [%.1f, %.1f, %.1f, %.1f]\n",
             para->bbox_x_mm, para->bbox_y_mm,
             para->bbox_w_mm, para->bbox_h_mm);
+        out += buf;
     }
 
-    pos += snprintf(buf + pos, sz - pos, "          ,\"text_blocks\": [\n");
+    out += "          ,\"text_blocks\": [\n";
     for (int i = 0; i < num_blocks; i++) {
-        if (i > 0) { if (pos < sz - 1) buf[pos++] = ','; buf[pos++] = '\n'; }
-        pos = json_append_text_block(buf, sz, pos,
-                                      blocks[i].text.c_str(), blocks[i].props,
-                                      &blocks[i]);
+        if (i > 0) out += ",\n";
+        json_append_text_block(out, blocks[i].text.c_str(), blocks[i].props, &blocks[i]);
     }
-    pos += snprintf(buf + pos, sz - pos, "\n          ]\n");
-    if (pos + 1 < sz) buf[pos++] = '}';
-    return pos;
+    out += "\n          ]\n";
+    out += "        }";
 }
 
-static size_t json_append_table(char* buf, size_t sz, size_t pos, const TableInfo& table)
+static void json_append_table(std::string& out, const TableInfo& table)
 {
-    pos += snprintf(buf + pos, sz - pos, "    {\n");
-    pos += snprintf(buf + pos, sz - pos, "      \"style\": \"%s\",\n",
-        table.style_name.empty() ? "Default" : table.style_name.c_str());
-    pos += snprintf(buf + pos, sz - pos, "      \"rows\": [\n");
+    out += "    {\n";
+    out += "      \"style\": \"";
+    json_escape(out, table.style_name.empty() ? "Default" : table.style_name.c_str());
+    out += "\",\n";
+    out += "      \"rows\": [\n";
     for (int r = 0; r < table.num_rows; r++) {
-        if (r > 0) { pos += snprintf(buf + pos, sz - pos, ",\n"); }
-        pos += snprintf(buf + pos, sz - pos, "        {\"cells\":[");
+        if (r > 0) out += ",\n";
+        out += "        {\"cells\":[";
         for (int c = 0; c < table.rows[r].num_cells; c++) {
-            if (c > 0) buf[pos++] = ',';
-            pos += snprintf(buf + pos, sz - pos, "{\"text\":\"");
-            pos = json_escape_append(buf, sz, pos, table.rows[r].cells[c].text.c_str());
-            pos += snprintf(buf + pos, sz - pos, "\"");
-            if (table.rows[r].cells[c].colspan > 1)
-                pos += snprintf(buf + pos, sz - pos, ",\"colspan\":%d", table.rows[r].cells[c].colspan);
-            if (table.rows[r].cells[c].rowspan > 1)
-                pos += snprintf(buf + pos, sz - pos, ",\"rowspan\":%d", table.rows[r].cells[c].rowspan);
-            buf[pos++] = '}';
+            if (c > 0) out += ",";
+            out += "{\"text\":\"";
+            json_escape(out, table.rows[r].cells[c].text.c_str());
+            out += "\"";
+            if (table.rows[r].cells[c].colspan > 1) {
+                char b[32]; snprintf(b, sizeof(b), ",\"colspan\":%d", table.rows[r].cells[c].colspan);
+                out += b;
+            }
+            if (table.rows[r].cells[c].rowspan > 1) {
+                char b[32]; snprintf(b, sizeof(b), ",\"rowspan\":%d", table.rows[r].cells[c].rowspan);
+                out += b;
+            }
+            out += "}";
         }
-        pos += snprintf(buf + pos, sz - pos, "]}");
+        out += "]}";
     }
-    pos += snprintf(buf + pos, sz - pos, "\n      ]\n    }");
-    return pos;
+    out += "\n      ]\n    }";
 }
 
-static size_t json_append_list(char* buf, size_t sz, size_t pos, const ListInfo& list)
+static void json_append_list(std::string& out, const ListInfo& list)
 {
-    pos += snprintf(buf + pos, sz - pos, "    {\n");
-    pos += snprintf(buf + pos, sz - pos, "      \"style\": \"%s\",\n",
-        list.style_name.empty() ? "Default" : list.style_name.c_str());
-    pos += snprintf(buf + pos, sz - pos, "      \"items\": [\n");
+    out += "    {\n";
+    out += "      \"style\": \"";
+    json_escape(out, list.style_name.empty() ? "Default" : list.style_name.c_str());
+    out += "\",\n";
+    out += "      \"items\": [\n";
     for (int i = 0; i < list.num_items; i++) {
-        if (i > 0) { pos += snprintf(buf + pos, sz - pos, ",\n"); }
-        pos += snprintf(buf + pos, sz - pos, "        {\"text\":\"");
-        pos = json_escape_append(buf, sz, pos, list.items[i].text.c_str());
-        pos += snprintf(buf + pos, sz - pos, "\",\"level\":%d}", list.items[i].level);
+        if (i > 0) out += ",\n";
+        out += "        {\"text\":\"";
+        json_escape(out, list.items[i].text.c_str());
+        out += "\",\"level\":";
+        char b[32]; snprintf(b, sizeof(b), "%d}", list.items[i].level);
+        out += b;
     }
-    pos += snprintf(buf + pos, sz - pos, "\n      ]\n    }");
-    return pos;
+    out += "\n      ]\n    }";
 }
 
-static size_t json_append_image(char* buf, size_t sz, size_t pos, const ImageInfo& img)
+static void json_append_image(std::string& out, const ImageInfo& img)
 {
-    pos += snprintf(buf + pos, sz - pos, "    {\n");
-    pos += snprintf(buf + pos, sz - pos, "      \"width_mm\": %.1f,\n", img.width_mm);
-    pos += snprintf(buf + pos, sz - pos, "      \"height_mm\": %.1f,\n", img.height_mm);
-    pos += snprintf(buf + pos, sz - pos, "      \"x_mm\": %.1f,\n", img.x_mm);
-    pos += snprintf(buf + pos, sz - pos, "      \"y_mm\": %.1f", img.y_mm);
+    out += "    {\n";
+    char b[128];
+    snprintf(b, sizeof(b), "      \"width_mm\": %.1f,\n      \"height_mm\": %.1f,\n      \"x_mm\": %.1f,\n      \"y_mm\": %.1f",
+             img.width_mm, img.height_mm, img.x_mm, img.y_mm);
+    out += b;
     if (!img.alt_text.empty()) {
-        pos += snprintf(buf + pos, sz - pos, ",\n      \"alt_text\": \"");
-        pos = json_escape_append(buf, sz, pos, img.alt_text.c_str());
-        buf[pos++] = '"';
+        out += ",\n      \"alt_text\": \"";
+        json_escape(out, img.alt_text.c_str());
+        out += "\"";
     }
-    pos += snprintf(buf + pos, sz - pos, "\n    }");
-    return pos;
+    out += "\n    }";
 }
 
 static bool parse_fodt_table(XmlParser& xp, TableInfo& table) {
@@ -726,12 +756,13 @@ static bool parse_fodt_body(XmlParser& xp, PageInfo& page,
                             if (dec) {
                                 decode_xml_inplace(dec, strlen(dec));
                             }
-                            if (para.num_blocks < 256) {
-                                TextBlock& tb = para.blocks[para.num_blocks++];
+                            if (para.blocks.size() < 256) {
+                                TextBlock tb;
                                 if (dec) tb.text = dec;
                                 else tb.text = span_text;
                                 tb.props = span_props;
                                 tb.hyperlink_url = current_hyperlink;
+                                para.blocks.push_back(tb);
                             }
                             free(dec);
                         }
@@ -755,12 +786,13 @@ static bool parse_fodt_body(XmlParser& xp, PageInfo& page,
                         dec[tlen] = '\0';
                         decode_xml_inplace(dec, tlen);
                     }
-                    if (para.num_blocks < 256) {
-                        TextBlock& tb = para.blocks[para.num_blocks++];
+                    if (para.blocks.size() < 256) {
+                        TextBlock tb;
                         if (dec) tb.text = dec;
                         tb.hyperlink_url = current_hyperlink;
-                        free(dec);
+                        para.blocks.push_back(tb);
                     }
+                    free(dec);
                 }
             }
             out_count++;
@@ -961,14 +993,14 @@ static bool pump_until_updated(lok::Document* doc, CursorCapture& cap, int max_a
     return cap.updated;
 }
 
-static void get_paragraph_positions(lok::Document* doc, Paragraph* paras,
+static void
+get_paragraph_positions(lok::Document* doc, Paragraph* paras,
                                     int count, const PageInfo& page)
 {
     if (count <= 0 || !doc) return;
 
     CursorCapture cap;
     doc->registerCallback(cursor_callback, &cap);
-    doc->initializeForRendering(nullptr);
 
     const double content_w_mm = page.page_width_mm
         - page.margin_left_mm - page.margin_right_mm;
@@ -979,6 +1011,7 @@ static void get_paragraph_positions(lok::Document* doc, Paragraph* paras,
 
     const double twip_to_mm = 25.4 / 1440.0;
 
+    int consecutive_failures = 0;
     for (int i = 0; i < count; i++) {
         if (i > 0) {
             cap.updated = false;
@@ -986,6 +1019,7 @@ static void get_paragraph_positions(lok::Document* doc, Paragraph* paras,
         }
 
         if (pump_until_updated(doc, cap)) {
+            consecutive_failures = 0;
             paras[i].bbox_x_mm = cap.x_twip * twip_to_mm;
             paras[i].bbox_y_mm = cap.y_twip * twip_to_mm;
             double line_h_mm = cap.h_twip * twip_to_mm;
@@ -999,8 +1033,8 @@ static void get_paragraph_positions(lok::Document* doc, Paragraph* paras,
             paras[i].bbox_w_mm = content_w_mm - indent;
 
             int total_chars = 0;
-            for (int b = 0; b < paras[i].num_blocks; b++)
-                total_chars += (int)paras[i].blocks[b].text.length();
+            for (const auto& block : paras[i].blocks)
+                total_chars += (int)block.text.length();
 
             if (total_chars > 0 && line_h_mm > 0) {
                 double font_advance_mm = line_h_mm * 0.5;
@@ -1014,7 +1048,7 @@ static void get_paragraph_positions(lok::Document* doc, Paragraph* paras,
                 paras[i].bbox_h_mm = line_h_mm;
             }
 
-            if (paras[i].num_blocks == 1) {
+            if (paras[i].blocks.size() == 1) {
                 paras[i].blocks[0].bbox_x_mm = paras[i].bbox_x_mm;
                 paras[i].blocks[0].bbox_y_mm = paras[i].bbox_y_mm;
                 paras[i].blocks[0].bbox_w_mm = paras[i].bbox_w_mm;
@@ -1027,9 +1061,9 @@ static void get_paragraph_positions(lok::Document* doc, Paragraph* paras,
                 if (!paras[i].blocks[0].props.underline) paras[i].blocks[0].props.underline = st.text.underline;
                 if (!paras[i].blocks[0].props.strikethrough) paras[i].blocks[0].props.strikethrough = st.text.strikethrough;
                 if (paras[i].blocks[0].props.color.empty()) paras[i].blocks[0].props.color = st.text.color;
-            } else if (paras[i].num_blocks > 1) {
+            } else if (paras[i].blocks.size() > 1) {
                 double current_x = paras[i].bbox_x_mm;
-                for (int b = 0; b < paras[i].num_blocks; b++) {
+                for (size_t b = 0; b < paras[i].blocks.size(); b++) {
                     double pct = total_chars > 0 ? (double)paras[i].blocks[b].text.length() / total_chars : 0.0;
                     paras[i].blocks[b].bbox_x_mm = current_x;
                     paras[i].blocks[b].bbox_y_mm = paras[i].bbox_y_mm;
@@ -1047,69 +1081,17 @@ static void get_paragraph_positions(lok::Document* doc, Paragraph* paras,
                     if (paras[i].blocks[b].props.color.empty()) paras[i].blocks[b].props.color = st.text.color;
                 }
             }
+        } else {
+            consecutive_failures++;
+            if (consecutive_failures > 3) {
+                break;
+            }
         }
     }
 
     doc->registerCallback(nullptr, nullptr);
 }
 
-/* ------------------------------------------------------------------ */
-/*  JSON helpers                                                       */
-/* ------------------------------------------------------------------ */
-
-/**
- * @brief Append a JSON-escaped string to a buffer.
- *
- * Escapes ", \\, \n, \r, \t and strips other control characters.
- */
-static size_t
-json_escape_append(char* buf, size_t sz, size_t pos, const char* str)
-{
-	if (!str) {
-		return pos;
-	}
-	for (size_t i = 0; str[i] && pos < sz - 2; i++) {
-		unsigned char c = (unsigned char)str[i];
-		switch (c) {
-		case '"':
-			if (pos + 2 < sz) {
-				buf[pos++] = '\\';
-				buf[pos++] = '"';
-			}
-			break;
-		case '\\':
-			if (pos + 2 < sz) {
-				buf[pos++] = '\\';
-				buf[pos++] = '\\';
-			}
-			break;
-		case '\n':
-			if (pos + 2 < sz) {
-				buf[pos++] = '\\';
-				buf[pos++] = 'n';
-			}
-			break;
-		case '\r':
-			if (pos + 2 < sz) {
-				buf[pos++] = '\\';
-				buf[pos++] = 'r';
-			}
-			break;
-		case '\t':
-			if (pos + 2 < sz) {
-				buf[pos++] = '\\';
-				buf[pos++] = 't';
-			}
-			break;
-		default:
-			if (c >= 0x20 && pos < sz - 1) {
-				buf[pos++] = c;
-			}
-			break;
-		}
-	}
-	return pos;
-}
 
 /* ------------------------------------------------------------------ */
 /*  Public API                                                         */
@@ -1133,8 +1115,10 @@ extern "C" void
 cdsl_doc_shutdown(void)
 {
 	std::lock_guard<std::mutex> lock(g_mutex);
-	delete g_office;
-	g_office = nullptr;
+	if (g_office) {
+		delete g_office;
+		g_office = nullptr;
+	}
 }
 
 extern "C" void
@@ -1209,9 +1193,6 @@ cdsl_doc_extract_to_json(const char* path)
 		return nullptr;
 	}
 
-	/* ------------------------------------------------------------------ */
-	/*  Create temp file paths (outside lock)                              */
-	/* ------------------------------------------------------------------ */
 	char fodt_path[128];
 	if (temp_path(fodt_path, sizeof(fodt_path), ".fodt") != 0) {
 		return nullptr;
@@ -1221,9 +1202,6 @@ cdsl_doc_extract_to_json(const char* path)
 	snprintf(doc_url,  sizeof(doc_url),  "file://%s", path);
 	snprintf(fodt_url, sizeof(fodt_url), "file://%s", fodt_path);
 
-	/* ------------------------------------------------------------------ */
-	/*  LOK critical section: load → FODT export → parse → positions      */
-	/* ------------------------------------------------------------------ */
 	PageInfo   page;
 	std::vector<Paragraph> paragraphs(256);
 	int        num_paras = 0;
@@ -1246,12 +1224,14 @@ cdsl_doc_extract_to_json(const char* path)
 			remove(fodt_path);
 			return nullptr;
 		}
+		doc->initializeForRendering(nullptr);
+
 		if (!doc->saveAs(fodt_url, "FODT")) {
 			remove(fodt_path);
 			return nullptr;
 		}
 
-		/* Read FODT into memory (doc stays open for position extraction) */
+		/* Read FODT into memory */
 		FILE* ff = fopen(fodt_path, "rb");
 		if (!ff) {
 			remove(fodt_path);
@@ -1260,41 +1240,26 @@ cdsl_doc_extract_to_json(const char* path)
 		fseek(ff, 0, SEEK_END);
 		long fodt_size = ftell(ff);
 		fseek(ff, 0, SEEK_SET);
-		char* fodt = (char*)malloc((size_t)fodt_size + 1);
-		if (!fodt) { fclose(ff); remove(fodt_path); return nullptr; }
-		size_t nf = fread(fodt, 1, (size_t)fodt_size, ff);
-		fodt[nf] = '\0';
+		std::vector<char> fodt_buf(fodt_size + 1);
+		size_t nf = fread(fodt_buf.data(), 1, (size_t)fodt_size, ff);
+		fodt_buf[nf] = '\0';
 		fclose(ff);
 		remove(fodt_path);
 
-		if (!parse_fodt_document(fodt, (size_t)fodt_size, page, paragraphs.data(), num_paras, full_text, tables.data(), &num_tables, lists.data(), &num_lists, images.data(), &num_images)) {
-			free(fodt);
+		if (!parse_fodt_document(fodt_buf.data(), (size_t)fodt_size, page, paragraphs.data(), num_paras, full_text, tables.data(), &num_tables, lists.data(), &num_lists, images.data(), &num_images)) {
 			return nullptr;
 		}
-		free(fodt);
 
-		/* Extract rendered paragraph positions from the open LOK document */
-		if (num_paras > 0 && doc)
+		if (num_paras > 0 && doc) {
 			get_paragraph_positions(doc.get(), paragraphs.data(), num_paras, page);
+		}
 	}
 
-	/* ------------------------------------------------------------------ */
-	/*  Build output JSON                                                  */
-	/* ------------------------------------------------------------------ */
-	size_t buf_sz = 32768 + full_text.size() * 2;
-	char* json_out = (char*)malloc(buf_sz);
-	if (!json_out) return nullptr;
+	std::string out;
+	out.reserve(32768 + full_text.size() * 2);
 
-	size_t pos = 0;
+	out += "{\n  \"document\": {\n    \"pages\": [\n";
 
-	// Document root
-	pos += snprintf(json_out + pos, buf_sz - pos,
-	    "{\n"
-	    "  \"document\": {\n"
-	    "    \"pages\": [\n");
-
-	// Dynamically group paragraphs by their physical page_num
-	// If a paragraph doesn't have a computed page_num (0), fallback to page_num=1
 	int current_render_page = 1;
 	bool has_started_page = false;
 	bool has_started_para = false;
@@ -1305,14 +1270,14 @@ cdsl_doc_extract_to_json(const char* path)
 
 		if (!has_started_page || para_page != current_render_page) {
 			if (has_started_page) {
-				// Close previous page
-				pos += snprintf(json_out + pos, buf_sz - pos, "\n        ]\n      }");
+				out += "\n        ]\n      }";
 			}
 			if (pi > 0) {
-				pos += snprintf(json_out + pos, buf_sz - pos, ",\n");
+				out += ",\n";
 			}
 			current_render_page = para_page;
-			pos += snprintf(json_out + pos, buf_sz - pos,
+			char b[512];
+			snprintf(b, sizeof(b),
 			    "      {\n"
 			    "        \"page_number\": %d,\n"
 			    "        \"width_mm\": %.0f,\n"
@@ -1326,26 +1291,24 @@ cdsl_doc_extract_to_json(const char* path)
 			    page.page_width_mm, page.page_height_mm,
 			    page.margin_top_mm, page.margin_bottom_mm,
 			    page.margin_left_mm, page.margin_right_mm);
+			out += b;
 			has_started_page = true;
 			has_started_para = false;
 		}
 
 		if (has_started_para) {
-			if (pos < buf_sz - 2) { json_out[pos++] = ','; json_out[pos++] = '\n'; }
+			out += ",\n";
 		}
-		pos = json_append_paragraph(json_out, buf_sz, pos,
-		                             para.style_name.empty() ? nullptr : para.style_name.c_str(),
-		                             para.props,
-		                             para.blocks, para.num_blocks,
-		                             &para);
+		json_append_paragraph(out, para.style_name.empty() ? nullptr : para.style_name.c_str(),
+		                       para.props, para.blocks.data(), (int)para.blocks.size(), &para);
 		has_started_para = true;
 	}
 
 	if (has_started_page) {
-		pos += snprintf(json_out + pos, buf_sz - pos, "\n        ]\n      }\n");
+		out += "\n        ]\n      }\n";
 	} else {
-		// fallback: at least one empty page element if no paragraphs parsed
-		pos += snprintf(json_out + pos, buf_sz - pos,
+		char b[512];
+		snprintf(b, sizeof(b),
 		    "      {\n"
 		    "        \"page_number\": 1,\n"
 		    "        \"width_mm\": %.0f,\n"
@@ -1359,80 +1322,52 @@ cdsl_doc_extract_to_json(const char* path)
 		    page.page_width_mm, page.page_height_mm,
 		    page.margin_top_mm, page.margin_bottom_mm,
 		    page.margin_left_mm, page.margin_right_mm);
+		out += b;
 	}
 
-	// Close pages array and page object
-	pos += snprintf(json_out + pos, buf_sz - pos, "    ],\n");
-
-	pos += snprintf(json_out + pos, buf_sz - pos, "    \"tables\": [\n");
+	out += "    ],\n    \"tables\": [\n";
 	for (int ti = 0; ti < num_tables; ti++) {
-		if (ti > 0) { pos += snprintf(json_out + pos, buf_sz - pos, ",\n"); }
-		pos = json_append_table(json_out, buf_sz, pos, tables[ti]);
+		if (ti > 0) out += ",\n";
+		json_append_table(out, tables[ti]);
 	}
-	pos += snprintf(json_out + pos, buf_sz - pos, "\n    ],\n");
-
-	pos += snprintf(json_out + pos, buf_sz - pos, "    \"lists\": [\n");
+	out += "\n    ],\n    \"lists\": [\n";
 	for (int li = 0; li < num_lists; li++) {
-		if (li > 0) { pos += snprintf(json_out + pos, buf_sz - pos, ",\n"); }
-		pos = json_append_list(json_out, buf_sz, pos, lists[li]);
+		if (li > 0) out += ",\n";
+		json_append_list(out, lists[li]);
 	}
-	pos += snprintf(json_out + pos, buf_sz - pos, "\n    ],\n");
-
-	pos += snprintf(json_out + pos, buf_sz - pos, "    \"images\": [\n");
+	out += "\n    ],\n    \"images\": [\n";
 	for (int ii = 0; ii < num_images; ii++) {
-		if (ii > 0) { pos += snprintf(json_out + pos, buf_sz - pos, ",\n"); }
-		pos = json_append_image(json_out, buf_sz, pos, images[ii]);
+		if (ii > 0) out += ",\n";
+		json_append_image(out, images[ii]);
 	}
-	pos += snprintf(json_out + pos, buf_sz - pos, "\n    ],\n");
-
-	pos += snprintf(json_out + pos, buf_sz - pos,
-	    "    \"metadata\": {\n"
-	    "      \"page_count\": %d,\n"
-	    "      \"paragraph_count\": %d,\n"
-	    "      \"word_count\": %d,\n"
-	    "      \"character_count\": %d",
-	    page.page_count, page.paragraph_count,
-	    page.word_count, page.character_count);
+	out += "\n    ],\n    \"metadata\": {\n";
+	char b[256];
+	snprintf(b, sizeof(b), "      \"page_count\": %d,\n      \"paragraph_count\": %d,\n      \"word_count\": %d,\n      \"character_count\": %d",
+	         page.page_count, page.paragraph_count, page.word_count, page.character_count);
+	out += b;
 
 	if (!page.title.empty()) {
-		pos += snprintf(json_out + pos, buf_sz - pos, ",\n      \"title\": \"");
-		pos = json_escape_append(json_out, buf_sz, pos, page.title.c_str());
-		pos += snprintf(json_out + pos, buf_sz - pos, "\"");
+		out += ",\n      \"title\": \""; json_escape(out, page.title.c_str()); out += "\"";
 	}
 	if (!page.creator.empty()) {
-		pos += snprintf(json_out + pos, buf_sz - pos, ",\n      \"creator\": \"");
-		pos = json_escape_append(json_out, buf_sz, pos, page.creator.c_str());
-		pos += snprintf(json_out + pos, buf_sz - pos, "\"");
+		out += ",\n      \"creator\": \""; json_escape(out, page.creator.c_str()); out += "\"";
 	}
 	if (!page.created.empty()) {
-		pos += snprintf(json_out + pos, buf_sz - pos, ",\n      \"created\": \"");
-		pos = json_escape_append(json_out, buf_sz, pos, page.created.c_str());
-		pos += snprintf(json_out + pos, buf_sz - pos, "\"");
+		out += ",\n      \"created\": \""; json_escape(out, page.created.c_str()); out += "\"";
 	}
 	if (!page.modified.empty()) {
-		pos += snprintf(json_out + pos, buf_sz - pos, ",\n      \"modified\": \"");
-		pos = json_escape_append(json_out, buf_sz, pos, page.modified.c_str());
-		pos += snprintf(json_out + pos, buf_sz - pos, "\"");
+		out += ",\n      \"modified\": \""; json_escape(out, page.modified.c_str()); out += "\"";
 	}
 
-	pos += snprintf(json_out + pos, buf_sz - pos,
-	    "\n    },\n"
-	    "    \"full_text\": \"");
-	// Build full_text from paragraphs
+	out += "\n    },\n    \"full_text\": \"";
 	for (int pi = 0; pi < num_paras; pi++) {
 		const Paragraph& para = paragraphs[pi];
-		for (int bi = 0; bi < para.num_blocks; bi++) {
-			pos = json_escape_append(json_out, buf_sz, pos, para.blocks[bi].text.c_str());
+		for (const auto& block : para.blocks) {
+			json_escape(out, block.text.c_str());
 		}
-		if (pi < num_paras - 1) {
-			if (pos < buf_sz - 2) { json_out[pos++] = '\\'; json_out[pos++] = 'n'; }
-		}
+		if (pi < num_paras - 1) out += "\\n";
 	}
+	out += "\"\n  }\n}\n";
 
-	// Close JSON
-	if (pos + 6 < buf_sz) {
-		pos += snprintf(json_out + pos, buf_sz - pos, "\"\n  }\n}\n");
-	}
-
-	return json_out;
+	return strdup(out.c_str());
 }
