@@ -135,6 +135,10 @@ struct TextProps {
     bool        underline = false;
     bool        strikethrough = false;
     std::string color;
+    std::string background_color;
+    bool        superscript = false;
+    bool        subscript = false;
+    double      letter_spacing_pt = 0;
 };
 
 struct ParaProps {
@@ -144,7 +148,12 @@ struct ParaProps {
     double    margin_left_mm = 0;
     double    margin_right_mm = 0;
     double    indent_first_line_mm = 0;
-    double    line_spacing = 0; /* 0 = not set */
+    double    line_spacing = 0;
+    std::string background_color;
+    std::string border_top;
+    std::string border_bottom;
+    std::string border_left;
+    std::string border_right;
 };
 
 struct Style {
@@ -170,6 +179,8 @@ struct PageInfo {
     std::string creator;
     std::string created;
     std::string modified;
+    std::string header_text;
+    std::string footer_text;
 };
 
 struct TextBlock {
@@ -297,6 +308,24 @@ static void merge_style(const Style& parent, Style& child) {
         child.text.strikethrough = parent.text.strikethrough;
     if (child.text.color.empty() && !parent.text.color.empty())
         child.text.color = parent.text.color;
+    if (child.text.background_color.empty() && !parent.text.background_color.empty())
+        child.text.background_color = parent.text.background_color;
+    if (!child.text.superscript && parent.text.superscript)
+        child.text.superscript = parent.text.superscript;
+    if (!child.text.subscript && parent.text.subscript)
+        child.text.subscript = parent.text.subscript;
+    if (child.text.letter_spacing_pt == 0 && parent.text.letter_spacing_pt != 0)
+        child.text.letter_spacing_pt = parent.text.letter_spacing_pt;
+    if (child.para.background_color.empty() && !parent.para.background_color.empty())
+        child.para.background_color = parent.para.background_color;
+    if (child.para.border_top.empty() && !parent.para.border_top.empty())
+        child.para.border_top = parent.para.border_top;
+    if (child.para.border_bottom.empty() && !parent.para.border_bottom.empty())
+        child.para.border_bottom = parent.para.border_bottom;
+    if (child.para.border_left.empty() && !parent.para.border_left.empty())
+        child.para.border_left = parent.para.border_left;
+    if (child.para.border_right.empty() && !parent.para.border_right.empty())
+        child.para.border_right = parent.para.border_right;
 }
 
 /* Walk the style inheritance chain recursively and merge parent properties. */
@@ -328,6 +357,16 @@ static void parse_text_props_elem(XmlParser& xp, TextProps& props) {
     if ((v = xp.attr("style:text-line-through-style")))
         props.strikethrough = (strcmp(v, "solid") == 0);
     if ((v = xp.attr("fo:color"))) props.color = v;
+    if ((v = xp.attr("fo:background-color"))) props.background_color = v;
+    if ((v = xp.attr("style:text-position"))) {
+        if (strstr(v, "super")) props.superscript = true;
+        else if (strstr(v, "sub"))  props.subscript = true;
+    }
+    if ((v = xp.attr("fo:letter-spacing"))) {
+        char* e = nullptr;
+        double ls = strtod(v, &e);
+        if (e != v) props.letter_spacing_pt = ls;
+    }
     /* style:use-window-font-color="true" = default (black) - leave color empty */
 }
 
@@ -345,6 +384,17 @@ static void parse_para_props_elem(XmlParser& xp, ParaProps& props) {
         double lh = strtod(v, &e);
         if (e != v && strstr(e, "%")) props.line_spacing = lh / 100.0;
         else if (e != v) props.line_spacing = lh;
+    }
+    if ((v = xp.attr("fo:background-color")))  props.background_color = v;
+    if ((v = xp.attr("fo:border-top")))        props.border_top = v;
+    if ((v = xp.attr("fo:border-bottom")))     props.border_bottom = v;
+    if ((v = xp.attr("fo:border-left")))       props.border_left = v;
+    if ((v = xp.attr("fo:border-right")))      props.border_right = v;
+    if ((v = xp.attr("fo:border"))) {
+        props.border_top = v;
+        props.border_bottom = v;
+        props.border_left = v;
+        props.border_right = v;
     }
 }
 
@@ -458,6 +508,20 @@ static void json_append_text_block(std::string& out, const char* text,
         json_escape(out, props.color.c_str());
         out += "\"\n";
     }
+    if (!props.background_color.empty()) {
+        out += "      ,\"background_color\": \"";
+        json_escape(out, props.background_color.c_str());
+        out += "\"\n";
+    }
+    if (props.superscript)
+        out += "      ,\"superscript\": true\n";
+    if (props.subscript)
+        out += "      ,\"subscript\": true\n";
+    if (props.letter_spacing_pt > 0) {
+        char buf[64];
+        snprintf(buf, sizeof(buf), "      ,\"letter_spacing_pt\": %.2f\n", props.letter_spacing_pt);
+        out += buf;
+    }
     if (block && !block->hyperlink_url.empty()) {
         out += "      ,\"hyperlink_url\": \"";
         json_escape(out, block->hyperlink_url.c_str());
@@ -510,6 +574,19 @@ static void json_append_paragraph(std::string& out, const char* style_name,
         snprintf(buf, sizeof(buf), "          ,\"indent_first_line_mm\": %.1f\n", props.indent_first_line_mm);
         out += buf;
     }
+    if (!props.background_color.empty()) {
+        out += "          ,\"background_color\": \"";
+        json_escape(out, props.background_color.c_str());
+        out += "\"\n";
+    }
+    if (!props.border_top.empty())
+        out += "          ,\"border_top\": \"" + props.border_top + "\"\n";
+    if (!props.border_bottom.empty())
+        out += "          ,\"border_bottom\": \"" + props.border_bottom + "\"\n";
+    if (!props.border_left.empty())
+        out += "          ,\"border_left\": \"" + props.border_left + "\"\n";
+    if (!props.border_right.empty())
+        out += "          ,\"border_right\": \"" + props.border_right + "\"\n";
 
     if (para) {
         snprintf(buf, sizeof(buf),
@@ -589,6 +666,17 @@ static void json_append_image(std::string& out, const ImageInfo& img)
         out += "\"";
     }
     out += "\n    }";
+}
+
+static void json_append_footnote(std::string& out, const FootnoteInfo& fn)
+{
+    out += "    {\n";
+    out += "      \"citation\": \"";
+    json_escape(out, fn.citation.c_str());
+    out += "\",\n";
+    out += "      \"body\": \"";
+    json_escape(out, fn.body.c_str());
+    out += "\"\n    }";
 }
 
 static bool parse_fodt_table(XmlParser& xp, TableInfo& table) {
@@ -691,7 +779,8 @@ static bool parse_fodt_body(XmlParser& xp, PageInfo& page,
                              Paragraph* out_paras, int& out_count,
                              TableInfo* out_tables = nullptr, int* out_table_count = nullptr,
                              ListInfo* out_lists = nullptr, int* out_list_count = nullptr,
-                             ImageInfo* out_images = nullptr, int* out_image_count = nullptr)
+                             ImageInfo* out_images = nullptr, int* out_image_count = nullptr,
+                             FootnoteInfo* out_footnotes = nullptr, int* out_fn_count = nullptr)
 {
     out_count = 0;
     int depth = 1;
@@ -797,7 +886,7 @@ static bool parse_fodt_body(XmlParser& xp, PageInfo& page,
             }
             out_count++;
         } else if (xp.match("text:section")) {
-            if (!parse_fodt_body(xp, page, out_paras, out_count, out_tables, out_table_count, out_lists, out_list_count, out_images, out_image_count))
+            if (!parse_fodt_body(xp, page, out_paras, out_count, out_tables, out_table_count, out_lists, out_list_count, out_images, out_image_count, out_footnotes, out_fn_count))
                 return false;
         } else if (xp.match("text:table") && out_tables && out_table_count) {
             if (*out_table_count < 256) { parse_fodt_table(xp, out_tables[(*out_table_count)++]); }
@@ -808,6 +897,43 @@ static bool parse_fodt_body(XmlParser& xp, PageInfo& page,
         } else if (xp.match("draw:frame") && out_images && out_image_count) {
             if (*out_image_count < 256) { parse_fodt_image(xp, out_images[(*out_image_count)++]); }
             else { int d=1; while(d>0&&xp.next()!=XmlParser::END){if(xp.type()==XmlParser::START_ELEMENT)d++;else if(xp.type()==XmlParser::END_ELEMENT)d--;} }
+        } else if (xp.match("text:note") && out_footnotes && out_fn_count) {
+            if (*out_fn_count < 256) {
+                FootnoteInfo& fn = out_footnotes[*out_fn_count];
+                int nd = 1;
+                while (nd > 0 && xp.next() != XmlParser::END) {
+                    if (xp.type() == XmlParser::END_ELEMENT) { nd--; continue; }
+                    if (xp.type() != XmlParser::START_ELEMENT) continue;
+                    if (xp.match("text:note-citation")) {
+                        int cd = 1; std::string ct;
+                        while (cd > 0 && xp.next() != XmlParser::END) {
+                            if (xp.type() == XmlParser::END_ELEMENT) { cd--; continue; }
+                            if (xp.type() == XmlParser::START_ELEMENT) { cd++; continue; }
+                            if (xp.type() == XmlParser::TEXT && xp.textContent()) ct.append(xp.textContent(), xp.textLength());
+                        }
+                        fn.citation = ct;
+                    } else if (xp.match("text:note-body")) {
+                        int bd = 1; std::string bt;
+                        while (bd > 0 && xp.next() != XmlParser::END) {
+                            if (xp.type() == XmlParser::END_ELEMENT) { bd--; continue; }
+                            if (xp.type() == XmlParser::START_ELEMENT) {
+                                if (xp.match("text:p") || xp.match("text:h")) {
+                                    int pd = 1;
+                                    while (pd > 0 && xp.next() != XmlParser::END) {
+                                        if (xp.type() == XmlParser::END_ELEMENT) { pd--; continue; }
+                                        if (xp.type() == XmlParser::START_ELEMENT) { pd++; continue; }
+                                        if (xp.type() == XmlParser::TEXT && xp.textContent()) bt.append(xp.textContent(), xp.textLength());
+                                    }
+                                } else { bd++; }
+                                continue;
+                            }
+                            if (xp.type() == XmlParser::TEXT && xp.textContent()) bt.append(xp.textContent(), xp.textLength());
+                        }
+                        fn.body = bt;
+                    } else { nd++; }
+                }
+                (*out_fn_count)++;
+            } else { int d=1; while(d>0&&xp.next()!=XmlParser::END){if(xp.type()==XmlParser::START_ELEMENT)d++;else if(xp.type()==XmlParser::END_ELEMENT)d--;} }
         } else {
             // Other elements inside body - skip
             int d = 1;
@@ -829,7 +955,8 @@ static bool parse_fodt_document(const char* fodt, size_t fodt_len,
                                  std::string& full_text,
                                  TableInfo* out_tables = nullptr, int* out_table_count = nullptr,
                                  ListInfo* out_lists = nullptr, int* out_list_count = nullptr,
-                                 ImageInfo* out_images = nullptr, int* out_image_count = nullptr)
+                                 ImageInfo* out_images = nullptr, int* out_image_count = nullptr,
+                                 FootnoteInfo* out_footnotes = nullptr, int* out_fn_count = nullptr)
 {
     init_style_db();
     out_count = 0;
@@ -889,18 +1016,61 @@ static bool parse_fodt_document(const char* fodt, size_t fodt_len,
                 }
             }
         } else if (xp.match("office:master-styles")) {
-            // skip
             int d = 1;
             while (d > 0 && xp.next() != XmlParser::END) {
-                if (xp.type() == XmlParser::START_ELEMENT) d++;
-                else if (xp.type() == XmlParser::END_ELEMENT) d--;
+                if (xp.type() == XmlParser::END_ELEMENT) { d--; continue; }
+                if (xp.type() != XmlParser::START_ELEMENT) continue;
+                if (xp.match("style:master-page")) {
+                    int md = 1;
+                    while (md > 0 && xp.next() != XmlParser::END) {
+                        if (xp.type() == XmlParser::END_ELEMENT) { md--; continue; }
+                        if (xp.type() != XmlParser::START_ELEMENT) continue;
+                        if (xp.match("style:header") || xp.match("style:header-left")) {
+                            int hd = 1; std::string ht;
+                            while (hd > 0 && xp.next() != XmlParser::END) {
+                                if (xp.type() == XmlParser::END_ELEMENT) { hd--; continue; }
+                                if (xp.type() == XmlParser::START_ELEMENT) {
+                                    if (xp.match("text:p") || xp.match("text:h")) {
+                                        int pd = 1;
+                                        while (pd > 0 && xp.next() != XmlParser::END) {
+                                            if (xp.type() == XmlParser::END_ELEMENT) { pd--; continue; }
+                                            if (xp.type() == XmlParser::START_ELEMENT) { pd++; continue; }
+                                            if (xp.type() == XmlParser::TEXT && xp.textContent()) ht.append(xp.textContent(), xp.textLength());
+                                        }
+                                    } else { hd++; }
+                                    continue;
+                                }
+                                if (xp.type() == XmlParser::TEXT && xp.textContent()) ht.append(xp.textContent(), xp.textLength());
+                            }
+                            page.header_text = ht;
+                        } else if (xp.match("style:footer") || xp.match("style:footer-left")) {
+                            int fd = 1; std::string ft;
+                            while (fd > 0 && xp.next() != XmlParser::END) {
+                                if (xp.type() == XmlParser::END_ELEMENT) { fd--; continue; }
+                                if (xp.type() == XmlParser::START_ELEMENT) {
+                                    if (xp.match("text:p") || xp.match("text:h")) {
+                                        int pd = 1;
+                                        while (pd > 0 && xp.next() != XmlParser::END) {
+                                            if (xp.type() == XmlParser::END_ELEMENT) { pd--; continue; }
+                                            if (xp.type() == XmlParser::START_ELEMENT) { pd++; continue; }
+                                            if (xp.type() == XmlParser::TEXT && xp.textContent()) ft.append(xp.textContent(), xp.textLength());
+                                        }
+                                    } else { fd++; }
+                                    continue;
+                                }
+                                if (xp.type() == XmlParser::TEXT && xp.textContent()) ft.append(xp.textContent(), xp.textLength());
+                            }
+                            page.footer_text = ft;
+                        } else { md++; }
+                    }
+                } else { d++; }
             }
         } else if (xp.match("office:body")) {
             int d = 1;
             while (d > 0 && xp.next() != XmlParser::END) {
                 if (xp.type() == XmlParser::START_ELEMENT) {
                     if (xp.match("office:text")) {
-                        if (!parse_fodt_body(xp, page, out_paras, out_count, out_tables, out_table_count, out_lists, out_list_count, out_images, out_image_count))
+                        if (!parse_fodt_body(xp, page, out_paras, out_count, out_tables, out_table_count, out_lists, out_list_count, out_images, out_image_count, out_footnotes, out_fn_count))
                             return false;
                     } else {
                         int dd = 1;
@@ -1211,6 +1381,8 @@ cdsl_doc_extract_to_json(const char* path)
 	int        num_lists = 0;
 	std::vector<ImageInfo> images(256);
 	int        num_images = 0;
+	std::vector<FootnoteInfo> footnotes(256);
+	int        num_footnotes = 0;
 	std::string full_text;
 
 	{
@@ -1246,7 +1418,7 @@ cdsl_doc_extract_to_json(const char* path)
 		fclose(ff);
 		remove(fodt_path);
 
-		if (!parse_fodt_document(fodt_buf.data(), (size_t)fodt_size, page, paragraphs.data(), num_paras, full_text, tables.data(), &num_tables, lists.data(), &num_lists, images.data(), &num_images)) {
+		if (!parse_fodt_document(fodt_buf.data(), (size_t)fodt_size, page, paragraphs.data(), num_paras, full_text, tables.data(), &num_tables, lists.data(), &num_lists, images.data(), &num_images, footnotes.data(), &num_footnotes)) {
 			return nullptr;
 		}
 
@@ -1292,6 +1464,16 @@ cdsl_doc_extract_to_json(const char* path)
 			    page.margin_top_mm, page.margin_bottom_mm,
 			    page.margin_left_mm, page.margin_right_mm);
 			out += b;
+			if (!page.header_text.empty()) {
+				out += "        ,\"header\": \"";
+				json_escape(out, page.header_text.c_str());
+				out += "\"\n";
+			}
+			if (!page.footer_text.empty()) {
+				out += "        ,\"footer\": \"";
+				json_escape(out, page.footer_text.c_str());
+				out += "\"\n";
+			}
 			has_started_page = true;
 			has_started_para = false;
 		}
@@ -1339,6 +1521,11 @@ cdsl_doc_extract_to_json(const char* path)
 	for (int ii = 0; ii < num_images; ii++) {
 		if (ii > 0) out += ",\n";
 		json_append_image(out, images[ii]);
+	}
+	out += "\n    ],\n    \"footnotes\": [\n";
+	for (int fi = 0; fi < num_footnotes; fi++) {
+		if (fi > 0) out += ",\n";
+		json_append_footnote(out, footnotes[fi]);
 	}
 	out += "\n    ],\n    \"metadata\": {\n";
 	char b[256];
