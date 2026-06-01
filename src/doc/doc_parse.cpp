@@ -607,6 +607,10 @@ static void json_append_paragraph(std::string& out, const char* style_name,
 
     if (para) {
         snprintf(buf, sizeof(buf),
+            "          ,\"page_num\": %d\n",
+            para->page_num);
+        out += buf;
+        snprintf(buf, sizeof(buf),
             "          ,\"bbox_mm\": [%.1f, %.1f, %.1f, %.1f]\n",
             para->bbox_x_mm, para->bbox_y_mm,
             para->bbox_w_mm, para->bbox_h_mm);
@@ -1201,8 +1205,13 @@ get_paragraph_positions(lok::Document* doc, Paragraph* paras,
     }
 
     const double twip_to_mm = 25.4 / 1440.0;
+    double page_h_mm = page.page_height_mm > 0 ? page.page_height_mm : 297.0;
+    double usable_h_mm = page_h_mm - page.margin_top_mm - page.margin_bottom_mm;
 
-    int consecutive_failures = 0;
+    double prev_y_mm = -1.0;
+    int    current_page = 1;
+    int    consecutive_failures = 0;
+
     for (int i = 0; i < count; i++) {
         if (i > 0) {
             cap.updated = false;
@@ -1215,9 +1224,10 @@ get_paragraph_positions(lok::Document* doc, Paragraph* paras,
             paras[i].bbox_y_mm = cap.y_twip * twip_to_mm;
             double line_h_mm = cap.h_twip * twip_to_mm;
 
-            double page_h_mm = page.page_height_mm > 0 ? page.page_height_mm : 297.0;
-            int current_page_num = 1 + (int)(paras[i].bbox_y_mm / page_h_mm);
-            paras[i].page_num = current_page_num;
+            if (i > 0 && paras[i].bbox_y_mm < prev_y_mm - usable_h_mm * 0.5)
+                current_page++;
+            paras[i].page_num = current_page;
+            prev_y_mm = paras[i].bbox_y_mm;
 
             double indent = paras[i].bbox_x_mm - page.margin_left_mm;
             if (indent < 0) indent = 0;
