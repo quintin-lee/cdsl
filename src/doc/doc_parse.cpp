@@ -1213,8 +1213,8 @@ get_paragraph_positions(lok::Document* doc, Paragraph* paras,
     }
 
     const     double twip_to_mm = 25.4 / 1440.0;
-    double page_h_mm = page.page_height_mm > 0 ? page.page_height_mm : 297.0;
 
+    int current_page = 1;
     for (int i = 0; i < count; i++) {
         if (i > 0) {
             cap.updated = false;
@@ -1226,8 +1226,10 @@ get_paragraph_positions(lok::Document* doc, Paragraph* paras,
             paras[i].bbox_y_mm = cap.y_twip * twip_to_mm;
             double line_h_mm = cap.h_twip * twip_to_mm;
 
-            paras[i].page_index  = 1 + (int)(paras[i].bbox_y_mm / page_h_mm);
-            paras[i].page_number = page.has_page_number_start ? (paras[i].page_index + page.page_number_start - 1) : 0;
+            if (i > 0 && paras[i].bbox_y_mm < paras[i-1].bbox_y_mm)
+                current_page++;
+            paras[i].page_index  = current_page;
+            paras[i].page_number = page.has_page_number_start ? (current_page + page.page_number_start - 1) : 0;
 
             double indent = paras[i].bbox_x_mm - page.margin_left_mm;
             if (indent < 0) indent = 0;
