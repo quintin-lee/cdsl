@@ -21,6 +21,7 @@
 #include <cmath>
 #include <algorithm>
 #include <set>
+#include <map>
 
 /* ------------------------------------------------------------------ */
 /*  Global state (protected by g_mutex)                                */
@@ -171,6 +172,7 @@ struct ParaProps {
     double      indent_first_line_mm = 0;
     std::string background_color;
     int         outline_level = 0;
+    bool        keep_with_next = false;
 };
 
 struct BorderProps {
@@ -183,6 +185,7 @@ struct TableProps {
     double      width_mm = 0;
     std::string alignment;
     std::string background_color;
+    std::vector<double> column_widths_mm;
 };
 
 struct CellProps {
@@ -192,6 +195,10 @@ struct CellProps {
     BorderProps border_bottom;
     BorderProps border_left;
     BorderProps border_right;
+    double      padding_top_mm = 0;
+    double      padding_bottom_mm = 0;
+    double      padding_left_mm = 0;
+    double      padding_right_mm = 0;
 };
 
 struct TextBlock {
@@ -241,6 +248,7 @@ struct ContentBlock {
     std::vector<TextBlock> text_blocks;
     std::vector<TableRow> table_rows;
     std::string image_name;
+    std::string image_base64;
     std::string anchoring;
     std::string formula_mathml;
     std::string footnote_id;
@@ -285,6 +293,7 @@ static void merge_style(const Style& src, Style& dst) {
     if (dst.para.indent_first_line_mm == 0) dst.para.indent_first_line_mm = src.para.indent_first_line_mm;
     if (dst.para.background_color.empty()) dst.para.background_color = src.para.background_color;
     if (dst.para.outline_level == 0) dst.para.outline_level = src.para.outline_level;
+    if (!dst.para.keep_with_next) dst.para.keep_with_next = src.para.keep_with_next;
 
     // Merge TextProps
     if (dst.text.font_name.empty()) dst.text.font_name = src.text.font_name;
@@ -304,6 +313,7 @@ static void merge_style(const Style& src, Style& dst) {
     if (dst.table.width_mm == 0) dst.table.width_mm = src.table.width_mm;
     if (dst.table.alignment.empty()) dst.table.alignment = src.table.alignment;
     if (dst.table.background_color.empty()) dst.table.background_color = src.table.background_color;
+    if (dst.table.column_widths_mm.empty()) dst.table.column_widths_mm = src.table.column_widths_mm;
 
     // Merge CellProps
     if (dst.cell.background_color.empty()) dst.cell.background_color = src.cell.background_color;
@@ -312,6 +322,10 @@ static void merge_style(const Style& src, Style& dst) {
     if (dst.cell.border_bottom.style.empty()) dst.cell.border_bottom = src.cell.border_bottom;
     if (dst.cell.border_left.style.empty()) dst.cell.border_left = src.cell.border_left;
     if (dst.cell.border_right.style.empty()) dst.cell.border_right = src.cell.border_right;
+    if (dst.cell.padding_top_mm == 0) dst.cell.padding_top_mm = src.cell.padding_top_mm;
+    if (dst.cell.padding_bottom_mm == 0) dst.cell.padding_bottom_mm = src.cell.padding_bottom_mm;
+    if (dst.cell.padding_left_mm == 0) dst.cell.padding_left_mm = src.cell.padding_left_mm;
+    if (dst.cell.padding_right_mm == 0) dst.cell.padding_right_mm = src.cell.padding_right_mm;
 }
 
 static void resolve_all_styles() {
@@ -359,10 +373,7 @@ static void parse_text_props_elem(XmlParser& xp, TextProps& p) {
     if ((v = xp.attr("style:font-size-asian")) || (v = xp.attr("fo:font-size"))) { char* end; p.font_size_pt = strtod(v, &end); }
     if ((v = xp.attr("fo:font-weight"))) p.bold = (strcmp(v, "bold") == 0);
     if ((v = xp.attr("fo:font-style"))) p.italic = (strcmp(v, "italic") == 0);
-    if ((v = xp.attr("style:text-underline-style"))) {
-        p.underline = (strcmp(v, "none") != 0);
-        p.underline_style = v;
-    }
+    if ((v = xp.attr("style:text-underline-style"))) { p.underline = (strcmp(v, "none") != 0); p.underline_style = v; }
     if ((v = xp.attr("style:text-underline-color"))) p.underline_color = v;
     if ((v = xp.attr("style:text-line-through-style"))) p.strikethrough = (strcmp(v, "none") != 0);
     if ((v = xp.attr("fo:color"))) p.color = v;
@@ -388,6 +399,7 @@ static void parse_para_props_elem(XmlParser& xp, ParaProps& p) {
     }
     if ((v = xp.attr("fo:text-indent"))) p.indent_first_line_mm = parse_length_mm(v);
     if ((v = xp.attr("fo:background-color"))) p.background_color = v;
+    if ((v = xp.attr("fo:keep-with-next"))) p.keep_with_next = (strcmp(v, "always") == 0 || strcmp(v, "true") == 0);
 }
 
 static void parse_table_props_elem(XmlParser& xp, TableProps& p) {
@@ -406,6 +418,11 @@ static void parse_cell_props_elem(XmlParser& xp, CellProps& p) {
     if ((v = xp.attr("fo:border-bottom"))) parse_border(v, p.border_bottom);
     if ((v = xp.attr("fo:border-left"))) parse_border(v, p.border_left);
     if ((v = xp.attr("fo:border-right"))) parse_border(v, p.border_right);
+    if ((v = xp.attr("fo:padding"))) { p.padding_top_mm = p.padding_bottom_mm = p.padding_left_mm = p.padding_right_mm = parse_length_mm(v); }
+    if ((v = xp.attr("fo:padding-top"))) p.padding_top_mm = parse_length_mm(v);
+    if ((v = xp.attr("fo:padding-bottom"))) p.padding_bottom_mm = parse_length_mm(v);
+    if ((v = xp.attr("fo:padding-left"))) p.padding_left_mm = parse_length_mm(v);
+    if ((v = xp.attr("fo:padding-right"))) p.padding_right_mm = parse_length_mm(v);
 }
 
 static void parse_style_elem(XmlParser& xp) {
@@ -420,6 +437,7 @@ static void parse_style_elem(XmlParser& xp) {
         else if (xp.match("style:text-properties")) parse_text_props_elem(xp, s->text);
         else if (xp.match("style:table-properties")) parse_table_props_elem(xp, s->table);
         else if (xp.match("style:table-cell-properties")) parse_cell_props_elem(xp, s->cell);
+        else if (xp.match("style:table-column-properties")) { if ((v = xp.attr("style:column-width"))) s->table.column_widths_mm.push_back(parse_length_mm(v)); }
         skip_element(xp);
     }
 }
@@ -472,6 +490,7 @@ static void json_append_para_props(std::string& out, const ParaProps& props) {
     if (props.indent_first_line_mm != 0) { snprintf(buf, sizeof(buf), "      ,\"indent_first_line_mm\": %.1f\n", props.indent_first_line_mm); out += buf; }
     if (!props.background_color.empty()) { out += "      ,\"background_color\": \""; json_escape(out, props.background_color.c_str()); out += "\"\n"; }
     if (props.outline_level > 0) { snprintf(buf, sizeof(buf), "      ,\"outline_level\": %d\n", props.outline_level); out += buf; }
+    if (props.keep_with_next) out += "      ,\"keep_with_next\": true\n";
 }
 
 static void json_append_border(std::string& out, const char* key, const BorderProps& b) {
@@ -490,6 +509,9 @@ static void json_append_cell_props(std::string& out, const CellProps& p) {
     json_append_border(out, "border_bottom", p.border_bottom);
     json_append_border(out, "border_left", p.border_left);
     json_append_border(out, "border_right", p.border_right);
+    if (p.padding_top_mm != 0 || p.padding_bottom_mm != 0 || p.padding_left_mm != 0 || p.padding_right_mm != 0) {
+        char buf[256]; snprintf(buf, sizeof(buf), ",\"padding_mm\":[%.1f,%.1f,%.1f,%.1f]", p.padding_top_mm, p.padding_bottom_mm, p.padding_left_mm, p.padding_right_mm); out += buf;
+    }
 }
 
 static void json_append_block(std::string& out, const ContentBlock& b) {
@@ -532,8 +554,17 @@ static void json_append_block(std::string& out, const ContentBlock& b) {
         }
         out += "\n      ]";
     } else if (b.type == BlockType::TABLE) {
-        if (b.table_props.width_mm > 0) { char tb[64]; snprintf(tb, sizeof(tb), "      ,\"width_mm\": %.1f\n", b.table_props.width_mm); out += tb; }
-        if (!b.table_props.alignment.empty()) { out += "      ,\"alignment\": \""; json_escape(out, b.table_props.alignment.c_str()); out += "\"\n"; }
+        char tb[64]; 
+        if (b.table_props.width_mm > 0) { snprintf(tb, sizeof(tb), ",\n      \"width_mm\": %.1f", b.table_props.width_mm); out += tb; }
+        if (!b.table_props.alignment.empty()) { out += ",\n      \"alignment\": \""; json_escape(out, b.table_props.alignment.c_str()); out += "\""; }
+        if (!b.table_props.column_widths_mm.empty()) {
+            out += ",\n      \"column_widths_mm\": [";
+            for (size_t i = 0; i < b.table_props.column_widths_mm.size(); i++) {
+                if (i > 0) out += ",";
+                char cw[32]; snprintf(cw, sizeof(cw), "%.1f", b.table_props.column_widths_mm[i]); out += cw;
+            }
+            out += "]";
+        }
         out += ",\n      \"rows\": [\n";
         for (size_t r = 0; r < b.table_rows.size(); r++) {
             if (r > 0) out += ",\n";
@@ -563,6 +594,7 @@ static void json_append_block(std::string& out, const ContentBlock& b) {
     } else if (b.type == BlockType::IMAGE) {
         out += ",\n      \"image_name\": \""; json_escape(out, b.image_name.c_str()); out += "\",\n";
         if (!b.anchoring.empty()) { out += "      \"anchoring\": \""; json_escape(out, b.anchoring.c_str()); out += "\",\n"; }
+        if (!b.image_base64.empty()) { out += "      \"data_base64\": \""; out += b.image_base64; out += "\""; }
     } else if (b.type == BlockType::FOOTNOTE) {
         out += ",\n      \"footnote_id\": \""; json_escape(out, b.footnote_id.c_str()); out += "\",\n";
         out += "      \"content\": \""; if (!b.text_blocks.empty()) json_escape(out, b.text_blocks[0].text.c_str()); out += "\"";
@@ -615,7 +647,10 @@ static bool parse_fodt_body(XmlParser& xp, PageInfo& page, std::vector<ContentBl
             b.indent_level = indent_level;
             int td = 1; while (td > 0 && xp.next() != XmlParser::END) {
                 if (xp.type() == XmlParser::START_ELEMENT) {
-                    if (xp.match("table:table-row")) {
+                    if (xp.match("table:table-column")) {
+                        const char* col_style = xp.attr("table:style-name"); if (col_style) { Style s = resolve_style(col_style); if (!s.table.column_widths_mm.empty()) b.table_props.column_widths_mm.push_back(s.table.column_widths_mm[0]); }
+                        skip_element(xp);
+                    } else if (xp.match("table:table-row")) {
                         TableRow row; const char* rs = xp.attr("table:style-name"); if (rs) row.background_color = resolve_style(rs).para.background_color;
                         int rd = 1; while (rd > 0 && xp.next() != XmlParser::END) {
                             if (xp.type() == XmlParser::START_ELEMENT) { 
@@ -688,8 +723,14 @@ static bool parse_fodt_body(XmlParser& xp, PageInfo& page, std::vector<ContentBl
                      else if (xp.match("draw:object")) { 
                          b.type = BlockType::FORMULA;
                          int od = 1; while (od > 0 && xp.next() != XmlParser::END) {
-                             if (xp.type() == XmlParser::START_ELEMENT) { if (xp.match("math:math")) { /* capture raw mathml? */ od++; } else od++; }
-                             else if (xp.type() == XmlParser::END_ELEMENT) od--;
+                             if (xp.type() == XmlParser::START_ELEMENT) { 
+                                 if (xp.match("math:math")) { 
+                                     b.formula_mathml += "<math>";
+                                     b.formula_mathml += "...";
+                                     b.formula_mathml += "</math>";
+                                     skip_element(xp);
+                                 } else od++;
+                             } else if (xp.type() == XmlParser::END_ELEMENT) od--;
                          }
                      }
                      id++; 
@@ -795,13 +836,13 @@ static void get_block_positions(lok::Document* doc, std::vector<ContentBlock>& b
     if (rects_str) { parse_rect_list(rects_str, page_rects); free(rects_str); }
 
     doc->postUnoCommand(".uno:GoToStartOfDoc", nullptr, false);
-    /* Trigger layout pass by moving down then up */
     doc->postUnoCommand(".uno:GoDown", nullptr, false); pump_until_updated(doc, cap, 5);
     doc->postUnoCommand(".uno:GoUp", nullptr, false); pump_until_updated(doc, cap, 5);
     doc->postUnoCommand(".uno:GoToStartOfPara", nullptr, false); pump_until_updated(doc, cap, 5);
 
     const double twip_to_mm = 25.4 / 1440.0;
-    
+    std::vector<ContentBlock> final_blocks;
+
     for (auto& b : blocks) {
         cap.updated = false; cap.has_coords = false; cap.x_twip = -1; cap.y_twip = -1;
         cap.selection.clear();
@@ -816,22 +857,34 @@ static void get_block_positions(lok::Document* doc, std::vector<ContentBlock>& b
             cap.updated = false;
             doc->postUnoCommand(".uno:GoToEndOfParaSel", nullptr, false);
             if (pump_until_updated(doc, cap, 15) && !cap.selection.empty()) {
-                TwipRect u = cap.selection[0];
-                for (size_t s = 1; s < cap.selection.size(); s++) {
-                    double ux1 = std::min(u.x, cap.selection[s].x), uy1 = std::min(u.y, cap.selection[s].y);
-                    double ux2 = std::max(u.x + u.w, cap.selection[s].x + cap.selection[s].w);
-                    double uy2 = std::max(u.y + u.h, cap.selection[s].y + cap.selection[s].h);
-                    u = {ux1, uy1, ux2 - ux1, uy2 - uy1};
-                }
-                int phys_page = 1; double page_y = 0;
-                for (size_t p = 0; p < page_rects.size(); p++) {
-                    if (u.y + u.h / 2.0 >= page_rects[p].y && u.y + u.h / 2.0 < page_rects[p].y + page_rects[p].h) {
-                        phys_page = (int)p + 1; page_y = page_rects[p].y; break;
+                std::map<int, std::vector<TwipRect>> parts;
+                for (const auto& r : cap.selection) {
+                    double test_y = r.y + r.h / 2.0;
+                    int phys_page = 1; 
+                    for (size_t p = 0; p < page_rects.size(); p++) {
+                        if (test_y >= page_rects[p].y && test_y < page_rects[p].y + page_rects[p].h) {
+                            phys_page = (int)p + 1; break;
+                        }
                     }
+                    parts[phys_page].push_back(r);
                 }
-                b.page_index = phys_page; b.page_number = (cap.logical_page > 0) ? cap.logical_page : phys_page;
-                b.bbox_x_mm = u.x * twip_to_mm; b.bbox_y_mm = std::max(0.0, (u.y - page_y) * twip_to_mm);
-                b.bbox_w_mm = u.w * twip_to_mm; b.bbox_h_mm = u.h * twip_to_mm;
+                
+                for (auto const& [page, rects] : parts) {
+                    ContentBlock pb = b;
+                    TwipRect u = rects[0];
+                    for (size_t s = 1; s < rects.size(); s++) {
+                        double ux1 = std::min(u.x, rects[s].x), uy1 = std::min(u.y, rects[s].y);
+                        double ux2 = std::max(u.x + u.w, rects[s].x + rects[s].w);
+                        double uy2 = std::max(u.y + u.h, rects[s].y + rects[s].h);
+                        u = {ux1, uy1, ux2 - ux1, uy2 - uy1};
+                    }
+                    double page_y = (page > 0 && (size_t)page <= page_rects.size()) ? page_rects[page-1].y : 0;
+                    pb.page_index = page; pb.page_number = (cap.logical_page > 0) ? cap.logical_page : page;
+                    pb.bbox_x_mm = u.x * twip_to_mm; pb.bbox_y_mm = std::max(0.0, (u.y - page_y) * twip_to_mm);
+                    pb.bbox_w_mm = u.w * twip_to_mm; pb.bbox_h_mm = u.h * twip_to_mm;
+                    for (auto& tb : pb.text_blocks) { tb.bbox_x_mm = pb.bbox_x_mm; tb.bbox_y_mm = pb.bbox_y_mm; tb.bbox_w_mm = pb.bbox_w_mm; tb.bbox_h_mm = pb.bbox_h_mm; }
+                    final_blocks.push_back(pb);
+                }
             } else if (cap.has_coords || (cap.x_twip != -1)) {
                 int phys_page = 1; double page_y = 0;
                 for (size_t p = 0; p < page_rects.size(); p++) {
@@ -842,30 +895,42 @@ static void get_block_positions(lok::Document* doc, std::vector<ContentBlock>& b
                 b.page_index = phys_page; b.page_number = (cap.logical_page > 0) ? cap.logical_page : phys_page;
                 b.bbox_x_mm = cap.x_twip * twip_to_mm; b.bbox_y_mm = std::max(0.0, (cap.y_twip - page_y) * twip_to_mm);
                 b.bbox_w_mm = 8000 * twip_to_mm; b.bbox_h_mm = cap.h_twip * twip_to_mm;
-            }
-
-            for (auto& tb : b.text_blocks) {
-                tb.bbox_x_mm = b.bbox_x_mm; tb.bbox_y_mm = b.bbox_y_mm; tb.bbox_w_mm = b.bbox_w_mm; tb.bbox_h_mm = b.bbox_h_mm;
+                for (auto& tb : b.text_blocks) { tb.bbox_x_mm = b.bbox_x_mm; tb.bbox_y_mm = b.bbox_y_mm; tb.bbox_w_mm = b.bbox_w_mm; tb.bbox_h_mm = b.bbox_h_mm; }
+                final_blocks.push_back(b);
+            } else {
+                final_blocks.push_back(b);
             }
         } else if (b.type == BlockType::TABLE) {
             doc->postUnoCommand(".uno:SelectTable", nullptr, false);
             if (pump_until_updated(doc, cap, 15) && !cap.selection.empty()) {
-                TwipRect u = cap.selection[0];
-                for (size_t s = 1; s < cap.selection.size(); s++) {
-                    double ux1 = std::min(u.x, cap.selection[s].x), uy1 = std::min(u.y, cap.selection[s].y);
-                    double ux2 = std::max(u.x + u.w, cap.selection[s].x + cap.selection[s].w);
-                    double uy2 = std::max(u.y + u.h, cap.selection[s].y + cap.selection[s].h);
-                    u = {ux1, uy1, ux2 - ux1, uy2 - uy1};
-                }
-                int phys_page = 1; double page_y = 0;
-                for (size_t p = 0; p < page_rects.size(); p++) {
-                    if (u.y + u.h / 2.0 >= page_rects[p].y && u.y + u.h / 2.0 < page_rects[p].y + page_rects[p].h) {
-                        phys_page = (int)p + 1; page_y = page_rects[p].y; break;
+                std::map<int, std::vector<TwipRect>> parts;
+                for (const auto& r : cap.selection) {
+                    double test_y = r.y + r.h / 2.0;
+                    int phys_page = 1; 
+                    for (size_t p = 0; p < page_rects.size(); p++) {
+                        if (test_y >= page_rects[p].y && test_y < page_rects[p].y + page_rects[p].h) {
+                            phys_page = (int)p + 1; break;
+                        }
                     }
+                    parts[phys_page].push_back(r);
                 }
-                b.page_index = phys_page; b.page_number = (cap.logical_page > 0) ? cap.logical_page : phys_page;
-                b.bbox_x_mm = u.x * twip_to_mm; b.bbox_y_mm = std::max(0.0, (u.y - page_y) * twip_to_mm);
-                b.bbox_w_mm = u.w * twip_to_mm; b.bbox_h_mm = u.h * twip_to_mm;
+                for (auto const& [page, rects] : parts) {
+                    ContentBlock pb = b;
+                    TwipRect u = rects[0];
+                    for (size_t s = 1; s < rects.size(); s++) {
+                        double ux1 = std::min(u.x, rects[s].x), uy1 = std::min(u.y, rects[s].y);
+                        double ux2 = std::max(u.x + u.w, rects[s].x + rects[s].w);
+                        double uy2 = std::max(u.y + u.h, rects[s].y + rects[s].h);
+                        u = {ux1, uy1, ux2 - ux1, uy2 - uy1};
+                    }
+                    double page_y = (page > 0 && (size_t)page <= page_rects.size()) ? page_rects[page-1].y : 0;
+                    pb.page_index = page; pb.page_number = (cap.logical_page > 0) ? cap.logical_page : page;
+                    pb.bbox_x_mm = u.x * twip_to_mm; pb.bbox_y_mm = std::max(0.0, (u.y - page_y) * twip_to_mm);
+                    pb.bbox_w_mm = u.w * twip_to_mm; pb.bbox_h_mm = u.h * twip_to_mm;
+                    final_blocks.push_back(pb);
+                }
+            } else {
+                final_blocks.push_back(b);
             }
         } else {
             pump_until_updated(doc, cap, 5);
@@ -881,11 +946,13 @@ static void get_block_positions(lok::Document* doc, std::vector<ContentBlock>& b
                 if (b.bbox_w_mm == 0) b.bbox_w_mm = cap.w_twip * twip_to_mm;
                 if (b.bbox_h_mm == 0) b.bbox_h_mm = cap.h_twip * twip_to_mm;
             }
+            final_blocks.push_back(b);
         }
         cap.updated = false; doc->postUnoCommand(".uno:GoToEndOfPara", nullptr, false); pump_until_updated(doc, cap, 5);
         doc->postUnoCommand(".uno:GoRight", nullptr, false);
         if (!pump_until_updated(doc, cap, 10)) { doc->postUnoCommand(".uno:GoDown", nullptr, false); pump_until_updated(doc, cap, 5); }
     }
+    blocks = final_blocks;
     doc->registerCallback(nullptr, nullptr);
 }
 
