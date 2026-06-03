@@ -1,6 +1,6 @@
 /**
  * @file doc_parse.cpp
- * @brief LibreOffice SDK document parsing implementation.
+ * @brief LibreOffice SDK document parsing implementation with comprehensive attribute extraction.
  */
 
 #include "cdsl/doc.h"
@@ -152,8 +152,13 @@ struct TextProps {
     bool        bold = false;
     bool        italic = false;
     bool        underline = false;
+    std::string underline_style;
+    std::string underline_color;
     bool        strikethrough = false;
     std::string color;
+    std::string background_color;
+    double      char_spacing_mm = 0;
+    std::string vertical_align; // sub, super, baseline
 };
 
 struct ParaProps {
@@ -161,10 +166,32 @@ struct ParaProps {
     double      margin_top_mm = 0;
     double      margin_bottom_mm = 0;
     double      margin_left_mm = 0;
+    double      margin_right_mm = 0;
     double      line_spacing = 0;
     double      indent_first_line_mm = 0;
     std::string background_color;
     int         outline_level = 0;
+};
+
+struct BorderProps {
+    std::string style;
+    std::string color;
+    double      width_mm = 0;
+};
+
+struct TableProps {
+    double      width_mm = 0;
+    std::string alignment;
+    std::string background_color;
+};
+
+struct CellProps {
+    std::string background_color;
+    std::string vertical_align;
+    BorderProps border_top;
+    BorderProps border_bottom;
+    BorderProps border_left;
+    BorderProps border_right;
 };
 
 struct TextBlock {
@@ -182,17 +209,20 @@ enum class BlockType {
     TABLE,
     LIST,
     IMAGE,
-    FOOTNOTE
+    FOOTNOTE,
+    FORMULA
 };
 
 struct TableCell {
     std::vector<TextBlock> text_blocks;
+    CellProps    props;
     int          colspan = 1;
     int          rowspan = 1;
 };
 
 struct TableRow {
     std::vector<TableCell> cells;
+    std::string background_color;
 };
 
 struct ContentBlock {
@@ -207,10 +237,12 @@ struct ContentBlock {
     
     std::string style_name;
     ParaProps   para_props;
+    TableProps  table_props;
     std::vector<TextBlock> text_blocks;
     std::vector<TableRow> table_rows;
     std::string image_name;
-    std::string image_base64;
+    std::string anchoring;
+    std::string formula_mathml;
     std::string footnote_id;
 };
 
@@ -220,13 +252,16 @@ struct ContentBlock {
 
 struct Style {
     std::string name;
+    std::string family;
     std::string parent;
     ParaProps   para;
     TextProps   text;
+    TableProps  table;
+    CellProps   cell;
     bool        resolved = false;
 };
 
-static Style g_style_db[1024];
+static Style g_style_db[2048];
 static int   g_style_count = 0;
 
 static void init_style_db() { g_style_count = 0; }
@@ -240,22 +275,43 @@ static Style* find_style(const char* name) {
 }
 
 static void merge_style(const Style& src, Style& dst) {
+    // Merge ParaProps
     if (dst.para.alignment.empty()) dst.para.alignment = src.para.alignment;
     if (dst.para.margin_top_mm == 0) dst.para.margin_top_mm = src.para.margin_top_mm;
     if (dst.para.margin_bottom_mm == 0) dst.para.margin_bottom_mm = src.para.margin_bottom_mm;
     if (dst.para.margin_left_mm == 0) dst.para.margin_left_mm = src.para.margin_left_mm;
+    if (dst.para.margin_right_mm == 0) dst.para.margin_right_mm = src.para.margin_right_mm;
     if (dst.para.line_spacing == 0) dst.para.line_spacing = src.para.line_spacing;
     if (dst.para.indent_first_line_mm == 0) dst.para.indent_first_line_mm = src.para.indent_first_line_mm;
     if (dst.para.background_color.empty()) dst.para.background_color = src.para.background_color;
     if (dst.para.outline_level == 0) dst.para.outline_level = src.para.outline_level;
 
+    // Merge TextProps
     if (dst.text.font_name.empty()) dst.text.font_name = src.text.font_name;
     if (dst.text.font_size_pt == 0) dst.text.font_size_pt = src.text.font_size_pt;
     if (!dst.text.bold) dst.text.bold = src.text.bold;
     if (!dst.text.italic) dst.text.italic = src.text.italic;
     if (!dst.text.underline) dst.text.underline = src.text.underline;
+    if (dst.text.underline_style.empty()) dst.text.underline_style = src.text.underline_style;
+    if (dst.text.underline_color.empty()) dst.text.underline_color = src.text.underline_color;
     if (!dst.text.strikethrough) dst.text.strikethrough = src.text.strikethrough;
     if (dst.text.color.empty()) dst.text.color = src.text.color;
+    if (dst.text.background_color.empty()) dst.text.background_color = src.text.background_color;
+    if (dst.text.char_spacing_mm == 0) dst.text.char_spacing_mm = src.text.char_spacing_mm;
+    if (dst.text.vertical_align.empty()) dst.text.vertical_align = src.text.vertical_align;
+
+    // Merge TableProps
+    if (dst.table.width_mm == 0) dst.table.width_mm = src.table.width_mm;
+    if (dst.table.alignment.empty()) dst.table.alignment = src.table.alignment;
+    if (dst.table.background_color.empty()) dst.table.background_color = src.table.background_color;
+
+    // Merge CellProps
+    if (dst.cell.background_color.empty()) dst.cell.background_color = src.cell.background_color;
+    if (dst.cell.vertical_align.empty()) dst.cell.vertical_align = src.cell.vertical_align;
+    if (dst.cell.border_top.style.empty()) dst.cell.border_top = src.cell.border_top;
+    if (dst.cell.border_bottom.style.empty()) dst.cell.border_bottom = src.cell.border_bottom;
+    if (dst.cell.border_left.style.empty()) dst.cell.border_left = src.cell.border_left;
+    if (dst.cell.border_right.style.empty()) dst.cell.border_right = src.cell.border_right;
 }
 
 static void resolve_all_styles() {
@@ -286,15 +342,37 @@ static Style resolve_style(const char* name) {
 /*  FODT Parsing                                                       */
 /* ------------------------------------------------------------------ */
 
+static void parse_border(const char* s, BorderProps& b) {
+    if (!s || strcmp(s, "none") == 0) return;
+    char buf[256]; strncpy(buf, s, sizeof(buf)-1); buf[sizeof(buf)-1] = '\0';
+    char* width = strtok(buf, " ");
+    if (width) b.width_mm = parse_length_mm(width);
+    char* style = strtok(NULL, " ");
+    if (style) b.style = style;
+    char* color = strtok(NULL, " ");
+    if (color) b.color = color;
+}
+
 static void parse_text_props_elem(XmlParser& xp, TextProps& p) {
     const char* v;
     if ((v = xp.attr("style:font-name-asian")) || (v = xp.attr("style:font-name"))) p.font_name = v;
     if ((v = xp.attr("style:font-size-asian")) || (v = xp.attr("fo:font-size"))) { char* end; p.font_size_pt = strtod(v, &end); }
     if ((v = xp.attr("fo:font-weight"))) p.bold = (strcmp(v, "bold") == 0);
     if ((v = xp.attr("fo:font-style"))) p.italic = (strcmp(v, "italic") == 0);
-    if ((v = xp.attr("style:text-underline-style"))) p.underline = (strcmp(v, "none") != 0);
+    if ((v = xp.attr("style:text-underline-style"))) {
+        p.underline = (strcmp(v, "none") != 0);
+        p.underline_style = v;
+    }
+    if ((v = xp.attr("style:text-underline-color"))) p.underline_color = v;
     if ((v = xp.attr("style:text-line-through-style"))) p.strikethrough = (strcmp(v, "none") != 0);
     if ((v = xp.attr("fo:color"))) p.color = v;
+    if ((v = xp.attr("fo:background-color")) || (v = xp.attr("style:text-background-color"))) p.background_color = v;
+    if ((v = xp.attr("fo:letter-spacing"))) p.char_spacing_mm = parse_length_mm(v);
+    if ((v = xp.attr("style:text-position"))) {
+        if (strstr(v, "super")) p.vertical_align = "super";
+        else if (strstr(v, "sub")) p.vertical_align = "sub";
+        else p.vertical_align = "baseline";
+    }
 }
 
 static void parse_para_props_elem(XmlParser& xp, ParaProps& p) {
@@ -303,6 +381,7 @@ static void parse_para_props_elem(XmlParser& xp, ParaProps& p) {
     if ((v = xp.attr("fo:margin-top"))) p.margin_top_mm = parse_length_mm(v);
     if ((v = xp.attr("fo:margin-bottom"))) p.margin_bottom_mm = parse_length_mm(v);
     if ((v = xp.attr("fo:margin-left"))) p.margin_left_mm = parse_length_mm(v);
+    if ((v = xp.attr("fo:margin-right"))) p.margin_right_mm = parse_length_mm(v);
     if ((v = xp.attr("fo:line-height"))) {
         if (strchr(v, '%')) p.line_spacing = atof(v) / 100.0;
         else p.line_spacing = parse_length_mm(v);
@@ -311,19 +390,37 @@ static void parse_para_props_elem(XmlParser& xp, ParaProps& p) {
     if ((v = xp.attr("fo:background-color"))) p.background_color = v;
 }
 
+static void parse_table_props_elem(XmlParser& xp, TableProps& p) {
+    const char* v;
+    if ((v = xp.attr("style:width"))) p.width_mm = parse_length_mm(v);
+    if ((v = xp.attr("table:align"))) p.alignment = v;
+    if ((v = xp.attr("fo:background-color"))) p.background_color = v;
+}
+
+static void parse_cell_props_elem(XmlParser& xp, CellProps& p) {
+    const char* v;
+    if ((v = xp.attr("fo:background-color"))) p.background_color = v;
+    if ((v = xp.attr("style:vertical-align"))) p.vertical_align = v;
+    if ((v = xp.attr("fo:border"))) { parse_border(v, p.border_top); p.border_bottom = p.border_left = p.border_right = p.border_top; }
+    if ((v = xp.attr("fo:border-top"))) parse_border(v, p.border_top);
+    if ((v = xp.attr("fo:border-bottom"))) parse_border(v, p.border_bottom);
+    if ((v = xp.attr("fo:border-left"))) parse_border(v, p.border_left);
+    if ((v = xp.attr("fo:border-right"))) parse_border(v, p.border_right);
+}
+
 static void parse_style_elem(XmlParser& xp) {
-    if (g_style_count >= 1024) return;
+    if (g_style_count >= 2048) return;
     Style* s = &g_style_db[g_style_count++];
     const char* v;
     if ((v = xp.attr("style:name"))) s->name = v;
+    if ((v = xp.attr("style:family"))) s->family = v;
     if ((v = xp.attr("style:parent-style-name"))) s->parent = v;
     while (xp.next() == XmlParser::START_ELEMENT) {
         if (xp.match("style:paragraph-properties")) parse_para_props_elem(xp, s->para);
         else if (xp.match("style:text-properties")) parse_text_props_elem(xp, s->text);
-        int depth = 1; while (depth > 0 && xp.next() != XmlParser::END) {
-            if (xp.type() == XmlParser::START_ELEMENT) depth++;
-            else if (xp.type() == XmlParser::END_ELEMENT) depth--;
-        }
+        else if (xp.match("style:table-properties")) parse_table_props_elem(xp, s->table);
+        else if (xp.match("style:table-cell-properties")) parse_cell_props_elem(xp, s->cell);
+        skip_element(xp);
     }
 }
 
@@ -339,10 +436,7 @@ static void parse_page_layout(XmlParser& xp, PageInfo& page) {
             if ((v = xp.attr("fo:margin-right")))  page.margin_right_mm = parse_length_mm(v);
             if ((v = xp.attr("style:page-number"))) { page.page_number_start = atoi(v); page.has_page_number_start = true; }
         }
-        int depth = 1; while (depth > 0 && xp.next() != XmlParser::END) {
-            if (xp.type() == XmlParser::START_ELEMENT) depth++;
-            else if (xp.type() == XmlParser::END_ELEMENT) depth--;
-        }
+        skip_element(xp);
     }
 }
 
@@ -350,42 +444,52 @@ static void parse_page_layout(XmlParser& xp, PageInfo& page) {
 /*  JSON Formatting Helpers                                            */
 /* ------------------------------------------------------------------ */
 
-static void json_append_text_block(std::string& out, const TextBlock& b)
-{
-    out += "          {\n";
-    out += "            \"text\": \""; json_escape(out, b.text.c_str()); out += "\"\n";
-    if (!b.props.font_name.empty()) {
-        out += "            ,\"font_name\": \""; json_escape(out, b.props.font_name.c_str()); out += "\"\n";
+static void json_append_text_props(std::string& out, const TextProps& p) {
+    if (!p.font_name.empty()) { out += "            ,\"font_name\": \""; json_escape(out, p.font_name.c_str()); out += "\"\n"; }
+    if (p.font_size_pt > 0) { char buf[64]; snprintf(buf, sizeof(buf), "            ,\"font_size_pt\": %.1f\n", p.font_size_pt); out += buf; }
+    if (p.bold) out += "            ,\"bold\": true\n";
+    if (p.italic) out += "            ,\"italic\": true\n";
+    if (p.underline) {
+        out += "            ,\"underline\": true\n";
+        if (!p.underline_style.empty()) { out += "            ,\"underline_style\": \""; json_escape(out, p.underline_style.c_str()); out += "\"\n"; }
+        if (!p.underline_color.empty()) { out += "            ,\"underline_color\": \""; json_escape(out, p.underline_color.c_str()); out += "\"\n"; }
     }
-    if (b.props.font_size_pt > 0) {
-        char buf[64]; snprintf(buf, sizeof(buf), "            ,\"font_size_pt\": %.1f\n", b.props.font_size_pt); out += buf;
-    }
-    if (b.props.bold) out += "            ,\"bold\": true\n";
-    if (b.props.italic) out += "            ,\"italic\": true\n";
-    if (b.props.underline) out += "            ,\"underline\": true\n";
-    if (b.props.strikethrough) out += "            ,\"strikethrough\": true\n";
-    if (!b.props.color.empty()) {
-        out += "            ,\"color\": \""; json_escape(out, b.props.color.c_str()); out += "\"\n";
-    }
-    if (!b.hyperlink_url.empty()) {
-        out += "            ,\"hyperlink_url\": \""; json_escape(out, b.hyperlink_url.c_str()); out += "\"\n";
-    }
-    char buf[128]; snprintf(buf, sizeof(buf), "            ,\"bbox_mm\": [%.1f, %.1f, %.1f, %.1f]\n", b.bbox_x_mm, b.bbox_y_mm, b.bbox_w_mm, b.bbox_h_mm);
-    out += buf;
-    out += "          }";
+    if (p.strikethrough) out += "            ,\"strikethrough\": true\n";
+    if (!p.color.empty()) { out += "            ,\"color\": \""; json_escape(out, p.color.c_str()); out += "\"\n"; }
+    if (!p.background_color.empty()) { out += "            ,\"background_color\": \""; json_escape(out, p.background_color.c_str()); out += "\"\n"; }
+    if (p.char_spacing_mm != 0) { char buf[64]; snprintf(buf, sizeof(buf), "            ,\"char_spacing_mm\": %.2f\n", p.char_spacing_mm); out += buf; }
+    if (!p.vertical_align.empty()) { out += "            ,\"vertical_align\": \""; json_escape(out, p.vertical_align.c_str()); out += "\"\n"; }
 }
 
 static void json_append_para_props(std::string& out, const ParaProps& props) {
-    if (!props.alignment.empty()) {
-        out += "      ,\"alignment\": \""; json_escape(out, props.alignment.c_str()); out += "\"\n";
-    }
+    if (!props.alignment.empty()) { out += "      ,\"alignment\": \""; json_escape(out, props.alignment.c_str()); out += "\"\n"; }
     char buf[128];
     if (props.margin_top_mm > 0) { snprintf(buf, sizeof(buf), "      ,\"spacing_before_mm\": %.1f\n", props.margin_top_mm); out += buf; }
     if (props.margin_bottom_mm > 0) { snprintf(buf, sizeof(buf), "      ,\"spacing_after_mm\": %.1f\n", props.margin_bottom_mm); out += buf; }
+    if (props.margin_left_mm > 0) { snprintf(buf, sizeof(buf), "      ,\"margin_left_mm\": %.1f\n", props.margin_left_mm); out += buf; }
+    if (props.margin_right_mm > 0) { snprintf(buf, sizeof(buf), "      ,\"margin_right_mm\": %.1f\n", props.margin_right_mm); out += buf; }
     if (props.line_spacing > 0) { snprintf(buf, sizeof(buf), "      ,\"line_spacing\": %.2f\n", props.line_spacing); out += buf; }
-    if (props.indent_first_line_mm > 0) { snprintf(buf, sizeof(buf), "      ,\"indent_first_line_mm\": %.1f\n", props.indent_first_line_mm); out += buf; }
+    if (props.indent_first_line_mm != 0) { snprintf(buf, sizeof(buf), "      ,\"indent_first_line_mm\": %.1f\n", props.indent_first_line_mm); out += buf; }
     if (!props.background_color.empty()) { out += "      ,\"background_color\": \""; json_escape(out, props.background_color.c_str()); out += "\"\n"; }
     if (props.outline_level > 0) { snprintf(buf, sizeof(buf), "      ,\"outline_level\": %d\n", props.outline_level); out += buf; }
+}
+
+static void json_append_border(std::string& out, const char* key, const BorderProps& b) {
+    if (b.style.empty()) return;
+    out += ",\""; out += key; out += "\":{";
+    out += "\"style\":\""; json_escape(out, b.style.c_str()); out += "\"";
+    if (!b.color.empty()) { out += ",\"color\":\""; json_escape(out, b.color.c_str()); out += "\""; }
+    char buf[64]; snprintf(buf, sizeof(buf), ",\"width_mm\":%.2f", b.width_mm); out += buf;
+    out += "}";
+}
+
+static void json_append_cell_props(std::string& out, const CellProps& p) {
+    if (!p.background_color.empty()) { out += ",\"background_color\":\""; json_escape(out, p.background_color.c_str()); out += "\""; }
+    if (!p.vertical_align.empty()) { out += ",\"vertical_align\":\""; json_escape(out, p.vertical_align.c_str()); out += "\""; }
+    json_append_border(out, "border_top", p.border_top);
+    json_append_border(out, "border_bottom", p.border_bottom);
+    json_append_border(out, "border_left", p.border_left);
+    json_append_border(out, "border_right", p.border_right);
 }
 
 static void json_append_block(std::string& out, const ContentBlock& b) {
@@ -397,6 +501,7 @@ static void json_append_block(std::string& out, const ContentBlock& b) {
         case BlockType::LIST:      out += "list"; break;
         case BlockType::IMAGE:     out += "image"; break;
         case BlockType::FOOTNOTE:  out += "footnote"; break;
+        case BlockType::FORMULA:   out += "formula"; break;
     }
     out += "\",\n";
     char buf[256];
@@ -408,6 +513,7 @@ static void json_append_block(std::string& out, const ContentBlock& b) {
         b.page_index, b.page_number, b.indent_level, b.bbox_x_mm, b.bbox_y_mm, b.bbox_w_mm, b.bbox_h_mm);
     out += buf;
     if (!b.style_name.empty()) { out += ",\n      \"style\": \""; json_escape(out, b.style_name.c_str()); out += "\""; }
+    
     if (b.type == BlockType::PARAGRAPH || b.type == BlockType::LIST) {
         std::string plain_text;
         for (const auto& tb : b.text_blocks) plain_text += tb.text;
@@ -416,10 +522,18 @@ static void json_append_block(std::string& out, const ContentBlock& b) {
         out += ",\n      \"text_blocks\": [\n";
         for (size_t i = 0; i < b.text_blocks.size(); i++) {
             if (i > 0) out += ",\n"; 
-            json_append_text_block(out, b.text_blocks[i]);
+            out += "          {\n";
+            out += "            \"text\": \""; json_escape(out, b.text_blocks[i].text.c_str()); out += "\"\n";
+            json_append_text_props(out, b.text_blocks[i].props);
+            if (!b.text_blocks[i].hyperlink_url.empty()) { out += "            ,\"hyperlink_url\": \""; json_escape(out, b.text_blocks[i].hyperlink_url.c_str()); out += "\"\n"; }
+            char bb[128]; snprintf(bb, sizeof(bb), "            ,\"bbox_mm\": [%.1f, %.1f, %.1f, %.1f]\n", b.text_blocks[i].bbox_x_mm, b.text_blocks[i].bbox_y_mm, b.text_blocks[i].bbox_w_mm, b.text_blocks[i].bbox_h_mm);
+            out += bb;
+            out += "          }";
         }
         out += "\n      ]";
     } else if (b.type == BlockType::TABLE) {
+        if (b.table_props.width_mm > 0) { char tb[64]; snprintf(tb, sizeof(tb), "      ,\"width_mm\": %.1f\n", b.table_props.width_mm); out += tb; }
+        if (!b.table_props.alignment.empty()) { out += "      ,\"alignment\": \""; json_escape(out, b.table_props.alignment.c_str()); out += "\"\n"; }
         out += ",\n      \"rows\": [\n";
         for (size_t r = 0; r < b.table_rows.size(); r++) {
             if (r > 0) out += ",\n";
@@ -428,6 +542,7 @@ static void json_append_block(std::string& out, const ContentBlock& b) {
                 if (c > 0) out += ",";
                 out += "{\"colspan\":"; out += std::to_string(b.table_rows[r].cells[c].colspan);
                 out += ",\"rowspan\":"; out += std::to_string(b.table_rows[r].cells[c].rowspan);
+                json_append_cell_props(out, b.table_rows[r].cells[c].props);
                 out += ",\"content\":\"";
                 std::string cell_text;
                 for (const auto& tb : b.table_rows[r].cells[c].text_blocks) cell_text += tb.text;
@@ -435,7 +550,10 @@ static void json_append_block(std::string& out, const ContentBlock& b) {
                 out += "\",\"text_blocks\":[\n";
                 for (size_t i = 0; i < b.table_rows[r].cells[c].text_blocks.size(); i++) {
                     if (i > 0) out += ",\n"; 
-                    json_append_text_block(out, b.table_rows[r].cells[c].text_blocks[i]);
+                    out += "          {\n";
+                    out += "            \"text\": \""; json_escape(out, b.table_rows[r].cells[c].text_blocks[i].text.c_str()); out += "\"\n";
+                    json_append_text_props(out, b.table_rows[r].cells[c].text_blocks[i].props);
+                    out += "          }";
                 }
                 out += "]}";
             }
@@ -444,10 +562,12 @@ static void json_append_block(std::string& out, const ContentBlock& b) {
         out += "\n      ]";
     } else if (b.type == BlockType::IMAGE) {
         out += ",\n      \"image_name\": \""; json_escape(out, b.image_name.c_str()); out += "\",\n";
-        out += "      \"data_base64\": \""; out += b.image_base64; out += "\"";
+        if (!b.anchoring.empty()) { out += "      \"anchoring\": \""; json_escape(out, b.anchoring.c_str()); out += "\",\n"; }
     } else if (b.type == BlockType::FOOTNOTE) {
         out += ",\n      \"footnote_id\": \""; json_escape(out, b.footnote_id.c_str()); out += "\",\n";
         out += "      \"content\": \""; if (!b.text_blocks.empty()) json_escape(out, b.text_blocks[0].text.c_str()); out += "\"";
+    } else if (b.type == BlockType::FORMULA) {
+        out += ",\n      \"formula_mathml\": \""; json_escape(out, b.formula_mathml.c_str()); out += "\"";
     }
     out += "\n    }";
 }
@@ -462,7 +582,7 @@ static bool parse_fodt_body(XmlParser& xp, PageInfo& page, std::vector<ContentBl
         if (xp.match("text:p") || xp.match("text:h")) {
             ContentBlock b; b.type = BlockType::PARAGRAPH;
             b.indent_level = indent_level;
-            const char* style = xp.attr("text:style-name"); if (style) b.style_name = style;
+            const char* style = xp.attr("text:style-name"); if (style) { b.style_name = style; b.para_props = resolve_style(style).para; }
             const char* level = xp.attr("text:outline-level"); if (level) b.para_props.outline_level = atoi(level);
             int d = 1; while (d > 0 && xp.next() != XmlParser::END) {
                 if (xp.type() == XmlParser::START_ELEMENT) {
@@ -490,15 +610,18 @@ static bool parse_fodt_body(XmlParser& xp, PageInfo& page, std::vector<ContentBl
             }
             out_blocks.push_back(b);
         } else if (xp.match("table:table")) {
-            ContentBlock b; b.type = BlockType::TABLE; b.style_name = xp.attr("table:style-name") ? xp.attr("table:style-name") : "";
+            ContentBlock b; b.type = BlockType::TABLE; 
+            const char* style = xp.attr("table:style-name"); if (style) { b.style_name = style; b.table_props = resolve_style(style).table; }
             b.indent_level = indent_level;
             int td = 1; while (td > 0 && xp.next() != XmlParser::END) {
                 if (xp.type() == XmlParser::START_ELEMENT) {
                     if (xp.match("table:table-row")) {
-                        TableRow row; int rd = 1; while (rd > 0 && xp.next() != XmlParser::END) {
+                        TableRow row; const char* rs = xp.attr("table:style-name"); if (rs) row.background_color = resolve_style(rs).para.background_color;
+                        int rd = 1; while (rd > 0 && xp.next() != XmlParser::END) {
                             if (xp.type() == XmlParser::START_ELEMENT) { 
                                 if (xp.match("table:table-cell")) { 
-                                    TableCell cell; const char* cs = xp.attr("table:number-columns-spanned"); if (cs) cell.colspan = atoi(cs); const char* rs = xp.attr("table:number-rows-spanned"); if (rs) cell.rowspan = atoi(rs);
+                                    TableCell cell; const char* cs = xp.attr("table:number-columns-spanned"); if (cs) cell.colspan = atoi(cs); const char* r_sp = xp.attr("table:number-rows-spanned"); if (r_sp) cell.rowspan = atoi(r_sp);
+                                    const char* c_style = xp.attr("table:style-name"); if (c_style) cell.props = resolve_style(c_style).cell;
                                     int cd = 1; while (cd > 0 && xp.next() != XmlParser::END) {
                                         if (xp.type() == XmlParser::START_ELEMENT) {
                                             if (xp.match("text:p")) {
@@ -534,7 +657,7 @@ static bool parse_fodt_body(XmlParser& xp, PageInfo& page, std::vector<ContentBl
                                 if (xp.match("text:p") || xp.match("text:h")) {
                                     ContentBlock b; b.type = BlockType::PARAGRAPH;
                                     b.indent_level = indent_level + 1;
-                                    const char* style = xp.attr("text:style-name"); if (style) b.style_name = style;
+                                    const char* style = xp.attr("text:style-name"); if (style) { b.style_name = style; b.para_props = resolve_style(style).para; }
                                     int pd = 1; while (pd > 0 && xp.next() != XmlParser::END) {
                                         if (xp.type() == XmlParser::START_ELEMENT) {
                                             if (xp.match("text:span")) {
@@ -556,10 +679,21 @@ static bool parse_fodt_body(XmlParser& xp, PageInfo& page, std::vector<ContentBl
             }
         } else if (xp.match("draw:frame")) {
              ContentBlock b; b.type = BlockType::IMAGE;
+             const char* anc = xp.attr("text:anchor-type"); if (anc) b.anchoring = anc;
              b.bbox_w_mm = parse_length_mm(xp.attr("svg:width"));
              b.bbox_h_mm = parse_length_mm(xp.attr("svg:height"));
              int id = 1; while (id > 0 && xp.next() != XmlParser::END) {
-                 if (xp.type() == XmlParser::START_ELEMENT) { if (xp.match("draw:image")) { const char* href = xp.attr("xlink:href"); if (href) b.image_name = href; } id++; }
+                 if (xp.type() == XmlParser::START_ELEMENT) { 
+                     if (xp.match("draw:image")) { const char* href = xp.attr("xlink:href"); if (href) b.image_name = href; } 
+                     else if (xp.match("draw:object")) { 
+                         b.type = BlockType::FORMULA;
+                         int od = 1; while (od > 0 && xp.next() != XmlParser::END) {
+                             if (xp.type() == XmlParser::START_ELEMENT) { if (xp.match("math:math")) { /* capture raw mathml? */ od++; } else od++; }
+                             else if (xp.type() == XmlParser::END_ELEMENT) od--;
+                         }
+                     }
+                     id++; 
+                 }
                  else if (xp.type() == XmlParser::END_ELEMENT) id--;
              }
              out_blocks.push_back(b);
@@ -661,7 +795,10 @@ static void get_block_positions(lok::Document* doc, std::vector<ContentBlock>& b
     if (rects_str) { parse_rect_list(rects_str, page_rects); free(rects_str); }
 
     doc->postUnoCommand(".uno:GoToStartOfDoc", nullptr, false);
-    pump_until_updated(doc, cap, 50);
+    /* Trigger layout pass by moving down then up */
+    doc->postUnoCommand(".uno:GoDown", nullptr, false); pump_until_updated(doc, cap, 5);
+    doc->postUnoCommand(".uno:GoUp", nullptr, false); pump_until_updated(doc, cap, 5);
+    doc->postUnoCommand(".uno:GoToStartOfPara", nullptr, false); pump_until_updated(doc, cap, 5);
 
     const double twip_to_mm = 25.4 / 1440.0;
     
@@ -670,10 +807,8 @@ static void get_block_positions(lok::Document* doc, std::vector<ContentBlock>& b
         cap.selection.clear();
 
         if (b.type == BlockType::PARAGRAPH || b.type == BlockType::LIST) {
-            /* Force initial recognition for first paragraph */
             doc->postUnoCommand(".uno:GoToStartOfPara", nullptr, false);
             if (!pump_until_updated(doc, cap, 5)) {
-                 /* If no update, move slightly then back to trigger recognition */
                  doc->postUnoCommand(".uno:GoRight", nullptr, false); pump_until_updated(doc, cap, 5);
                  doc->postUnoCommand(".uno:GoLeft", nullptr, false); pump_until_updated(doc, cap, 5);
             }
@@ -710,12 +845,7 @@ static void get_block_positions(lok::Document* doc, std::vector<ContentBlock>& b
             }
 
             for (auto& tb : b.text_blocks) {
-                double pct = 0; int total_len = 0; for(auto& t : b.text_blocks) total_len += t.text.length();
-                pct = total_len > 0 ? (double)tb.text.length() / total_len : 0;
-                tb.bbox_x_mm = b.bbox_x_mm; tb.bbox_y_mm = b.bbox_y_mm; tb.bbox_w_mm = b.bbox_w_mm * pct; tb.bbox_h_mm = b.bbox_h_mm;
-                Style st = resolve_style(b.style_name.c_str());
-                if (tb.props.font_name.empty()) tb.props.font_name = st.text.font_name;
-                if (tb.props.font_size_pt == 0) tb.props.font_size_pt = st.text.font_size_pt;
+                tb.bbox_x_mm = b.bbox_x_mm; tb.bbox_y_mm = b.bbox_y_mm; tb.bbox_w_mm = b.bbox_w_mm; tb.bbox_h_mm = b.bbox_h_mm;
             }
         } else if (b.type == BlockType::TABLE) {
             doc->postUnoCommand(".uno:SelectTable", nullptr, false);
@@ -805,7 +935,7 @@ extern "C" char* cdsl_doc_extract_to_json(const char* path) {
 		resolve_all_styles();
 		if (!blocks.empty() && doc) get_block_positions(doc.get(), blocks);
 	}
-	std::string out; out.reserve(65536); out += "{\n  \"document\": {\n    \"metadata\": {\n";
+	std::string out; out.reserve(262144); out += "{\n  \"document\": {\n    \"metadata\": {\n";
 	char b[512]; snprintf(b, sizeof(b), "      \"page_count\": %d,\n      \"paragraph_count\": %d,\n      \"word_count\": %d,\n      \"character_count\": %d,\n      \"page_size_mm\": [%.1f, %.1f],\n      \"margins_mm\": [%.1f, %.1f, %.1f, %.1f]", 
 	         page.page_count, (int)blocks.size(), page.word_count, page.character_count, page.page_width_mm, page.page_height_mm, page.margin_top_mm, page.margin_bottom_mm, page.margin_left_mm, page.margin_right_mm);
 	out += b;
