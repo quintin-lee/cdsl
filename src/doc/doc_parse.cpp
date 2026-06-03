@@ -72,6 +72,23 @@ static double parse_length(const char* s) {
 
 static double parse_length_mm(const char* s) { return parse_length(s); }
 
+static std::string decode_xml_entities(const char* s, size_t len) {
+    std::string out;
+    for (size_t i = 0; i < len; i++) {
+        if (s[i] == '&') {
+            if (i + 4 < len && memcmp(s + i, "&amp;", 5) == 0) { out += '&'; i += 4; }
+            else if (i + 3 < len && memcmp(s + i, "&lt;", 4) == 0) { out += '<'; i += 3; }
+            else if (i + 3 < len && memcmp(s + i, "&gt;", 4) == 0) { out += '>'; i += 3; }
+            else if (i + 5 < len && memcmp(s + i, "&quot;", 6) == 0) { out += '"'; i += 5; }
+            else if (i + 5 < len && memcmp(s + i, "&apos;", 6) == 0) { out += '\''; i += 5; }
+            else out += s[i];
+        } else {
+            out += s[i];
+        }
+    }
+    return out;
+}
+
 static void json_escape(std::string& out, const char* s) {
     if (!s) return;
     for (; *s; s++) {
@@ -92,6 +109,16 @@ static void json_escape(std::string& out, const char* s) {
                     out += *s;
                 }
         }
+    }
+}
+
+static void skip_element(XmlParser& xp) {
+    int d = 1;
+    while (d > 0) {
+        XmlParser::Type t = xp.next();
+        if (t == XmlParser::END) break;
+        if (t == XmlParser::START_ELEMENT) d++;
+        else if (t == XmlParser::END_ELEMENT) d--;
     }
 }
 
@@ -261,8 +288,8 @@ static Style resolve_style(const char* name) {
 
 static void parse_text_props_elem(XmlParser& xp, TextProps& p) {
     const char* v;
-    if ((v = xp.attr("style:font-name"))) p.font_name = v;
-    if ((v = xp.attr("fo:font-size"))) { char* end; p.font_size_pt = strtod(v, &end); }
+    if ((v = xp.attr("style:font-name-asian")) || (v = xp.attr("style:font-name"))) p.font_name = v;
+    if ((v = xp.attr("style:font-size-asian")) || (v = xp.attr("fo:font-size"))) { char* end; p.font_size_pt = strtod(v, &end); }
     if ((v = xp.attr("fo:font-weight"))) p.bold = (strcmp(v, "bold") == 0);
     if ((v = xp.attr("fo:font-style"))) p.italic = (strcmp(v, "italic") == 0);
     if ((v = xp.attr("style:text-underline-style"))) p.underline = (strcmp(v, "none") != 0);
@@ -441,25 +468,25 @@ static bool parse_fodt_body(XmlParser& xp, PageInfo& page, std::vector<ContentBl
                 if (xp.type() == XmlParser::START_ELEMENT) {
                     if (xp.match("text:span")) {
                         TextBlock tb; const char* span_style = xp.attr("text:style-name"); if (span_style) tb.props = resolve_style(span_style).text;
-                        int sd = 1; while (sd > 0 && xp.next() != XmlParser::END) { if (xp.type() == XmlParser::START_ELEMENT) sd++; else if (xp.type() == XmlParser::END_ELEMENT) sd--; else if (xp.type() == XmlParser::TEXT && xp.textContent()) tb.text.append(xp.textContent(), xp.textLength()); }
+                        int sd = 1; while (sd > 0 && xp.next() != XmlParser::END) { if (xp.type() == XmlParser::START_ELEMENT) sd++; else if (xp.type() == XmlParser::END_ELEMENT) sd--; else if (xp.type() == XmlParser::TEXT && xp.textContent()) tb.text.append(decode_xml_entities(xp.textContent(), xp.textLength())); }
                         if (!tb.text.empty()) b.text_blocks.push_back(tb);
                     } else if (xp.match("text:a")) {
                         std::string url = xp.attr("xlink:href") ? xp.attr("xlink:href") : "";
-                        int ad = 1; while (ad > 0 && xp.next() != XmlParser::END) { if (xp.type() == XmlParser::START_ELEMENT) ad++; else if (xp.type() == XmlParser::END_ELEMENT) ad--; else if (xp.type() == XmlParser::TEXT && xp.textContent()) { TextBlock tb; tb.text.append(xp.textContent(), xp.textLength()); tb.hyperlink_url = url; b.text_blocks.push_back(tb); } }
+                        int ad = 1; while (ad > 0 && xp.next() != XmlParser::END) { if (xp.type() == XmlParser::START_ELEMENT) ad++; else if (xp.type() == XmlParser::END_ELEMENT) ad--; else if (xp.type() == XmlParser::TEXT && xp.textContent()) { TextBlock tb; tb.text.append(decode_xml_entities(xp.textContent(), xp.textLength())); tb.hyperlink_url = url; b.text_blocks.push_back(tb); } }
                     } else if (xp.match("text:bookmark") || xp.match("text:bookmark-start")) {
                         const char* name = xp.attr("text:name"); if (name) page.bookmarks.push_back(name);
-                        d++;
+                        skip_element(xp);
                     } else if (xp.match("text:note")) {
                         ContentBlock fn; fn.type = BlockType::FOOTNOTE;
                         fn.footnote_id = xp.attr("text:id") ? xp.attr("text:id") : "";
                         int nd = 1; while (nd > 0 && xp.next() != XmlParser::END) {
-                            if (xp.type() == XmlParser::START_ELEMENT) { if (xp.match("text:note-body")) { int nbd = 1; while (nbd > 0 && xp.next() != XmlParser::END) { if (xp.type() == XmlParser::START_ELEMENT) nbd++; else if (xp.type() == XmlParser::END_ELEMENT) nbd--; else if (xp.type() == XmlParser::TEXT && xp.textContent()) { if (fn.text_blocks.empty()) fn.text_blocks.push_back({}); fn.text_blocks[0].text.append(xp.textContent(), xp.textLength()); } } } else { nd++; } }
+                            if (xp.type() == XmlParser::START_ELEMENT) { if (xp.match("text:note-body")) { int nbd = 1; while (nbd > 0 && xp.next() != XmlParser::END) { if (xp.type() == XmlParser::START_ELEMENT) nbd++; else if (xp.type() == XmlParser::END_ELEMENT) nbd--; else if (xp.type() == XmlParser::TEXT && xp.textContent()) { if (fn.text_blocks.empty()) fn.text_blocks.push_back({}); fn.text_blocks[0].text.append(decode_xml_entities(xp.textContent(), xp.textLength())); } } } else { skip_element(xp); } }
                             else if (xp.type() == XmlParser::END_ELEMENT) nd--;
                         }
                         out_blocks.push_back(fn);
-                    } else { d++; }
+                    } else { skip_element(xp); }
                 } else if (xp.type() == XmlParser::END_ELEMENT) d--;
-                else if (xp.type() == XmlParser::TEXT && xp.textContent()) { if (b.text_blocks.empty()) b.text_blocks.push_back(TextBlock{}); b.text_blocks.back().text.append(xp.textContent(), xp.textLength()); }
+                else if (xp.type() == XmlParser::TEXT && xp.textContent()) { if (b.text_blocks.empty()) b.text_blocks.push_back(TextBlock{}); b.text_blocks.back().text.append(decode_xml_entities(xp.textContent(), xp.textLength())); }
             }
             out_blocks.push_back(b);
         } else if (xp.match("table:table")) {
@@ -479,22 +506,22 @@ static bool parse_fodt_body(XmlParser& xp, PageInfo& page, std::vector<ContentBl
                                                     if (xp.type() == XmlParser::START_ELEMENT) {
                                                         if (xp.match("text:span")) {
                                                             TextBlock tb; const char* ss = xp.attr("text:style-name"); if (ss) tb.props = resolve_style(ss).text;
-                                                            int sd = 1; while (sd > 0 && xp.next() != XmlParser::END) { if (xp.type() == XmlParser::START_ELEMENT) sd++; else if (xp.type() == XmlParser::END_ELEMENT) sd--; else if (xp.type() == XmlParser::TEXT) tb.text.append(xp.textContent(), xp.textLength()); }
+                                                            int sd = 1; while (sd > 0 && xp.next() != XmlParser::END) { if (xp.type() == XmlParser::START_ELEMENT) sd++; else if (xp.type() == XmlParser::END_ELEMENT) sd--; else if (xp.type() == XmlParser::TEXT) tb.text.append(decode_xml_entities(xp.textContent(), xp.textLength())); }
                                                             if (!tb.text.empty()) cell.text_blocks.push_back(tb);
-                                                        } else { pd++; }
+                                                        } else { skip_element(xp); }
                                                     } else if (xp.type() == XmlParser::END_ELEMENT) pd--;
-                                                    else if (xp.type() == XmlParser::TEXT && xp.textContent()) { if (cell.text_blocks.empty()) cell.text_blocks.push_back({}); cell.text_blocks.back().text.append(xp.textContent(), xp.textLength()); }
+                                                    else if (xp.type() == XmlParser::TEXT && xp.textContent()) { if (cell.text_blocks.empty()) cell.text_blocks.push_back({}); cell.text_blocks.back().text.append(decode_xml_entities(xp.textContent(), xp.textLength())); }
                                                 }
-                                            } else { cd++; }
+                                            } else { skip_element(xp); }
                                         } else if (xp.type() == XmlParser::END_ELEMENT) cd--;
-                                        else if (xp.type() == XmlParser::TEXT && xp.textContent()) { if (cell.text_blocks.empty()) cell.text_blocks.push_back({}); cell.text_blocks.back().text.append(xp.textContent(), xp.textLength()); }
+                                        else if (xp.type() == XmlParser::TEXT && xp.textContent()) { if (cell.text_blocks.empty()) cell.text_blocks.push_back({}); cell.text_blocks.back().text.append(decode_xml_entities(xp.textContent(), xp.textLength())); }
                                     }
                                     row.cells.push_back(cell);
-                                } else { rd++; } 
+                                } else { skip_element(xp); } 
                             } else if (xp.type() == XmlParser::END_ELEMENT) rd--;
                         }
                         b.table_rows.push_back(row);
-                    } else { td++; }
+                    } else { skip_element(xp); }
                 } else if (xp.type() == XmlParser::END_ELEMENT) td--;
             }
             out_blocks.push_back(b);
@@ -512,19 +539,19 @@ static bool parse_fodt_body(XmlParser& xp, PageInfo& page, std::vector<ContentBl
                                         if (xp.type() == XmlParser::START_ELEMENT) {
                                             if (xp.match("text:span")) {
                                                 TextBlock tb; const char* span_style = xp.attr("text:style-name"); if (span_style) tb.props = resolve_style(span_style).text;
-                                                int sd = 1; while (sd > 0 && xp.next() != XmlParser::END) { if (xp.type() == XmlParser::START_ELEMENT) sd++; else if (xp.type() == XmlParser::END_ELEMENT) sd--; else if (xp.type() == XmlParser::TEXT && xp.textContent()) tb.text.append(xp.textContent(), xp.textLength()); }
+                                                int sd = 1; while (sd > 0 && xp.next() != XmlParser::END) { if (xp.type() == XmlParser::START_ELEMENT) sd++; else if (xp.type() == XmlParser::END_ELEMENT) sd--; else if (xp.type() == XmlParser::TEXT && xp.textContent()) tb.text.append(decode_xml_entities(xp.textContent(), xp.textLength())); }
                                                 if (!tb.text.empty()) b.text_blocks.push_back(tb);
-                                            } else { pd++; }
+                                            } else { skip_element(xp); }
                                         } else if (xp.type() == XmlParser::END_ELEMENT) pd--;
-                                        else if (xp.type() == XmlParser::TEXT && xp.textContent()) { if (b.text_blocks.empty()) b.text_blocks.push_back(TextBlock{}); b.text_blocks.back().text.append(xp.textContent(), xp.textLength()); }
+                                        else if (xp.type() == XmlParser::TEXT && xp.textContent()) { if (b.text_blocks.empty()) b.text_blocks.push_back(TextBlock{}); b.text_blocks.back().text.append(decode_xml_entities(xp.textContent(), xp.textLength())); }
                                     }
                                     out_blocks.push_back(b);
                                 } else if (xp.match("text:list")) {
                                     parse_fodt_body(xp, page, out_blocks, indent_level + 1);
-                                } else { lid++; }
+                                } else { skip_element(xp); }
                             } else if (xp.type() == XmlParser::END_ELEMENT) lid--;
                         }
-                    } else { ld++; } 
+                    } else { skip_element(xp); } 
                 } else if (xp.type() == XmlParser::END_ELEMENT) ld--;
             }
         } else if (xp.match("draw:frame")) {
@@ -536,7 +563,7 @@ static bool parse_fodt_body(XmlParser& xp, PageInfo& page, std::vector<ContentBl
                  else if (xp.type() == XmlParser::END_ELEMENT) id--;
              }
              out_blocks.push_back(b);
-        } else { int d = 1; while (d > 0 && xp.next() != XmlParser::END) { if (xp.type() == XmlParser::START_ELEMENT) d++; else if (xp.type() == XmlParser::END_ELEMENT) d--; } }
+        } else { skip_element(xp); }
     }
     return true;
 }
@@ -546,27 +573,29 @@ static bool parse_fodt_document(const char* fodt, size_t fodt_len,
 {
     init_style_db(); page = PageInfo{};
     XmlParser xp(fodt, fodt_len);
-    int guard = 0;
     while (xp.next() != XmlParser::END) {
-        if (++guard > 10000) break;
         if (xp.type() != XmlParser::START_ELEMENT) continue;
+        if (xp.match("office:document")) continue;
+        
         if (xp.match("office:meta")) {
-            int d = 1; while (d > 0 && xp.next() != XmlParser::END) { 
+            int d = 1; while (d > 0 && (xp.next() != XmlParser::END)) { 
                 if (xp.type() == XmlParser::START_ELEMENT) { 
                     if (xp.match("meta:document-statistic")) { 
                         const char* v; if ((v = xp.attr("meta:page-count"))) page.page_count = atoi(v); if ((v = xp.attr("meta:paragraph-count"))) page.paragraph_count = atoi(v); if ((v = xp.attr("meta:word-count"))) page.word_count = atoi(v); if ((v = xp.attr("meta:character-count"))) page.character_count = atoi(v); 
-                    } else if (xp.match("dc:title")) { xp.next(); if (xp.type() == XmlParser::TEXT) page.title = xp.textContent(); }
-                    else if (xp.match("dc:creator")) { xp.next(); if (xp.type() == XmlParser::TEXT) page.creator = xp.textContent(); }
-                    else if (xp.match("meta:creation-date")) { xp.next(); if (xp.type() == XmlParser::TEXT) page.created = xp.textContent(); }
-                    else if (xp.match("dc:date")) { xp.next(); if (xp.type() == XmlParser::TEXT) page.modified = xp.textContent(); }
-                    int dd = 1; while (dd > 0 && xp.next() != XmlParser::END) { if (xp.type() == XmlParser::START_ELEMENT) dd++; else if (xp.type() == XmlParser::END_ELEMENT) dd--; } 
+                    } else if (xp.match("dc:title")) { xp.next(); if (xp.type() == XmlParser::TEXT) page.title = decode_xml_entities(xp.textContent(), xp.textLength()); }
+                    else if (xp.match("dc:creator")) { xp.next(); if (xp.type() == XmlParser::TEXT) page.creator = decode_xml_entities(xp.textContent(), xp.textLength()); }
+                    else if (xp.match("meta:creation-date")) { xp.next(); if (xp.type() == XmlParser::TEXT) page.created = decode_xml_entities(xp.textContent(), xp.textLength()); }
+                    else if (xp.match("dc:date")) { xp.next(); if (xp.type() == XmlParser::TEXT) page.modified = decode_xml_entities(xp.textContent(), xp.textLength()); }
+                    skip_element(xp);
                 } else if (xp.type() == XmlParser::END_ELEMENT) d--; 
             }
         } else if (xp.match("office:styles") || xp.match("office:automatic-styles")) {
-            int d = 1; while (d > 0 && xp.next() != XmlParser::END) { if (xp.type() == XmlParser::START_ELEMENT) { if (xp.match("style:style")) parse_style_elem(xp); else if (xp.match("style:page-layout")) parse_page_layout(xp, page); else { int dd = 1; while (dd > 0 && xp.next() != XmlParser::END) { if (xp.type() == XmlParser::START_ELEMENT) dd++; else if (xp.type() == XmlParser::END_ELEMENT) dd--; } } } else if (xp.type() == XmlParser::END_ELEMENT) d--; }
+            int d = 1; while (d > 0 && xp.next() != XmlParser::END) { if (xp.type() == XmlParser::START_ELEMENT) { if (xp.match("style:style")) parse_style_elem(xp); else if (xp.match("style:page-layout")) parse_page_layout(xp, page); else { skip_element(xp); } } else if (xp.type() == XmlParser::END_ELEMENT) d--; }
             for (int i = 0; i < g_style_count; i++) { if (!g_style_db[i].parent.empty()) { Style parent = resolve_style(g_style_db[i].parent.c_str()); merge_style(parent, g_style_db[i]); } }
         } else if (xp.match("office:body")) {
-            int d = 1; while (d > 0 && xp.next() != XmlParser::END) { if (xp.type() == XmlParser::START_ELEMENT) { if (xp.match("office:text")) { if (!parse_fodt_body(xp, page, out_blocks)) return false; } else { int dd = 1; while (dd > 0 && xp.next() != XmlParser::END) { if (xp.type() == XmlParser::START_ELEMENT) dd++; else if (xp.type() == XmlParser::END_ELEMENT) dd--; } } } else if (xp.type() == XmlParser::END_ELEMENT) d--; }
+            int d = 1; while (d > 0 && xp.next() != XmlParser::END) { if (xp.type() == XmlParser::START_ELEMENT) { if (xp.match("office:text")) { if (!parse_fodt_body(xp, page, out_blocks)) return false; } else { skip_element(xp); } } else if (xp.type() == XmlParser::END_ELEMENT) d--; }
+        } else {
+            skip_element(xp);
         }
     }
     return true;
@@ -641,31 +670,44 @@ static void get_block_positions(lok::Document* doc, std::vector<ContentBlock>& b
         cap.selection.clear();
 
         if (b.type == BlockType::PARAGRAPH || b.type == BlockType::LIST) {
-            doc->postUnoCommand(".uno:GoToStartOfPara", nullptr, false); pump_until_updated(doc, cap, 15);
-            double x1 = cap.x_twip, y1 = cap.y_twip;
+            /* Force initial recognition for first paragraph */
+            doc->postUnoCommand(".uno:GoToStartOfPara", nullptr, false);
+            if (!pump_until_updated(doc, cap, 5)) {
+                 /* If no update, move slightly then back to trigger recognition */
+                 doc->postUnoCommand(".uno:GoRight", nullptr, false); pump_until_updated(doc, cap, 5);
+                 doc->postUnoCommand(".uno:GoLeft", nullptr, false); pump_until_updated(doc, cap, 5);
+            }
+            
             cap.updated = false;
-            doc->postUnoCommand(".uno:GoToEndOfPara", nullptr, false); pump_until_updated(doc, cap, 15);
-            double x2 = cap.x_twip, y2 = (cap.y_twip >= 0) ? (cap.y_twip + cap.h_twip) : -1;
-
-            TwipRect union_rect = {0, 0, 0, 0};
-            if (x1 >= 0 && y1 >= 0 && cap.x_twip >= 0 && cap.y_twip >= 0) {
-                union_rect.x = std::min(x1, cap.x_twip); union_rect.y = std::min(y1, cap.y_twip);
-                union_rect.w = std::max(std::abs(x2 - x1), 1.0); union_rect.h = std::max(std::abs(y2 - y1), 1.0);
-            } else if (cap.has_coords) { union_rect = {cap.x_twip, cap.y_twip, cap.w_twip, cap.h_twip}; }
-            if (union_rect.w < 100) union_rect.w = 8000;
-
-            int phys_page = 1; double page_y = 0;
-            if (union_rect.y >= 0) {
-                double test_y = union_rect.y + union_rect.h / 2.0;
+            doc->postUnoCommand(".uno:GoToEndOfParaSel", nullptr, false);
+            if (pump_until_updated(doc, cap, 15) && !cap.selection.empty()) {
+                TwipRect u = cap.selection[0];
+                for (size_t s = 1; s < cap.selection.size(); s++) {
+                    double ux1 = std::min(u.x, cap.selection[s].x), uy1 = std::min(u.y, cap.selection[s].y);
+                    double ux2 = std::max(u.x + u.w, cap.selection[s].x + cap.selection[s].w);
+                    double uy2 = std::max(u.y + u.h, cap.selection[s].y + cap.selection[s].h);
+                    u = {ux1, uy1, ux2 - ux1, uy2 - uy1};
+                }
+                int phys_page = 1; double page_y = 0;
                 for (size_t p = 0; p < page_rects.size(); p++) {
-                    if (test_y >= page_rects[p].y && test_y < page_rects[p].y + page_rects[p].h) {
+                    if (u.y + u.h / 2.0 >= page_rects[p].y && u.y + u.h / 2.0 < page_rects[p].y + page_rects[p].h) {
                         phys_page = (int)p + 1; page_y = page_rects[p].y; break;
                     }
                 }
+                b.page_index = phys_page; b.page_number = (cap.logical_page > 0) ? cap.logical_page : phys_page;
+                b.bbox_x_mm = u.x * twip_to_mm; b.bbox_y_mm = std::max(0.0, (u.y - page_y) * twip_to_mm);
+                b.bbox_w_mm = u.w * twip_to_mm; b.bbox_h_mm = u.h * twip_to_mm;
+            } else if (cap.has_coords || (cap.x_twip != -1)) {
+                int phys_page = 1; double page_y = 0;
+                for (size_t p = 0; p < page_rects.size(); p++) {
+                    if (cap.y_twip >= page_rects[p].y && cap.y_twip < page_rects[p].y + page_rects[p].h) {
+                        phys_page = (int)p + 1; page_y = page_rects[p].y; break;
+                    }
+                }
+                b.page_index = phys_page; b.page_number = (cap.logical_page > 0) ? cap.logical_page : phys_page;
+                b.bbox_x_mm = cap.x_twip * twip_to_mm; b.bbox_y_mm = std::max(0.0, (cap.y_twip - page_y) * twip_to_mm);
+                b.bbox_w_mm = 8000 * twip_to_mm; b.bbox_h_mm = cap.h_twip * twip_to_mm;
             }
-            b.page_index = phys_page; b.page_number = (cap.logical_page > 0) ? cap.logical_page : phys_page;
-            b.bbox_x_mm = union_rect.x * twip_to_mm; b.bbox_y_mm = std::max(0.0, (union_rect.y - page_y) * twip_to_mm);
-            b.bbox_w_mm = union_rect.w * twip_to_mm; b.bbox_h_mm = union_rect.h * twip_to_mm;
 
             for (auto& tb : b.text_blocks) {
                 double pct = 0; int total_len = 0; for(auto& t : b.text_blocks) total_len += t.text.length();

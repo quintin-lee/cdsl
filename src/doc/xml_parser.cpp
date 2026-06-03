@@ -21,6 +21,7 @@
 #include "xml_parser.h"
 #include <cstring>
 #include <cstdlib>
+#include <cctype>
 
 /* ------------------------------------------------------------------ */
 /*  Construction                                                       */
@@ -160,58 +161,37 @@ bool XmlParser::match(const char* qname) const {
 
 // Find attribute value by local name (e.g. "text:style-name" -> find `text:style-name="..."`)
 const char* XmlParser::attr(const char* local) const {
-    // Search from cur_tag_ + cur_tag_len_ to the next '>'
     const char* search = cur_tag_ + cur_tag_len_;
     size_t local_len = strlen(local);
     while (search < end_ && *search != '>' && *search != '/') {
-        // Skip whitespace
-        while (search < end_ && (*search == ' ' || *search == '\t' || *search == '\n' || *search == '\r'))
-            search++;
-        if (search >= end_ || *search == '>' || *search == '/')
-            break;
+        while (search < end_ && isspace((unsigned char)*search)) search++;
+        if (search >= end_ || *search == '>' || *search == '/') break;
 
-        // Check if this attribute name matches
-        if ((size_t)(end_ - search) > local_len + 2 &&
-            memcmp(search, local, local_len) == 0 &&
-            search[local_len] == '=') {
-            // Found: skip ="
+        bool match = false;
+        if ((size_t)(end_ - search) > local_len && memcmp(search, local, local_len) == 0) {
+            char next = search[local_len];
+            if (next == '=') match = true;
+        }
+
+        if (match) {
             const char* val = search + local_len + 1;
-            if (*val == '"' || *val == '\'') {
-                char quote = *val;
-                val++;
+            if (val < end_ && (*val == '"' || *val == '\'')) {
+                char quote = *val; val++;
                 const char* val_end = val;
-                while (val_end < end_ && *val_end != quote)
-                    val_end++;
+                while (val_end < end_ && *val_end != quote) val_end++;
+                
                 static char bufs[8][4096];
                 static int buf_idx = 0;
-                char* buf = bufs[buf_idx];
-                buf_idx = (buf_idx + 1) % 8;
+                char* buf = bufs[buf_idx]; buf_idx = (buf_idx + 1) % 8;
 
                 size_t vlen = (size_t)(val_end - val);
                 if (vlen >= 4096) vlen = 4096 - 1;
                 memcpy(buf, val, vlen);
                 buf[vlen] = '\0';
-                // Decode common XML entities in the copy
-                // We'll do entity decoding in the property parsing functions
                 return buf;
             }
-            return nullptr;
         }
-        // Skip to next attribute
-        search++;
-        while (search < end_ && *search != '=' && *search != ' ' && *search != '\t' && *search != '\n' && *search != '\r' && *search != '>' && *search != '/')
-            search++;
-        if (search < end_ && *search == '=') {
-            search++; // skip =
-            if (search < end_ && (*search == '"' || *search == '\'')) {
-                char quote = *search;
-                search++;
-                while (search < end_ && *search != quote)
-                    search++;
-                if (search < end_)
-                    search++; // skip closing quote
-            }
-        }
+        while (search < end_ && !isspace((unsigned char)*search) && *search != '>' && *search != '/') search++;
     }
     return nullptr;
 }
