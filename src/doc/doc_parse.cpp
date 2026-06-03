@@ -20,6 +20,7 @@
 #include <unistd.h>
 #include <cmath>
 #include <algorithm>
+#include <set>
 
 /* ------------------------------------------------------------------ */
 /*  Global state (protected by g_mutex)                                */
@@ -115,6 +116,7 @@ struct PageInfo {
     std::string creator;
     std::string created;
     std::string modified;
+    std::vector<std::string> bookmarks;
 };
 
 struct TextProps {
@@ -157,7 +159,7 @@ enum class BlockType {
 };
 
 struct TableCell {
-    std::string text;
+    std::vector<TextBlock> text_blocks;
     int          colspan = 1;
     int          rowspan = 1;
 };
@@ -170,6 +172,7 @@ struct ContentBlock {
     BlockType type;
     int       page_index = 0;
     int       page_number = 0;
+    int       indent_level = 0;
     double    bbox_x_mm = 0;
     double    bbox_y_mm = 0;
     double    bbox_w_mm = 0;
@@ -193,6 +196,7 @@ struct Style {
     std::string parent;
     ParaProps   para;
     TextProps   text;
+    bool        resolved = false;
 };
 
 static Style g_style_db[1024];
@@ -200,12 +204,12 @@ static int   g_style_count = 0;
 
 static void init_style_db() { g_style_count = 0; }
 
-static Style resolve_style(const char* name) {
-    if (!name) return {};
+static Style* find_style(const char* name) {
+    if (!name || !*name) return nullptr;
     for (int i = 0; i < g_style_count; i++) {
-        if (g_style_db[i].name == name) return g_style_db[i];
+        if (g_style_db[i].name == name) return &g_style_db[i];
     }
-    return {};
+    return nullptr;
 }
 
 static void merge_style(const Style& src, Style& dst) {
@@ -225,6 +229,30 @@ static void merge_style(const Style& src, Style& dst) {
     if (!dst.text.underline) dst.text.underline = src.text.underline;
     if (!dst.text.strikethrough) dst.text.strikethrough = src.text.strikethrough;
     if (dst.text.color.empty()) dst.text.color = src.text.color;
+}
+
+static void resolve_all_styles() {
+    for (int i = 0; i < g_style_count; i++) {
+        if (g_style_db[i].resolved) continue;
+        std::vector<Style*> chain;
+        Style* curr = &g_style_db[i];
+        while (curr && !curr->resolved) {
+            if (std::find(chain.begin(), chain.end(), curr) != chain.end()) break; 
+            chain.push_back(curr);
+            curr = find_style(curr->parent.c_str());
+        }
+        Style base = curr ? *curr : Style{};
+        for (auto it = chain.rbegin(); it != chain.rend(); ++it) {
+            merge_style(base, **it);
+            (*it)->resolved = true;
+            base = **it;
+        }
+    }
+}
+
+static Style resolve_style(const char* name) {
+    Style* s = find_style(name);
+    return s ? *s : Style{};
 }
 
 /* ------------------------------------------------------------------ */
@@ -348,19 +376,19 @@ static void json_append_block(std::string& out, const ContentBlock& b) {
     snprintf(buf, sizeof(buf), 
         "      \"page_index\": %d,\n"
         "      \"page_number\": %d,\n"
+        "      \"indent_level\": %d,\n"
         "      \"bbox_mm\": [%.1f, %.1f, %.1f, %.1f]",
-        b.page_index, b.page_number, b.bbox_x_mm, b.bbox_y_mm, b.bbox_w_mm, b.bbox_h_mm);
+        b.page_index, b.page_number, b.indent_level, b.bbox_x_mm, b.bbox_y_mm, b.bbox_w_mm, b.bbox_h_mm);
     out += buf;
     if (!b.style_name.empty()) { out += ",\n      \"style\": \""; json_escape(out, b.style_name.c_str()); out += "\""; }
     if (b.type == BlockType::PARAGRAPH || b.type == BlockType::LIST) {
         std::string plain_text;
         for (const auto& tb : b.text_blocks) plain_text += tb.text;
         out += ",\n      \"content\": \""; json_escape(out, plain_text.c_str()); out += "\"";
-        
         json_append_para_props(out, b.para_props);
         out += ",\n      \"text_blocks\": [\n";
         for (size_t i = 0; i < b.text_blocks.size(); i++) {
-            if (i > 0) out += ",\n";
+            if (i > 0) out += ",\n"; 
             json_append_text_block(out, b.text_blocks[i]);
         }
         out += "\n      ]";
@@ -371,9 +399,18 @@ static void json_append_block(std::string& out, const ContentBlock& b) {
             out += "        {\"cells\":[";
             for (size_t c = 0; c < b.table_rows[r].cells.size(); c++) {
                 if (c > 0) out += ",";
-                out += "{\"text\":\""; json_escape(out, b.table_rows[r].cells[c].text.c_str());
-                snprintf(buf, sizeof(buf), "\",\"colspan\":%d,\"rowspan\":%d}", b.table_rows[r].cells[c].colspan, b.table_rows[r].cells[c].rowspan);
-                out += buf;
+                out += "{\"colspan\":"; out += std::to_string(b.table_rows[r].cells[c].colspan);
+                out += ",\"rowspan\":"; out += std::to_string(b.table_rows[r].cells[c].rowspan);
+                out += ",\"content\":\"";
+                std::string cell_text;
+                for (const auto& tb : b.table_rows[r].cells[c].text_blocks) cell_text += tb.text;
+                json_escape(out, cell_text.c_str());
+                out += "\",\"text_blocks\":[\n";
+                for (size_t i = 0; i < b.table_rows[r].cells[c].text_blocks.size(); i++) {
+                    if (i > 0) out += ",\n"; 
+                    json_append_text_block(out, b.table_rows[r].cells[c].text_blocks[i]);
+                }
+                out += "]}";
             }
             out += "]}";
         }
@@ -383,7 +420,7 @@ static void json_append_block(std::string& out, const ContentBlock& b) {
         out += "      \"data_base64\": \""; out += b.image_base64; out += "\"";
     } else if (b.type == BlockType::FOOTNOTE) {
         out += ",\n      \"footnote_id\": \""; json_escape(out, b.footnote_id.c_str()); out += "\",\n";
-        out += "      \"text\": \""; if (!b.text_blocks.empty()) json_escape(out, b.text_blocks[0].text.c_str()); out += "\"";
+        out += "      \"content\": \""; if (!b.text_blocks.empty()) json_escape(out, b.text_blocks[0].text.c_str()); out += "\"";
     }
     out += "\n    }";
 }
@@ -392,37 +429,42 @@ static void json_append_block(std::string& out, const ContentBlock& b) {
 /*  FODT Body Parsing                                                  */
 /* ------------------------------------------------------------------ */
 
-static bool parse_fodt_body(XmlParser& xp, std::vector<ContentBlock>& out_blocks)
+static bool parse_fodt_body(XmlParser& xp, PageInfo& page, std::vector<ContentBlock>& out_blocks, int indent_level = 0)
 {
     while (xp.next() == XmlParser::START_ELEMENT) {
         if (xp.match("text:p") || xp.match("text:h")) {
             ContentBlock b; b.type = BlockType::PARAGRAPH;
+            b.indent_level = indent_level;
             const char* style = xp.attr("text:style-name"); if (style) b.style_name = style;
             const char* level = xp.attr("text:outline-level"); if (level) b.para_props.outline_level = atoi(level);
             int d = 1; while (d > 0 && xp.next() != XmlParser::END) {
                 if (xp.type() == XmlParser::START_ELEMENT) {
                     if (xp.match("text:span")) {
                         TextBlock tb; const char* span_style = xp.attr("text:style-name"); if (span_style) tb.props = resolve_style(span_style).text;
-                        int sd = 1; while (sd > 0 && xp.next() != XmlParser::END) {
-                            if (xp.type() == XmlParser::START_ELEMENT) sd++;
-                            else if (xp.type() == XmlParser::END_ELEMENT) sd--;
-                            else if (xp.type() == XmlParser::TEXT && xp.textContent()) tb.text.append(xp.textContent(), xp.textLength());
-                        }
+                        int sd = 1; while (sd > 0 && xp.next() != XmlParser::END) { if (xp.type() == XmlParser::START_ELEMENT) sd++; else if (xp.type() == XmlParser::END_ELEMENT) sd--; else if (xp.type() == XmlParser::TEXT && xp.textContent()) tb.text.append(xp.textContent(), xp.textLength()); }
                         if (!tb.text.empty()) b.text_blocks.push_back(tb);
                     } else if (xp.match("text:a")) {
                         std::string url = xp.attr("xlink:href") ? xp.attr("xlink:href") : "";
-                        int ad = 1; while (ad > 0 && xp.next() != XmlParser::END) {
-                            if (xp.type() == XmlParser::START_ELEMENT) ad++;
-                            else if (xp.type() == XmlParser::END_ELEMENT) ad--;
-                            else if (xp.type() == XmlParser::TEXT && xp.textContent()) { TextBlock tb; tb.text.append(xp.textContent(), xp.textLength()); tb.hyperlink_url = url; b.text_blocks.push_back(tb); }
+                        int ad = 1; while (ad > 0 && xp.next() != XmlParser::END) { if (xp.type() == XmlParser::START_ELEMENT) ad++; else if (xp.type() == XmlParser::END_ELEMENT) ad--; else if (xp.type() == XmlParser::TEXT && xp.textContent()) { TextBlock tb; tb.text.append(xp.textContent(), xp.textLength()); tb.hyperlink_url = url; b.text_blocks.push_back(tb); } }
+                    } else if (xp.match("text:bookmark") || xp.match("text:bookmark-start")) {
+                        const char* name = xp.attr("text:name"); if (name) page.bookmarks.push_back(name);
+                        d++;
+                    } else if (xp.match("text:note")) {
+                        ContentBlock fn; fn.type = BlockType::FOOTNOTE;
+                        fn.footnote_id = xp.attr("text:id") ? xp.attr("text:id") : "";
+                        int nd = 1; while (nd > 0 && xp.next() != XmlParser::END) {
+                            if (xp.type() == XmlParser::START_ELEMENT) { if (xp.match("text:note-body")) { int nbd = 1; while (nbd > 0 && xp.next() != XmlParser::END) { if (xp.type() == XmlParser::START_ELEMENT) nbd++; else if (xp.type() == XmlParser::END_ELEMENT) nbd--; else if (xp.type() == XmlParser::TEXT && xp.textContent()) { if (fn.text_blocks.empty()) fn.text_blocks.push_back({}); fn.text_blocks[0].text.append(xp.textContent(), xp.textLength()); } } } else { nd++; } }
+                            else if (xp.type() == XmlParser::END_ELEMENT) nd--;
                         }
+                        out_blocks.push_back(fn);
                     } else { d++; }
                 } else if (xp.type() == XmlParser::END_ELEMENT) d--;
-                else if (xp.type() == XmlParser::TEXT && xp.textContent()) { if (b.text_blocks.empty() || !b.text_blocks.back().hyperlink_url.empty()) b.text_blocks.push_back(TextBlock{}); b.text_blocks.back().text.append(xp.textContent(), xp.textLength()); }
+                else if (xp.type() == XmlParser::TEXT && xp.textContent()) { if (b.text_blocks.empty()) b.text_blocks.push_back(TextBlock{}); b.text_blocks.back().text.append(xp.textContent(), xp.textLength()); }
             }
             out_blocks.push_back(b);
         } else if (xp.match("table:table")) {
             ContentBlock b; b.type = BlockType::TABLE; b.style_name = xp.attr("table:style-name") ? xp.attr("table:style-name") : "";
+            b.indent_level = indent_level;
             int td = 1; while (td > 0 && xp.next() != XmlParser::END) {
                 if (xp.type() == XmlParser::START_ELEMENT) {
                     if (xp.match("table:table-row")) {
@@ -430,7 +472,23 @@ static bool parse_fodt_body(XmlParser& xp, std::vector<ContentBlock>& out_blocks
                             if (xp.type() == XmlParser::START_ELEMENT) { 
                                 if (xp.match("table:table-cell")) { 
                                     TableCell cell; const char* cs = xp.attr("table:number-columns-spanned"); if (cs) cell.colspan = atoi(cs); const char* rs = xp.attr("table:number-rows-spanned"); if (rs) cell.rowspan = atoi(rs);
-                                    int cd = 1; while (cd > 0 && xp.next() != XmlParser::END) { if (xp.type() == XmlParser::START_ELEMENT) cd++; else if (xp.type() == XmlParser::END_ELEMENT) cd--; else if (xp.type() == XmlParser::TEXT && xp.textContent()) cell.text.append(xp.textContent(), xp.textLength()); }
+                                    int cd = 1; while (cd > 0 && xp.next() != XmlParser::END) {
+                                        if (xp.type() == XmlParser::START_ELEMENT) {
+                                            if (xp.match("text:p")) {
+                                                int pd = 1; while (pd > 0 && xp.next() != XmlParser::END) {
+                                                    if (xp.type() == XmlParser::START_ELEMENT) {
+                                                        if (xp.match("text:span")) {
+                                                            TextBlock tb; const char* ss = xp.attr("text:style-name"); if (ss) tb.props = resolve_style(ss).text;
+                                                            int sd = 1; while (sd > 0 && xp.next() != XmlParser::END) { if (xp.type() == XmlParser::START_ELEMENT) sd++; else if (xp.type() == XmlParser::END_ELEMENT) sd--; else if (xp.type() == XmlParser::TEXT) tb.text.append(xp.textContent(), xp.textLength()); }
+                                                            if (!tb.text.empty()) cell.text_blocks.push_back(tb);
+                                                        } else { pd++; }
+                                                    } else if (xp.type() == XmlParser::END_ELEMENT) pd--;
+                                                    else if (xp.type() == XmlParser::TEXT && xp.textContent()) { if (cell.text_blocks.empty()) cell.text_blocks.push_back({}); cell.text_blocks.back().text.append(xp.textContent(), xp.textLength()); }
+                                                }
+                                            } else { cd++; }
+                                        } else if (xp.type() == XmlParser::END_ELEMENT) cd--;
+                                        else if (xp.type() == XmlParser::TEXT && xp.textContent()) { if (cell.text_blocks.empty()) cell.text_blocks.push_back({}); cell.text_blocks.back().text.append(xp.textContent(), xp.textLength()); }
+                                    }
                                     row.cells.push_back(cell);
                                 } else { rd++; } 
                             } else if (xp.type() == XmlParser::END_ELEMENT) rd--;
@@ -442,27 +500,32 @@ static bool parse_fodt_body(XmlParser& xp, std::vector<ContentBlock>& out_blocks
             out_blocks.push_back(b);
         } else if (xp.match("text:list")) {
             int ld = 1; while (ld > 0 && xp.next() != XmlParser::END) {
-                if (xp.type() == XmlParser::START_ELEMENT) { if (xp.match("text:list-item")) { 
-                    int lid = 1; while (lid > 0 && xp.next() != XmlParser::END) {
-                        if (xp.type() == XmlParser::START_ELEMENT) {
-                            if (xp.match("text:p") || xp.match("text:h")) {
-                                ContentBlock b; b.type = BlockType::PARAGRAPH;
-                                const char* style = xp.attr("text:style-name"); if (style) b.style_name = style;
-                                int pd = 1; while (pd > 0 && xp.next() != XmlParser::END) {
-                                    if (xp.type() == XmlParser::START_ELEMENT) {
-                                        if (xp.match("text:span")) {
-                                            TextBlock tb; const char* span_style = xp.attr("text:style-name"); if (span_style) tb.props = resolve_style(span_style).text;
-                                            int sd = 1; while (sd > 0 && xp.next() != XmlParser::END) { if (xp.type() == XmlParser::START_ELEMENT) sd++; else if (xp.type() == XmlParser::END_ELEMENT) sd--; else if (xp.type() == XmlParser::TEXT && xp.textContent()) tb.text.append(xp.textContent(), xp.textLength()); }
-                                            if (!tb.text.empty()) b.text_blocks.push_back(tb);
-                                        } else { pd++; }
-                                    } else if (xp.type() == XmlParser::END_ELEMENT) pd--;
-                                    else if (xp.type() == XmlParser::TEXT && xp.textContent()) { if (b.text_blocks.empty()) b.text_blocks.push_back(TextBlock{}); b.text_blocks.back().text.append(xp.textContent(), xp.textLength()); }
-                                }
-                                out_blocks.push_back(b);
-                            } else { lid++; }
-                        } else if (xp.type() == XmlParser::END_ELEMENT) lid--;
-                    }
-                } else { ld++; } } else if (xp.type() == XmlParser::END_ELEMENT) ld--;
+                if (xp.type() == XmlParser::START_ELEMENT) { 
+                    if (xp.match("text:list-item")) { 
+                        int lid = 1; while (lid > 0 && xp.next() != XmlParser::END) {
+                            if (xp.type() == XmlParser::START_ELEMENT) {
+                                if (xp.match("text:p") || xp.match("text:h")) {
+                                    ContentBlock b; b.type = BlockType::PARAGRAPH;
+                                    b.indent_level = indent_level + 1;
+                                    const char* style = xp.attr("text:style-name"); if (style) b.style_name = style;
+                                    int pd = 1; while (pd > 0 && xp.next() != XmlParser::END) {
+                                        if (xp.type() == XmlParser::START_ELEMENT) {
+                                            if (xp.match("text:span")) {
+                                                TextBlock tb; const char* span_style = xp.attr("text:style-name"); if (span_style) tb.props = resolve_style(span_style).text;
+                                                int sd = 1; while (sd > 0 && xp.next() != XmlParser::END) { if (xp.type() == XmlParser::START_ELEMENT) sd++; else if (xp.type() == XmlParser::END_ELEMENT) sd--; else if (xp.type() == XmlParser::TEXT && xp.textContent()) tb.text.append(xp.textContent(), xp.textLength()); }
+                                                if (!tb.text.empty()) b.text_blocks.push_back(tb);
+                                            } else { pd++; }
+                                        } else if (xp.type() == XmlParser::END_ELEMENT) pd--;
+                                        else if (xp.type() == XmlParser::TEXT && xp.textContent()) { if (b.text_blocks.empty()) b.text_blocks.push_back(TextBlock{}); b.text_blocks.back().text.append(xp.textContent(), xp.textLength()); }
+                                    }
+                                    out_blocks.push_back(b);
+                                } else if (xp.match("text:list")) {
+                                    parse_fodt_body(xp, page, out_blocks, indent_level + 1);
+                                } else { lid++; }
+                            } else if (xp.type() == XmlParser::END_ELEMENT) lid--;
+                        }
+                    } else { ld++; } 
+                } else if (xp.type() == XmlParser::END_ELEMENT) ld--;
             }
         } else if (xp.match("draw:frame")) {
              ContentBlock b; b.type = BlockType::IMAGE;
@@ -503,19 +566,16 @@ static bool parse_fodt_document(const char* fodt, size_t fodt_len,
             int d = 1; while (d > 0 && xp.next() != XmlParser::END) { if (xp.type() == XmlParser::START_ELEMENT) { if (xp.match("style:style")) parse_style_elem(xp); else if (xp.match("style:page-layout")) parse_page_layout(xp, page); else { int dd = 1; while (dd > 0 && xp.next() != XmlParser::END) { if (xp.type() == XmlParser::START_ELEMENT) dd++; else if (xp.type() == XmlParser::END_ELEMENT) dd--; } } } else if (xp.type() == XmlParser::END_ELEMENT) d--; }
             for (int i = 0; i < g_style_count; i++) { if (!g_style_db[i].parent.empty()) { Style parent = resolve_style(g_style_db[i].parent.c_str()); merge_style(parent, g_style_db[i]); } }
         } else if (xp.match("office:body")) {
-            int d = 1; while (d > 0 && xp.next() != XmlParser::END) { if (xp.type() == XmlParser::START_ELEMENT) { if (xp.match("office:text")) { if (!parse_fodt_body(xp, out_blocks)) return false; } else { int dd = 1; while (dd > 0 && xp.next() != XmlParser::END) { if (xp.type() == XmlParser::START_ELEMENT) dd++; else if (xp.type() == XmlParser::END_ELEMENT) dd--; } } } else if (xp.type() == XmlParser::END_ELEMENT) d--; }
+            int d = 1; while (d > 0 && xp.next() != XmlParser::END) { if (xp.type() == XmlParser::START_ELEMENT) { if (xp.match("office:text")) { if (!parse_fodt_body(xp, page, out_blocks)) return false; } else { int dd = 1; while (dd > 0 && xp.next() != XmlParser::END) { if (xp.type() == XmlParser::START_ELEMENT) dd++; else if (xp.type() == XmlParser::END_ELEMENT) dd--; } } } else if (xp.type() == XmlParser::END_ELEMENT) d--; }
         }
     }
     return true;
 }
 
-/* ------------------------------------------------------------------ */
-/*  Paragraph position extraction via LOK Rendering                   */
-/* ------------------------------------------------------------------ */
-
 struct TwipRect { double x = 0, y = 0, w = 0, h = 0; };
 struct CursorCapture {
     double x_twip = -1, y_twip = -1, w_twip = 0, h_twip = 0;
+    std::vector<TwipRect> selection;
     bool updated = false; bool has_coords = false; int logical_page = 0;
 };
 
@@ -548,6 +608,9 @@ static void cursor_callback(int type, const char* payload, void* data) {
         std::vector<TwipRect> rects; parse_rect_list(payload, rects);
         if (!rects.empty()) { cap->x_twip = rects[0].x; cap->y_twip = rects[0].y; cap->w_twip = rects[0].w; cap->h_twip = rects[0].h; cap->has_coords = true; cap->updated = true; }
     }
+    if (type == LOK_CALLBACK_TEXT_SELECTION && payload && *payload) {
+        cap->selection.clear(); parse_rect_list(payload, cap->selection); cap->updated = true;
+    }
     if (type == LOK_CALLBACK_STATE_CHANGED && payload) {
         if (strncmp(payload, ".uno:StatePageNumber=", 21) == 0) {
             const char* val = payload + 21; int pnum = 0;
@@ -574,56 +637,85 @@ static void get_block_positions(lok::Document* doc, std::vector<ContentBlock>& b
     const double twip_to_mm = 25.4 / 1440.0;
     
     for (auto& b : blocks) {
-        if (b.type != BlockType::PARAGRAPH && b.type != BlockType::LIST) continue;
-
         cap.updated = false; cap.has_coords = false; cap.x_twip = -1; cap.y_twip = -1;
-        doc->postUnoCommand(".uno:GoToStartOfPara", nullptr, false); pump_until_updated(doc, cap, 15);
-        double x1 = cap.x_twip, y1 = cap.y_twip;
+        cap.selection.clear();
 
-        cap.updated = false;
-        doc->postUnoCommand(".uno:GoToEndOfPara", nullptr, false); pump_until_updated(doc, cap, 15);
-        double x2 = cap.x_twip, y2 = (cap.y_twip >= 0) ? (cap.y_twip + cap.h_twip) : -1;
+        if (b.type == BlockType::PARAGRAPH || b.type == BlockType::LIST) {
+            doc->postUnoCommand(".uno:GoToStartOfPara", nullptr, false); pump_until_updated(doc, cap, 15);
+            double x1 = cap.x_twip, y1 = cap.y_twip;
+            cap.updated = false;
+            doc->postUnoCommand(".uno:GoToEndOfPara", nullptr, false); pump_until_updated(doc, cap, 15);
+            double x2 = cap.x_twip, y2 = (cap.y_twip >= 0) ? (cap.y_twip + cap.h_twip) : -1;
 
-        TwipRect union_rect = {0, 0, 0, 0};
-        if (x1 >= 0 && y1 >= 0 && cap.x_twip >= 0 && cap.y_twip >= 0) {
-            union_rect.x = std::min(x1, cap.x_twip); union_rect.y = std::min(y1, cap.y_twip);
-            union_rect.w = std::max(std::abs(x2 - x1), 1.0); union_rect.h = std::max(std::abs(y2 - y1), 1.0);
-        } else if (cap.has_coords) { union_rect = {cap.x_twip, cap.y_twip, cap.w_twip, cap.h_twip}; }
-        if (union_rect.w < 100) union_rect.w = 8000;
+            TwipRect union_rect = {0, 0, 0, 0};
+            if (x1 >= 0 && y1 >= 0 && cap.x_twip >= 0 && cap.y_twip >= 0) {
+                union_rect.x = std::min(x1, cap.x_twip); union_rect.y = std::min(y1, cap.y_twip);
+                union_rect.w = std::max(std::abs(x2 - x1), 1.0); union_rect.h = std::max(std::abs(y2 - y1), 1.0);
+            } else if (cap.has_coords) { union_rect = {cap.x_twip, cap.y_twip, cap.w_twip, cap.h_twip}; }
+            if (union_rect.w < 100) union_rect.w = 8000;
 
-        int phys_page = 1; double page_y = 0;
-        if (union_rect.y >= 0) {
-            double test_y = union_rect.y + union_rect.h / 2.0;
-            for (size_t p = 0; p < page_rects.size(); p++) {
-                if (test_y >= page_rects[p].y && test_y < page_rects[p].y + page_rects[p].h) {
-                    phys_page = (int)p + 1; page_y = page_rects[p].y; break;
+            int phys_page = 1; double page_y = 0;
+            if (union_rect.y >= 0) {
+                double test_y = union_rect.y + union_rect.h / 2.0;
+                for (size_t p = 0; p < page_rects.size(); p++) {
+                    if (test_y >= page_rects[p].y && test_y < page_rects[p].y + page_rects[p].h) {
+                        phys_page = (int)p + 1; page_y = page_rects[p].y; break;
+                    }
                 }
             }
-        }
+            b.page_index = phys_page; b.page_number = (cap.logical_page > 0) ? cap.logical_page : phys_page;
+            b.bbox_x_mm = union_rect.x * twip_to_mm; b.bbox_y_mm = std::max(0.0, (union_rect.y - page_y) * twip_to_mm);
+            b.bbox_w_mm = union_rect.w * twip_to_mm; b.bbox_h_mm = union_rect.h * twip_to_mm;
 
-        b.page_index = phys_page; b.page_number = (cap.logical_page > 0) ? cap.logical_page : phys_page;
-        b.bbox_x_mm = union_rect.x * twip_to_mm; b.bbox_y_mm = std::max(0.0, (union_rect.y - page_y) * twip_to_mm);
-        b.bbox_w_mm = union_rect.w * twip_to_mm; b.bbox_h_mm = union_rect.h * twip_to_mm;
-
-        for (auto& tb : b.text_blocks) {
-            double pct = 0; int total_len = 0; for(auto& t : b.text_blocks) total_len += t.text.length();
-            pct = total_len > 0 ? (double)tb.text.length() / total_len : 0;
-            tb.bbox_x_mm = b.bbox_x_mm; tb.bbox_y_mm = b.bbox_y_mm; tb.bbox_w_mm = b.bbox_w_mm * pct; tb.bbox_h_mm = b.bbox_h_mm;
-            Style st = resolve_style(b.style_name.c_str());
-            if (tb.props.font_name.empty()) tb.props.font_name = st.text.font_name;
-            if (tb.props.font_size_pt == 0) tb.props.font_size_pt = st.text.font_size_pt;
+            for (auto& tb : b.text_blocks) {
+                double pct = 0; int total_len = 0; for(auto& t : b.text_blocks) total_len += t.text.length();
+                pct = total_len > 0 ? (double)tb.text.length() / total_len : 0;
+                tb.bbox_x_mm = b.bbox_x_mm; tb.bbox_y_mm = b.bbox_y_mm; tb.bbox_w_mm = b.bbox_w_mm * pct; tb.bbox_h_mm = b.bbox_h_mm;
+                Style st = resolve_style(b.style_name.c_str());
+                if (tb.props.font_name.empty()) tb.props.font_name = st.text.font_name;
+                if (tb.props.font_size_pt == 0) tb.props.font_size_pt = st.text.font_size_pt;
+            }
+        } else if (b.type == BlockType::TABLE) {
+            doc->postUnoCommand(".uno:SelectTable", nullptr, false);
+            if (pump_until_updated(doc, cap, 15) && !cap.selection.empty()) {
+                TwipRect u = cap.selection[0];
+                for (size_t s = 1; s < cap.selection.size(); s++) {
+                    double ux1 = std::min(u.x, cap.selection[s].x), uy1 = std::min(u.y, cap.selection[s].y);
+                    double ux2 = std::max(u.x + u.w, cap.selection[s].x + cap.selection[s].w);
+                    double uy2 = std::max(u.y + u.h, cap.selection[s].y + cap.selection[s].h);
+                    u = {ux1, uy1, ux2 - ux1, uy2 - uy1};
+                }
+                int phys_page = 1; double page_y = 0;
+                for (size_t p = 0; p < page_rects.size(); p++) {
+                    if (u.y + u.h / 2.0 >= page_rects[p].y && u.y + u.h / 2.0 < page_rects[p].y + page_rects[p].h) {
+                        phys_page = (int)p + 1; page_y = page_rects[p].y; break;
+                    }
+                }
+                b.page_index = phys_page; b.page_number = (cap.logical_page > 0) ? cap.logical_page : phys_page;
+                b.bbox_x_mm = u.x * twip_to_mm; b.bbox_y_mm = std::max(0.0, (u.y - page_y) * twip_to_mm);
+                b.bbox_w_mm = u.w * twip_to_mm; b.bbox_h_mm = u.h * twip_to_mm;
+            }
+        } else {
+            pump_until_updated(doc, cap, 5);
+            if (cap.has_coords) {
+                int phys_page = 1; double page_y = 0;
+                for (size_t p = 0; p < page_rects.size(); p++) {
+                    if (cap.y_twip >= page_rects[p].y && cap.y_twip < page_rects[p].y + page_rects[p].h) {
+                        phys_page = (int)p + 1; page_y = page_rects[p].y; break;
+                    }
+                }
+                b.page_index = phys_page; b.page_number = (cap.logical_page > 0) ? cap.logical_page : phys_page;
+                b.bbox_x_mm = cap.x_twip * twip_to_mm; b.bbox_y_mm = std::max(0.0, (cap.y_twip - page_y) * twip_to_mm);
+                if (b.bbox_w_mm == 0) b.bbox_w_mm = cap.w_twip * twip_to_mm;
+                if (b.bbox_h_mm == 0) b.bbox_h_mm = cap.h_twip * twip_to_mm;
+            }
         }
-        
         cap.updated = false; doc->postUnoCommand(".uno:GoToEndOfPara", nullptr, false); pump_until_updated(doc, cap, 5);
         doc->postUnoCommand(".uno:GoRight", nullptr, false);
         if (!pump_until_updated(doc, cap, 10)) { doc->postUnoCommand(".uno:GoDown", nullptr, false); pump_until_updated(doc, cap, 5); }
     }
     doc->registerCallback(nullptr, nullptr);
 }
-
-/* ------------------------------------------------------------------ */
-/*  Public API                                                         */
-/* ------------------------------------------------------------------ */
 
 extern "C" int cdsl_doc_init(void) {
 	if (g_office) return 1;
@@ -668,6 +760,7 @@ extern "C" char* cdsl_doc_extract_to_json(const char* path) {
 		fseek(ff, 0, SEEK_END); long fodt_size = ftell(ff); fseek(ff, 0, SEEK_SET);
 		std::vector<char> fodt_buf(fodt_size + 1); size_t nf = fread(fodt_buf.data(), 1, (size_t)fodt_size, ff); fodt_buf[nf] = '\0'; fclose(ff); remove(fodt_path);
 		if (!parse_fodt_document(fodt_buf.data(), (size_t)fodt_size, page, blocks)) return nullptr;
+		resolve_all_styles();
 		if (!blocks.empty() && doc) get_block_positions(doc.get(), blocks);
 	}
 	std::string out; out.reserve(65536); out += "{\n  \"document\": {\n    \"metadata\": {\n";
@@ -678,6 +771,7 @@ extern "C" char* cdsl_doc_extract_to_json(const char* path) {
 	if (!page.creator.empty()) { out += ",\n      \"creator\": \""; json_escape(out, page.creator.c_str()); out += "\""; }
 	if (!page.created.empty()) { out += ",\n      \"created\": \""; json_escape(out, page.created.c_str()); out += "\""; }
 	if (!page.modified.empty()) { out += ",\n      \"modified\": \""; json_escape(out, page.modified.c_str()); out += "\""; }
+	if (!page.bookmarks.empty()) { out += ",\n      \"bookmarks\": ["; for (size_t i = 0; i < page.bookmarks.size(); i++) { if (i > 0) out += ","; out += "\""; json_escape(out, page.bookmarks[i].c_str()); out += "\""; } out += "]"; }
 	out += "\n    },\n    \"elements\": [\n";
 	for (size_t i = 0; i < blocks.size(); i++) { if (i > 0) out += ",\n"; json_append_block(out, blocks[i]); }
 	out += "\n    ]\n  }\n}\n";
