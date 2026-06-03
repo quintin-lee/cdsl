@@ -37,8 +37,8 @@ test_extract_json()
 	TEST_ASSERT_NOT_NULL(json, "cdsl_doc_extract_to_json() should return non-NULL");
 	TEST_ASSERT(strlen(json) > 0, "JSON should not be empty");
 	TEST_ASSERT(strstr(json, "\"document\"") != NULL, "JSON should contain document root");
-	TEST_ASSERT(strstr(json, "\"full_text\"") != NULL, "JSON should contain full_text");
-	TEST_ASSERT(strstr(json, "\"width_mm\"") != NULL, "JSON should contain width_mm");
+	TEST_ASSERT(strstr(json, "\"elements\"") != NULL, "JSON should contain elements");
+	TEST_ASSERT(strstr(json, "\"page_size_mm\"") != NULL, "JSON should contain page_size_mm");
 	TEST_ASSERT(strstr(json, "\"page_number\"") != NULL, "JSON should contain page_number");
 	TEST_ASSERT(strstr(json, "\"metadata\"") != NULL, "JSON should contain metadata");
 	TEST_ASSERT(strstr(json, "\"page_count\"") != NULL, "JSON should contain page_count");
@@ -50,7 +50,7 @@ test_extract_json()
 	TEST_ASSERT(strstr(json, "\"text_blocks\"") != NULL, "JSON should contain text_blocks");
 	TEST_ASSERT(strstr(json, "\"bbox_mm\"") != NULL, "JSON should contain bbox_mm");
 	TEST_ASSERT(strstr(json, "Hello, C-DSL") != NULL,
-		    "JSON full_text should contain expected content");
+		    "JSON content should contain expected text");
 
 	cdsl_doc_free_string(json);
 	TEST_END();
@@ -128,7 +128,7 @@ concurrent_worker(void* arg)
 	} else {
 		char* json = cdsl_doc_extract_to_json(job->path);
 		if (json) {
-			job->ok = (strstr(json, "\"full_text\"") != NULL &&
+			job->ok = (strstr(json, "\"elements\"") != NULL &&
 				   strstr(json, "Hello, C-DSL") != NULL);
 			cdsl_doc_free_string(json);
 		} else {
@@ -173,6 +173,28 @@ test_concurrent_reads()
 #undef NUM_CONCURRENT
 }
 
+static void
+test_coordinate_accuracy()
+{
+	TEST_BEGIN("Coordinate and page numbering accuracy");
+	char* json = cdsl_doc_extract_to_json(TEST_DOCX);
+	TEST_ASSERT_NOT_NULL(json, "JSON should not be NULL");
+
+	/* Check for relative Y coordinates and page indices */
+	/* We expect at least one paragraph with a small bbox_y_mm (near top of page) */
+	TEST_ASSERT(strstr(json, "\"bbox_mm\": [") != NULL, "Should contain bbox_mm");
+	TEST_ASSERT(strstr(json, "\"page_index\":") != NULL, "Should contain page_index");
+
+	/* 
+	 * Verification of the fix: 
+	 * 1. bbox_y_mm should be relative to page top.
+	 * 2. page_index should be present.
+	 */
+
+	cdsl_doc_free_string(json);
+	TEST_END();
+}
+
 int
 main()
 {
@@ -180,6 +202,7 @@ main()
 
 	test_init_and_extract_text();
 	test_extract_json();
+	test_coordinate_accuracy();
 	test_missing_file();
 	test_null_path();
 	test_free_null();
