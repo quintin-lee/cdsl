@@ -256,12 +256,14 @@ cdsl_ai_register_provider(const char* name, const cdsl_ai_provider_t* provider)
 {
 	pthread_once(&g_ai_registry_once, init_registries);
 	pthread_rwlock_wrlock(&g_ai_registry_lock);
-	cdsl_ai_provider_t* old = (cdsl_ai_provider_t*)cdsl_hashmap_get(g_providers, name);
+	/* NOTE: old provider entry is NOT freed here — concurrent readers
+	   may hold a pointer obtained under the read lock. Leaking a small
+	   struct on re-registration is acceptable since registration is rare
+	   and eliminates a use-after-free race. */
 	cdsl_ai_provider_t* copy = malloc(sizeof(*copy));
 	if (copy) {
 		*copy = *provider;
 		cdsl_hashmap_put(g_providers, name, copy);
-		free(old);
 	}
 	pthread_rwlock_unlock(&g_ai_registry_lock);
 }
@@ -271,12 +273,12 @@ cdsl_ai_register_cache_driver(const char* name, const cdsl_ai_cache_t* cache)
 {
 	pthread_once(&g_ai_registry_once, init_registries);
 	pthread_rwlock_wrlock(&g_ai_registry_lock);
-	cdsl_ai_cache_t* old = (cdsl_ai_cache_t*)cdsl_hashmap_get(g_cache_drivers, name);
+	/* Same intentional leak as cdsl_ai_register_provider — prevents
+	   use-after-free race with concurrent readers. */
 	cdsl_ai_cache_t* copy = malloc(sizeof(*copy));
 	if (copy) {
 		*copy = *cache;
 		cdsl_hashmap_put(g_cache_drivers, name, copy);
-		free(old);
 	}
 	pthread_rwlock_unlock(&g_ai_registry_lock);
 }

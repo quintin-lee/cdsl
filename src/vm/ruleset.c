@@ -363,7 +363,14 @@ cdsl_ruleset_load_file(cdsl_ruleset_t* set,
 	fseek(f, 0, SEEK_END);
 	long sz = ftell(f);
 	fseek(f, 0, SEEK_SET);
-	char* buf = malloc(sz + 1);
+	if (sz <= 0) {
+		if (err_buf) {
+			snprintf(err_buf, err_buf_sz, "Empty or unreadable file: %s", filepath);
+		}
+		fclose(f);
+		return 0;
+	}
+	char* buf = malloc((size_t)sz + 1);
 	if (!buf) {
 		fclose(f);
 		return 0;

@@ -115,10 +115,14 @@ json_escape_len(const char* s)
 }
 
 static size_t
-json_escape_buf(char* dst, const char* src)
+json_escape_buf(char* dst, const char* src, size_t dst_cap)
 {
 	char* out = dst;
+	char* end = dst + dst_cap;
 	for (const char* p = src; *p; p++) {
+		if (out >= end - 7) {
+			break;
+		}
 		switch (*p) {
 		case '"':
 			*out++ = '\\';
@@ -150,14 +154,19 @@ json_escape_buf(char* dst, const char* src)
 			break;
 		default:
 			if ((unsigned char)*p < 0x20) {
-				out += snprintf(out, 7, "\\u%04x", (unsigned char)*p);
+				int n = snprintf(out, 7, "\\u%04x", (unsigned char)*p);
+				out += n > 0 ? n : 0;
 			} else {
 				*out++ = *p;
 			}
 			break;
 		}
 	}
-	*out = '\0';
+	if (out < end) {
+		*out = '\0';
+	} else if (dst_cap > 0) {
+		dst[dst_cap - 1] = '\0';
+	}
 	return (size_t)(out - dst);
 }
 
@@ -257,14 +266,19 @@ cdsl_eval_expr_internal(
 		}
 		cdsl_array_t* arr = calloc(1, sizeof(cdsl_array_t));
 		if (arr) {
-			arr->items = calloc(count, sizeof(cdsl_value_t));
-			arr->count = count;
-			arr->capacity = count;
-			arg = expr->data.array.elements;
-			for (int i = 0; i < count; i++) {
-				arr->items[i] =
-				    cdsl_eval_expr_internal(arg->expr, ctx, vm, debug, depth + 1);
-				arg = arg->next;
+			arr->items = calloc(count > 0 ? count : 1, sizeof(cdsl_value_t));
+			if (!arr->items && count > 0) {
+				free(arr);
+				arr = NULL;
+			} else {
+				arr->count = count;
+				arr->capacity = count;
+				arg = expr->data.array.elements;
+				for (int i = 0; i < count; i++) {
+					arr->items[i] = cdsl_eval_expr_internal(
+					    arg->expr, ctx, vm, debug, depth + 1);
+					arg = arg->next;
+				}
 			}
 		}
 		result.type = CDSL_TYPE_ARRAY;
@@ -1033,9 +1047,10 @@ cdsl_report_to_json(const cdsl_rule_report_t* report)
 	} while (0)
 
 	off += snprintf(json + off, cap - off, "{\"rule_name\":\"");
-	off += json_escape_buf(json + off, report->rule_name ? report->rule_name : "");
+	off += json_escape_buf(json + off, report->rule_name ? report->rule_name : "", cap - off);
 	off += snprintf(json + off, cap - off, "\",\"description\":\"");
-	off += json_escape_buf(json + off, report->description ? report->description : "");
+	off +=
+	    json_escape_buf(json + off, report->description ? report->description : "", cap - off);
 	off += snprintf(json + off,
 			cap - off,
 			"\",\"status\":\"%s\",\"total_max_score\":%d,\"total_obtained_score\":%d,"
@@ -1043,8 +1058,8 @@ cdsl_report_to_json(const cdsl_rule_report_t* report)
 			cdsl_status_str_internal(report->status),
 			report->total_max_score,
 			report->total_obtained_score);
-	off +=
-	    json_escape_buf(json + off, report->decision_summary ? report->decision_summary : "");
+	off += json_escape_buf(
+	    json + off, report->decision_summary ? report->decision_summary : "", cap - off);
 	off += snprintf(json + off, cap - off, "\",\"metrics\":[");
 
 	for (int i = 0; i < report->metric_count; i++) {
@@ -1059,9 +1074,9 @@ cdsl_report_to_json(const cdsl_rule_report_t* report)
 			off += snprintf(json + off, cap - off, ",");
 		}
 		off += snprintf(json + off, cap - off, "{\"metric_name\":\"");
-		off += json_escape_buf(json + off, m->metric_name ? m->metric_name : "");
+		off += json_escape_buf(json + off, m->metric_name ? m->metric_name : "", cap - off);
 		off += snprintf(json + off, cap - off, "\",\"description\":\"");
-		off += json_escape_buf(json + off, m->description ? m->description : "");
+		off += json_escape_buf(json + off, m->description ? m->description : "", cap - off);
 		off += snprintf(json + off,
 				cap - off,
 				"\",\"max_weight\":%d,\"score_obtained\":%d,\"is_critical\":%d,"
@@ -1072,7 +1087,7 @@ cdsl_report_to_json(const cdsl_rule_report_t* report)
 				m->is_passed);
 		if (m->violation_reason) {
 			off += snprintf(json + off, cap - off, ",\"violation_reason\":\"");
-			off += json_escape_buf(json + off, m->violation_reason);
+			off += json_escape_buf(json + off, m->violation_reason, cap - off);
 			off += snprintf(json + off, cap - off, "\"");
 		}
 		off += snprintf(json + off, cap - off, "}");
