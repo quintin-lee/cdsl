@@ -18,6 +18,27 @@
 #include <stdlib.h>
 #include <string.h>
 #include <stdio.h>
+#include <errno.h>
+
+/**
+ * @brief Parse a string to int with error detection.
+ * @return int value, or default_val on parse failure.
+ */
+static int
+safe_atoi(const char* str, int default_val)
+{
+	if (!str) {
+		return default_val;
+	}
+	char* end = NULL;
+	errno = 0;
+	long val = strtol(str, &end, 10);
+	if (errno != 0 || end == str || *end != '\0') {
+		return default_val;
+	}
+	return (int)val;
+}
+
 #include <ctype.h>
 
 static void
@@ -216,7 +237,7 @@ cdsl_codegen_rule_to_c(const cdsl_rule_t* rule, const cdsl_schema_t* schema)
 		fprintf(f, "    int total_score = 0;\n");
 		for (cdsl_metric_node_t* m = rule->metrics; m; m = m->next) {
 			const char* w_meta = cdsl_meta_get(m->meta_list, "weight");
-			int weight = atoi(w_meta ? w_meta : "0");
+			int weight = safe_atoi(w_meta, 0);
 			const char* c_meta = cdsl_meta_get(m->meta_list, "is_critical");
 			int critical = (strcmp(c_meta ? c_meta : "false", "true") == 0);
 			fprintf(f,

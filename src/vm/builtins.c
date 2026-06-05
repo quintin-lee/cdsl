@@ -22,6 +22,7 @@
 #include <stdio.h>
 #include <time.h>
 #include <ctype.h>
+#include <errno.h>
 #include <math.h>
 
 /**
@@ -86,16 +87,46 @@ parse_iso_date(const char* s)
 		return (time_t)-1;
 	}
 	struct tm tm = {0};
-	if (sscanf(s,
-		   "%d-%d-%d %d:%d:%d",
-		   &tm.tm_year,
-		   &tm.tm_mon,
-		   &tm.tm_mday,
-		   &tm.tm_hour,
-		   &tm.tm_min,
-		   &tm.tm_sec) != 6) {
-		if (sscanf(s, "%d-%d-%d", &tm.tm_year, &tm.tm_mon, &tm.tm_mday) != 3) {
-			return (time_t)-1;
+	char* end = NULL;
+	errno = 0;
+	long y = strtol(s, &end, 10);
+	if (end == s || *end != '-') {
+		return (time_t)-1;
+	}
+	tm.tm_year = (int)y;
+	s = end + 1;
+	errno = 0;
+	long m = strtol(s, &end, 10);
+	if (end == s || *end != '-') {
+		return (time_t)-1;
+	}
+	tm.tm_mon = (int)m;
+	s = end + 1;
+	errno = 0;
+	long d = strtol(s, &end, 10);
+	if (end == s) {
+		return (time_t)-1;
+	}
+	tm.tm_mday = (int)d;
+	/* If there's more content, try HH:MM:SS */
+	if (*end == ' ') {
+		s = end + 1;
+		errno = 0;
+		long hh = strtol(s, &end, 10);
+		if (end != s && *end == ':') {
+			tm.tm_hour = (int)hh;
+			s = end + 1;
+			errno = 0;
+			long mm = strtol(s, &end, 10);
+			if (end != s && *end == ':') {
+				tm.tm_min = (int)mm;
+				s = end + 1;
+				errno = 0;
+				long ss = strtol(s, &end, 10);
+				if (end != s) {
+					tm.tm_sec = (int)ss;
+				}
+			}
 		}
 	}
 	tm.tm_year -= 1900;
