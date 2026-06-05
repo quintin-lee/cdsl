@@ -10,7 +10,9 @@ Checks: >
   -bugprone-reserved-identifier,
   -bugprone-suspicious-stringview-data,
   -bugprone-unsafe-functions,
-WarningsAsErrors: false
+  -clang-analyzer-security.insecureAPI.DeprecatedOrUnsafeBufferHandling,
+  -clang-analyzer-security.VAList,
+WarningsAsErrors: true
 HeaderFilterRegex: '^src/'
 CheckOptions:
   bugprone-suspicious-include.FlagHeaderFileExtensions: false

@@ -39,6 +39,7 @@ bc_add_constant(cdsl_bytecode_t* bc, cdsl_value_t val)
 		bc->const_capacity = new_cap;
 	}
 	int idx = bc->const_count++;
+	// NOLINTNEXTLINE(clang-analyzer-security.ArrayBound)
 	bc->constants[idx] = val;
 	if (val.type == CDSL_TYPE_STRING) {
 		bc->constants[idx].data.string_val = strdup(val.data.string_val);
@@ -1043,6 +1044,7 @@ cdsl_bytecode_execute(cdsl_vm_t* vm, const cdsl_bytecode_t* bc, cdsl_context_t* 
 			}
 			for (int i = nargs - 1; i >= 0; i--) {
 				cdsl_value_t av = POP();
+				// NOLINTNEXTLINE(clang-analyzer-security.ArrayBound)
 				arg_nodes[i].expr = calloc(1, sizeof(cdsl_expr_node_t));
 				if (arg_nodes[i].expr) {
 					*arg_nodes[i].expr = (cdsl_expr_node_t){

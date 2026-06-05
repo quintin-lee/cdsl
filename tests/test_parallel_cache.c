@@ -54,9 +54,12 @@ cache_worker(void* arg)
 	for (int i = 0; i < NUM_ITERATIONS; i++) {
 		char dsl[256];
 		int rule_idx = i % CACHE_SIZE;
-		sprintf(dsl, CACHE_DSL_TEMPLATES[rule_idx % 2], rule_idx, i);
+		_Pragma("GCC diagnostic push")
+		    _Pragma("GCC diagnostic ignored \"-Wformat-nonliteral\"")
+			sprintf(dsl, CACHE_DSL_TEMPLATES[rule_idx % 2], rule_idx, i);
+		_Pragma("GCC diagnostic pop")
 
-		char err[256];
+		    char err[256];
 		cdsl_compiled_rule_t* compiled = cdsl_compile(cache, dsl, NULL, err, sizeof(err));
 		if (!compiled) {
 			fprintf(

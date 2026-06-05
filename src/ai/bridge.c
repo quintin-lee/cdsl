@@ -692,7 +692,7 @@ count_schema_vars(const cdsl_schema_t* schema)
  * @brief Safe append to a buffer with overflow protection.
  * @return New string length, capped at sz-1
  */
-static size_t
+static size_t __attribute__((format(printf, 4, 5)))
 safe_append(char* buf, size_t sz, size_t pos, const char* fmt, ...)
 {
 	if (pos >= sz - 1) {

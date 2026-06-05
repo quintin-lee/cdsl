@@ -1105,8 +1105,8 @@ json_append_block(std::string& out, const ContentBlock& b)
 				json_append_cell_props(out, b.table_rows[r].cells[c].props);
 				out += ",\"content\":\"";
 				std::string cell_text;
-				for (const auto& tb : b.table_rows[r].cells[c].text_blocks) {
-					cell_text += tb.text;
+				for (const auto& tblk : b.table_rows[r].cells[c].text_blocks) {
+					cell_text += tblk.text;
 				}
 				json_escape(out, cell_text.c_str());
 				out += "\",\"text_blocks\":[\n";

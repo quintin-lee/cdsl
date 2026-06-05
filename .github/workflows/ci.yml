@@ -97,6 +97,39 @@ jobs:
         run: cmake --build build --target check-format
 
   ##########################################################################
+  # Static Analysis (clang-tidy)
+  ##########################################################################
+  static-analysis:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install dependencies
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq \
+            cmake \
+            gcc \
+            flex \
+            bison \
+            clang-tidy \
+            libpthread-stubs0-dev
+
+      - name: Configure
+        run: cmake -B build -DCDSL_GENERATE_DOCS=OFF -DCMAKE_BUILD_TYPE=Debug
+
+      - name: Build
+        run: cmake --build build -j$(nproc)
+
+      - name: Run clang-tidy on source files
+        run: |
+          find src/ -name '*.c' \
+            ! -name 'lexer.c' \
+            ! -name 'parser.tab.c' \
+            | xargs clang-tidy -p build --quiet 2>&1
+
+  ##########################################################################
   # Doxygen Documentation
   ##########################################################################
   docs:

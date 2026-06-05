@@ -44,9 +44,12 @@ parse_worker(void* arg)
 	for (int i = 0; i < NUM_ITERATIONS; i++) {
 		char dsl[256];
 		int template_idx = (id + i) % 3;
-		sprintf(dsl, DSL_TEMPLATES[template_idx], id, i);
+		_Pragma("GCC diagnostic push")
+		    _Pragma("GCC diagnostic ignored \"-Wformat-nonliteral\"")
+			sprintf(dsl, DSL_TEMPLATES[template_idx], id, i);
+		_Pragma("GCC diagnostic pop")
 
-		cdsl_rule_t* rule = cdsl_parse_string(dsl, NULL);
+		    cdsl_rule_t* rule = cdsl_parse_string(dsl, NULL);
 		if (!rule) {
 			fprintf(
 			    stderr, "Thread %d: Failed to parse iteration %d: %s\n", id, i, dsl);

@@ -48,6 +48,7 @@ parse_dsl(const char* dsl)
 static void
 action_callback(const char* action_name, cdsl_arg_node_t* args, void* user_data)
 {
+	(void)user_data;
 	printf("  [ACTION] %s(", action_name);
 	int first = 1;
 	for (cdsl_arg_node_t* a = args; a; a = a->next) {

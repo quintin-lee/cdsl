@@ -293,7 +293,6 @@ test_schema_validation_error_reporting()
 	// Test that errors contain expected information
 	int found_invalid_var = 0;
 	int found_invalid_action = 0;
-	int found_type_error = 0;
 
 	for (int i = 0; i < errors->count; i++) {
 		cdsl_error_t* err = errors->errors[i];

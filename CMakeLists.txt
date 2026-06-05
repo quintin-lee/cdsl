@@ -68,7 +68,7 @@ endif()
 if(MSVC)
     target_compile_options(cdsl_objects PRIVATE /W4 /WX)
 else()
-    target_compile_options(cdsl_objects PRIVATE -Wall -Wextra -Wpedantic -Werror)
+    target_compile_options(cdsl_objects PRIVATE -Wall -Wextra -Wpedantic -Werror -Wshadow -Wformat=2)
 endif()
 
 # 3. Static library
@@ -102,19 +102,29 @@ set_target_properties(cdsl_shared PROPERTIES
 # 5. Default target alias
 add_library(cdsl ALIAS cdsl_static)
 
-# 6. Demo
+# 6. Common warning flags for all executables
+macro(cdsl_add_warning_flags target)
+    if(NOT MSVC)
+        target_compile_options(${target} PRIVATE -Wall -Wextra -Wpedantic -Werror -Wshadow -Wformat=2)
+    endif()
+endmacro()
+
+# 7. Demo
 add_executable(cdsl_demo demo/main.c)
+cdsl_add_warning_flags(cdsl_demo)
 target_link_libraries(cdsl_demo PRIVATE cdsl_static)
 
 add_executable(cdsl_official_review demo/official_review.c)
+cdsl_add_warning_flags(cdsl_official_review)
 target_link_libraries(cdsl_official_review PRIVATE cdsl_static)
 
 if(CDSL_USE_LIBREOFFICE)
     add_executable(cdsl_word_parser demo/word_parser.c)
+    cdsl_add_warning_flags(cdsl_word_parser)
     target_link_libraries(cdsl_word_parser PRIVATE cdsl_static)
 endif()
 
-# 7. Tests
+# 8. Tests
 enable_testing()
 file(GLOB TEST_SOURCES CONFIGURE_DEPENDS "tests/test_*.c")
 foreach(test_src ${TEST_SOURCES})
@@ -125,6 +135,7 @@ foreach(test_src ${TEST_SOURCES})
     endif()
 
     add_executable(${test_name} ${test_src})
+    cdsl_add_warning_flags(${test_name})
     target_link_libraries(${test_name} PRIVATE cdsl_static)
     add_test(NAME ${test_name} COMMAND ${test_name})
     if(${test_name} STREQUAL "test_doc")
