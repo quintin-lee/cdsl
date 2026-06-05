@@ -13,9 +13,13 @@
 #include <ctype.h>
 #include <stdio.h>
 
+/** @brief Maximum nesting depth for JSON parsing (prevents C stack overflow). */
+#define CDSL_JSON_MAX_DEPTH 256
+
 typedef struct {
 	const char* src;
 	int pos;
+	int depth;
 } json_parser_t;
 
 static void
@@ -266,13 +270,22 @@ parse_array(json_parser_t* p)
 static cdsl_json_value_t*
 parse_value(json_parser_t* p)
 {
+	if (p->depth >= CDSL_JSON_MAX_DEPTH) {
+		return NULL;
+	}
 	skip_ws(p);
 	char c = p->src[p->pos];
 	if (c == '{') {
-		return parse_object(p);
+		p->depth++;
+		cdsl_json_value_t* v = parse_object(p);
+		p->depth--;
+		return v;
 	}
 	if (c == '[') {
-		return parse_array(p);
+		p->depth++;
+		cdsl_json_value_t* v = parse_array(p);
+		p->depth--;
+		return v;
 	}
 	if (c == '"') {
 		char* s = parse_string_raw(p);
@@ -343,7 +356,7 @@ cdsl_json_parse(const char* json)
 	if (!json) {
 		return NULL;
 	}
-	json_parser_t p = {.src = json, .pos = 0};
+	json_parser_t p = {.src = json, .pos = 0, .depth = 0};
 	return parse_value(&p);
 }
 

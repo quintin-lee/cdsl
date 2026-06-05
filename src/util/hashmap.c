@@ -11,6 +11,47 @@
 #include <stdlib.h>
 #include <string.h>
 
+/** @brief Max load factor before automatic rehash. */
+#define CDSL_HASHMAP_MAX_LOAD 0.75
+/** @brief Minimum bucket count (must be power of two). */
+#define CDSL_HASHMAP_MIN_BUCKETS 64
+/** @brief Maximum allowed bucket count to prevent runaway reallocation. */
+#define CDSL_HASHMAP_MAX_BUCKETS (1 << 20)
+
+static unsigned int hash_string(const char* key, int bucket_count);
+
+/**
+ * @brief Internal rehash: double the bucket count and redistribute entries.
+ * @return true on success, false on allocation failure (map unchanged)
+ */
+static bool
+rehash_internal(cdsl_hashmap_t* map)
+{
+	int new_bc = map->bucket_count * 2;
+	if (new_bc > CDSL_HASHMAP_MAX_BUCKETS) {
+		return false;
+	}
+	cdsl_hashmap_entry_t** new_buckets = calloc(new_bc, sizeof(cdsl_hashmap_entry_t*));
+	if (!new_buckets) {
+		return false;
+	}
+	/* Move entries from old buckets to new */
+	for (int i = 0; i < map->bucket_count; i++) {
+		cdsl_hashmap_entry_t* e = map->buckets[i];
+		while (e) {
+			cdsl_hashmap_entry_t* next = e->next;
+			unsigned int idx = hash_string(e->key, new_bc);
+			e->next = new_buckets[idx];
+			new_buckets[idx] = e;
+			e = next;
+		}
+	}
+	free(map->buckets);
+	map->buckets = new_buckets;
+	map->bucket_count = new_bc;
+	return true;
+}
+
 /**
  * @brief Compute djb2 hash for a string key.
  * @param key NUL-terminated string
@@ -34,7 +75,7 @@ cdsl_hashmap_create(int bucket_count)
 	if (!m) {
 		return NULL;
 	}
-	m->bucket_count = bucket_count > 0 ? bucket_count : 64;
+	m->bucket_count = bucket_count > 0 ? bucket_count : CDSL_HASHMAP_MIN_BUCKETS;
 	m->buckets = calloc(m->bucket_count, sizeof(cdsl_hashmap_entry_t*));
 	if (!m->buckets) {
 		free(m);
@@ -93,6 +134,10 @@ cdsl_hashmap_put(cdsl_hashmap_t* map, const char* key, void* value)
 	e->next = map->buckets[idx];
 	map->buckets[idx] = e;
 	map->size++;
+	/* Automatic rehash when load factor exceeds 0.75 */
+	if (map->bucket_count < CDSL_HASHMAP_MAX_BUCKETS && map->size * 4 > map->bucket_count * 3) {
+		rehash_internal(map);
+	}
 	return true;
 }
 

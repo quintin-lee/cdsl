@@ -1,0 +1,18 @@
+Checks: >
+  clang-diagnostic-*,
+  clang-analyzer-*,
+  bugprone-*,
+  performance-*,
+  -bugprone-assignment-in-if-condition,
+  -bugprone-branch-clone,
+  -bugprone-easily-swappable-parameters,
+  -bugprone-multiple-new-in-one-expression,
+  -bugprone-reserved-identifier,
+  -bugprone-suspicious-stringview-data,
+  -bugprone-unsafe-functions,
+WarningsAsErrors: false
+HeaderFilterRegex: '^src/'
+CheckOptions:
+  bugprone-suspicious-include.FlagHeaderFileExtensions: false
+  performance-move-const-arg.CheckTriviallyCopyableMove: false
+FormatStyle: file
