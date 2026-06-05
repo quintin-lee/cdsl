@@ -128,7 +128,7 @@ cdsl_vm_execute_ruleset(cdsl_vm_t* vm, cdsl_ruleset_t* set, cdsl_context_t* ctx)
 	if (!batch) {
 		return NULL;
 	}
-	batch->rule_reports = calloc(set->count, sizeof(cdsl_rule_report_t*));
+	batch->rule_reports = (cdsl_rule_report_t**)calloc(set->count, sizeof(cdsl_rule_report_t*));
 	if (!batch->rule_reports) {
 		free(batch);
 		return NULL;
@@ -206,7 +206,7 @@ cdsl_vm_execute_ruleset_parallel(cdsl_vm_t* vm,
 	if (!batch) {
 		return NULL;
 	}
-	batch->rule_reports = calloc(set->count, sizeof(cdsl_rule_report_t*));
+	batch->rule_reports = (cdsl_rule_report_t**)calloc(set->count, sizeof(cdsl_rule_report_t*));
 	if (!batch->rule_reports) {
 		free(batch);
 		return NULL;
@@ -218,7 +218,7 @@ cdsl_vm_execute_ruleset_parallel(cdsl_vm_t* vm,
 	if (!args || !threads) {
 		free(args);
 		free(threads);
-		free(batch->rule_reports);
+		free((void*)batch->rule_reports);
 		free(batch);
 		return NULL;
 	}
@@ -320,7 +320,7 @@ cdsl_ruleset_report_free(cdsl_ruleset_report_t* report)
 	for (int i = 0; i < report->rule_count; i++) {
 		cdsl_report_free(report->rule_reports[i]);
 	}
-	free(report->rule_reports);
+	free((void*)report->rule_reports);
 	free(report->summary);
 	free(report);
 }
@@ -503,7 +503,8 @@ cdsl_ruleset_validate_deps(const cdsl_ruleset_t* set, char* err_buf, int err_buf
 		return 1;
 	}
 	int* states = calloc(set->count, sizeof(int));
-	cdsl_ruleset_entry_t** entries_arr = malloc(set->count * sizeof(cdsl_ruleset_entry_t*));
+	cdsl_ruleset_entry_t** entries_arr =
+	    (cdsl_ruleset_entry_t**)malloc(set->count * sizeof(cdsl_ruleset_entry_t*));
 	int i = 0;
 	for (cdsl_ruleset_entry_t* e = set->entries; e; e = e->next) {
 		entries_arr[i++] = e;
@@ -524,7 +525,7 @@ cdsl_ruleset_validate_deps(const cdsl_ruleset_t* set, char* err_buf, int err_buf
 		}
 	}
 	free(states);
-	free(entries_arr);
+	free((void*)entries_arr);
 	return ok;
 }
 
@@ -583,8 +584,10 @@ cdsl_ruleset_topo_sort(cdsl_ruleset_t* set)
 	}
 
 	int* visited = calloc(set->count, sizeof(int));
-	cdsl_ruleset_entry_t** entries_arr = malloc(set->count * sizeof(cdsl_ruleset_entry_t*));
-	cdsl_ruleset_entry_t** sorted_arr = malloc(set->count * sizeof(cdsl_ruleset_entry_t*));
+	cdsl_ruleset_entry_t** entries_arr =
+	    (cdsl_ruleset_entry_t**)malloc(set->count * sizeof(cdsl_ruleset_entry_t*));
+	cdsl_ruleset_entry_t** sorted_arr =
+	    (cdsl_ruleset_entry_t**)malloc(set->count * sizeof(cdsl_ruleset_entry_t*));
 	cdsl_ruleset_entry_t** output_ptr = sorted_arr;
 
 	int i = 0;
@@ -608,8 +611,8 @@ cdsl_ruleset_topo_sort(cdsl_ruleset_t* set)
 	cur->next = NULL;
 
 	free(visited);
-	free(entries_arr);
-	free(sorted_arr);
+	free((void*)entries_arr);
+	free((void*)sorted_arr);
 	return 1;
 }
 /** @} */

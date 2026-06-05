@@ -34,7 +34,7 @@ cdsl_get_time_us_internal(void)
 {
 	struct timespec ts;
 	clock_gettime(CLOCK_MONOTONIC, &ts);
-	return ts.tv_sec * 1e6 + ts.tv_nsec / 1e3;
+	return (double)ts.tv_sec * 1e6 + (double)ts.tv_nsec / 1e3;
 }
 
 cdsl_context_entry_t*
@@ -590,7 +590,7 @@ cdsl_vm_get_stats(const cdsl_vm_t* vm)
 	s->total_time_us = vm->stats.total_time_us;
 	s->avg_time_us = vm->stats.avg_time_us;
 	if (s->total_executions > 0) {
-		s->avg_time_us = s->total_time_us / s->total_executions;
+		s->avg_time_us = s->total_time_us / (double)s->total_executions;
 	}
 	return s;
 }

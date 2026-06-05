@@ -800,7 +800,7 @@ mock_translate_generic(const char* natural_language,
 	int rn = 0;
 	for (int i = 0; nl[i] && nl[i] != ' ' && nl[i] != ',' && nl[i] != '.' && rn < 32; i++) {
 		if (isalpha((unsigned char)nl[i]) || nl[i] == '_') {
-			rule_name[rn++] = tolower((unsigned char)nl[i]);
+			rule_name[rn++] = (char)tolower((unsigned char)nl[i]);
 		}
 	}
 	rule_name[rn] = '\0';
@@ -1076,9 +1076,9 @@ default_review(void* ctx,
 		if (has_critical) {
 			score += 10;
 		} else if (has_metric) {
-			soff += (size_t)snprintf(suggestions + soff,
-						 sizeof(suggestions) - soff,
-						 "Mark critical items with is_critical=true. ");
+			(void)(size_t)snprintf(suggestions + soff,
+					       sizeof(suggestions) - soff,
+					       "Mark critical items with is_critical=true. ");
 		}
 
 		if (has_score) {
