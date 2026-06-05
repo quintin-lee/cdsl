@@ -236,6 +236,16 @@ if(CLANG_FORMAT)
         COMMENT "Installing git pre-commit hook for auto-formatting"
     )
 
+    find_program(CLANG_TIDY clang-tidy)
+    if(CLANG_TIDY)
+        add_custom_target(check-tidy
+            COMMAND ${CMAKE_COMMAND} -E echo "Running clang-tidy on source files..."
+            COMMAND find src/ -name '*.c' -not -name lexer.c -not -name parser.tab.c -exec ${CLANG_TIDY} -p ${CMAKE_BINARY_DIR} --quiet {} +
+            WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
+            COMMENT ""
+        )
+    endif()
+
     if(CDSL_FORMAT_ON_BUILD)
         add_dependencies(cdsl_static format)
         add_dependencies(cdsl_shared format)
@@ -243,6 +253,9 @@ if(CLANG_FORMAT)
         message(STATUS "clang-format found - formatting ON on every build (CDSL_FORMAT_ON_BUILD=ON)")
     else()
         message(STATUS "clang-format found - targets: format, check-format, install-git-hooks")
+        if(CLANG_TIDY)
+            message(STATUS "clang-tidy found - target: check-tidy")
+        endif()
         message(STATUS "  Enable build-time formatting: cmake -DCDSL_FORMAT_ON_BUILD=ON ..")
     endif()
 else()

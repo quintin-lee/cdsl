@@ -268,7 +268,7 @@ cdsl/
 │   ├── lexer.l
 │   └── parser.y
 ├── demo/main.c       # 6 demo scenarios
-├── tests/            # Unit tests (41+ tests)
+├── tests/            # Unit tests (22 tests)
 ├── docs/             # Documentation
 │   ├── architecture.md
 │   ├── api-reference.md
