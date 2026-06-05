@@ -34,6 +34,7 @@
 #include <string.h>
 #include <stdio.h>
 #include <math.h>
+#include <stdatomic.h>
 
 /**
  * @brief Fire a trace event if callback is registered.
@@ -205,6 +206,15 @@ cdsl_eval_expr_internal(
 			fprintf(stderr, "[TRACE]   max expr depth (%d) exceeded\n", limit);
 		}
 		return result;
+	}
+
+	/* Instruction quota check for tree-walk evaluator */
+	if (vm && vm->instruction_limit > 0) {
+		int64_t count = atomic_fetch_add(&vm->instruction_count, 1) + 1;
+		if (count > vm->instruction_limit) {
+			vm->error_state = 1;
+			return result;
+		}
 	}
 
 	switch (expr->type) {
@@ -683,6 +693,9 @@ execute_metric_rule(cdsl_vm_t* vm, const cdsl_rule_t* rule, cdsl_context_t* ctx)
 
 	int idx = 0;
 	for (cdsl_metric_node_t* m = rule->metrics; m; m = m->next, idx++) {
+		if (vm->error_state) {
+			break;
+		}
 		cdsl_metric_result_t* mr = &report->metrics[idx];
 		mr->metric_name = strdup(m->name);
 		char* mdesc = cdsl_meta_get(m->meta_list, "description");
@@ -702,7 +715,9 @@ execute_metric_rule(cdsl_vm_t* vm, const cdsl_rule_t* rule, cdsl_context_t* ctx)
 			}
 			cdsl_value_t cond =
 			    cdsl_eval_expr_internal(c->condition, ctx, vm, vm->debug_enabled, 0);
-
+			if (vm->error_state) {
+				break;
+			}
 			if (cond.type == CDSL_TYPE_BOOL && cond.data.bool_val) {
 				if (vm->debug_enabled) {
 					fprintf(stderr, "[TRACE]   CASE matched\n");
@@ -714,6 +729,9 @@ execute_metric_rule(cdsl_vm_t* vm, const cdsl_rule_t* rule, cdsl_context_t* ctx)
 					    c->action->args->expr, ctx, vm, vm->debug_enabled, 0);
 					mr->score_obtained =
 					    (sv.type == CDSL_TYPE_INT) ? sv.data.int_val : 0;
+					if (vm->error_state) {
+						break;
+					}
 				} else {
 					mr->score_obtained = mr->max_weight;
 				}
@@ -728,20 +746,23 @@ execute_metric_rule(cdsl_vm_t* vm, const cdsl_rule_t* rule, cdsl_context_t* ctx)
 				break;
 			}
 		}
+		if (vm->error_state) {
+			break;
+		}
 
 		if (!matched) {
 			if (vm->debug_enabled) {
 				fprintf(stderr, "[TRACE]   no CASE matched, executing DEFAULT\n");
 			}
 			cdsl_trigger_action_internal(vm, m->default_action);
-			if (m->default_action &&
+			if (!vm->error_state && m->default_action &&
 			    strcmp(m->default_action->action_name, "score") == 0 &&
 			    m->default_action->args) {
 				cdsl_value_t sv = cdsl_eval_expr_internal(
 				    m->default_action->args->expr, ctx, vm, vm->debug_enabled, 0);
 				mr->score_obtained =
 				    (sv.type == CDSL_TYPE_INT) ? sv.data.int_val : 0;
-			} else if (m->default_action &&
+			} else if (!vm->error_state && m->default_action &&
 				   strcmp(m->default_action->action_name, "fail_metric") == 0) {
 				mr->score_obtained = 0;
 				if (m->default_action->args && m->default_action->args->next) {
@@ -751,7 +772,8 @@ execute_metric_rule(cdsl_vm_t* vm, const cdsl_rule_t* rule, cdsl_context_t* ctx)
 					    vm,
 					    vm->debug_enabled,
 					    0);
-					if (rv.type == CDSL_TYPE_STRING && rv.data.string_val) {
+					if (!vm->error_state && rv.type == CDSL_TYPE_STRING &&
+					    rv.data.string_val) {
 						mr->violation_reason = strdup(rv.data.string_val);
 					}
 				}
@@ -858,6 +880,10 @@ execute_simple_rule(cdsl_vm_t* vm,
 		return NULL;
 	}
 	cdsl_value_t cond = evaluate_condition(rule->when_expr, ctx, vm, bc, vm->debug_enabled);
+	if (vm->error_state) {
+		cdsl_report_free(report);
+		return NULL;
+	}
 	fire_trace(vm, CDSL_TRACE_EXPR, rule->name, "WHEN", cond, 0);
 	int triggered = (cond.type == CDSL_TYPE_BOOL) ? cond.data.bool_val : 0;
 	if (vm->debug_enabled) {
@@ -933,9 +959,11 @@ cdsl_vm_execute(cdsl_vm_t* vm, const cdsl_rule_t* rule, cdsl_context_t* ctx)
 	} else {
 		rpt = execute_simple_rule(vm, rule, ctx, NULL);
 	}
-	/* Check if aborted */
-	if (vm->error_state && !rpt) {
-		rpt = calloc(1, sizeof(cdsl_rule_report_t));
+	/* Check if aborted (instruction quota, timeout, etc.) */
+	if (vm->error_state) {
+		if (!rpt) {
+			rpt = calloc(1, sizeof(cdsl_rule_report_t));
+		}
 		if (rpt) {
 			rpt->status = CDSL_STATUS_ERROR;
 		}
