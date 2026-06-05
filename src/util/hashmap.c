@@ -31,7 +31,8 @@ rehash_internal(cdsl_hashmap_t* map)
 	if (new_bc > CDSL_HASHMAP_MAX_BUCKETS) {
 		return false;
 	}
-	cdsl_hashmap_entry_t** new_buckets = calloc(new_bc, sizeof(cdsl_hashmap_entry_t*));
+	cdsl_hashmap_entry_t** new_buckets =
+	    (cdsl_hashmap_entry_t**)calloc(new_bc, sizeof(cdsl_hashmap_entry_t*));
 	if (!new_buckets) {
 		return false;
 	}
@@ -46,7 +47,7 @@ rehash_internal(cdsl_hashmap_t* map)
 			e = next;
 		}
 	}
-	free(map->buckets);
+	free((void*)map->buckets);
 	map->buckets = new_buckets;
 	map->bucket_count = new_bc;
 	return true;
@@ -76,7 +77,7 @@ cdsl_hashmap_create(int bucket_count)
 		return NULL;
 	}
 	m->bucket_count = bucket_count > 0 ? bucket_count : CDSL_HASHMAP_MIN_BUCKETS;
-	m->buckets = calloc(m->bucket_count, sizeof(cdsl_hashmap_entry_t*));
+	m->buckets = (cdsl_hashmap_entry_t**)calloc(m->bucket_count, sizeof(cdsl_hashmap_entry_t*));
 	if (!m->buckets) {
 		free(m);
 		return NULL;
@@ -102,7 +103,7 @@ cdsl_hashmap_free(cdsl_hashmap_t* map, cdsl_hashmap_free_fn free_fn)
 			e = next;
 		}
 	}
-	free(map->buckets);
+	free((void*)map->buckets);
 	free(map);
 }
 
@@ -224,7 +225,7 @@ cdsl_hashmap_keys(const cdsl_hashmap_t* map, int* count)
 	if (!map || map->size == 0) {
 		return NULL;
 	}
-	char** keys = malloc(sizeof(char*) * (map->size + 1));
+	char** keys = (char**)malloc(sizeof(char*) * (map->size + 1));
 	if (!keys) {
 		return NULL;
 	}

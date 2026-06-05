@@ -854,6 +854,7 @@ execute_simple_rule(cdsl_vm_t* vm,
 	}
 	/* Abort if timeout or OOM */
 	if (vm->error_state) {
+		cdsl_report_free(report);
 		return NULL;
 	}
 	cdsl_value_t cond = evaluate_condition(rule->when_expr, ctx, vm, bc, vm->debug_enabled);
@@ -958,14 +959,16 @@ cdsl_report_free(cdsl_rule_report_t* report)
 	free(report->rule_name);
 	free(report->description);
 	free(report->decision_summary);
-	for (int i = 0; i < report->metric_count; i++) {
-		cdsl_metric_result_t* m = &report->metrics[i];
-		free(m->metric_name);
-		free(m->description);
-		free(m->matched_case_expr);
-		free(m->violation_reason);
+	if (report->metrics) {
+		for (int i = 0; i < report->metric_count; i++) {
+			cdsl_metric_result_t* m = &report->metrics[i];
+			free(m->metric_name);
+			free(m->description);
+			free(m->matched_case_expr);
+			free(m->violation_reason);
+		}
+		free(report->metrics);
 	}
-	free(report->metrics);
 	free(report);
 }
 
@@ -1094,7 +1097,7 @@ cdsl_report_to_json(const cdsl_rule_report_t* report)
 	}
 
 	JSON_CHECK_CAP(4);
-	off += snprintf(json + off, cap - off, "]}");
+	snprintf(json + off, cap - off, "]}");
 
 #undef JSON_CHECK_CAP
 

@@ -115,13 +115,14 @@ parse_string_raw(json_parser_t* p)
 					s[len++] = (char)code;
 				} else if (code < 0x800) {
 					JSON_STR_ENSURE(2);
-					s[len++] = 0xC0 | (code >> 6);
-					s[len++] = 0x80 | (code & 0x3F);
+					s[len++] = (char)(unsigned char)(0xC0 | (code >> 6));
+					s[len++] = (char)(unsigned char)(0x80 | (code & 0x3F));
 				} else {
 					JSON_STR_ENSURE(3);
-					s[len++] = 0xE0 | (code >> 12);
-					s[len++] = 0x80 | ((code >> 6) & 0x3F);
-					s[len++] = 0x80 | (code & 0x3F);
+					s[len++] = (char)(unsigned char)(0xE0 | (code >> 12));
+					s[len++] =
+					    (char)(unsigned char)(0x80 | ((code >> 6) & 0x3F));
+					s[len++] = (char)(unsigned char)(0x80 | (code & 0x3F));
 				}
 				break;
 			}

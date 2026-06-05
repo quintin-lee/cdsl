@@ -107,7 +107,7 @@ cdsl_error_list_create(void)
 		return NULL;
 	}
 	list->capacity = 16;
-	list->errors = malloc(sizeof(cdsl_error_t*) * list->capacity);
+	list->errors = (cdsl_error_t**)malloc(sizeof(cdsl_error_t*) * list->capacity);
 	if (!list->errors) {
 		free(list);
 		return NULL;
@@ -127,7 +127,7 @@ cdsl_error_list_free(cdsl_error_list_t* list)
 	for (int i = 0; i < list->count; i++) {
 		cdsl_error_free(list->errors[i]);
 	}
-	free(list->errors);
+	free((void*)list->errors);
 	free(list);
 }
 
@@ -142,7 +142,8 @@ cdsl_error_list_add(cdsl_error_list_t* list, cdsl_error_t* err)
 	}
 	if (list->count >= list->capacity) {
 		int new_cap = list->capacity * 2;
-		cdsl_error_t** new_errors = realloc(list->errors, sizeof(cdsl_error_t*) * new_cap);
+		cdsl_error_t** new_errors =
+		    (cdsl_error_t**)realloc((void*)list->errors, sizeof(cdsl_error_t*) * new_cap);
 		if (!new_errors) {
 			return;
 		}

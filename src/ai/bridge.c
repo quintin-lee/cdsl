@@ -1262,6 +1262,7 @@ call_llm_api_stream(const char* prompt,
 
 	char* body = malloc(strlen(config->model) + strlen(escaped_prompt) + 128);
 	if (!body) {
+		free(result);
 		free(escaped_prompt);
 		curl_slist_free_all(headers);
 		curl_easy_cleanup(curl);

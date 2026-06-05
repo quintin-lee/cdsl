@@ -61,7 +61,7 @@ cdsl_parse_string(const char* dsl_code, cdsl_error_list_t** errors)
 		}
 	}
 
-	if (yylex_init_extra(&error_list, &scanner) != 0) {
+	if (yylex_init_extra((void*)&error_list, &scanner) != 0) {
 		if (errors && !*errors) {
 			cdsl_error_list_free(error_list);
 		}
