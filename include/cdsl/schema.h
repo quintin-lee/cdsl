@@ -8,6 +8,8 @@
 #ifndef CDSL_SCHEMA_H
 #define CDSL_SCHEMA_H
 
+#include "cdsl/util/portability.h"
+
 #include "cdsl/ast.h"
 #include "cdsl/util/error.h"
 #include "cdsl/util/hashmap.h"
@@ -47,7 +49,7 @@ typedef struct cdsl_schema {
  * @brief Create an empty schema.
  * @return Newly allocated schema (must be freed with cdsl_schema_free)
  */
-[[nodiscard]]
+CDSL_NODISCARD
 cdsl_schema_t* cdsl_schema_create(void);
 
 /**

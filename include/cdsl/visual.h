@@ -8,14 +8,16 @@
 #ifndef CDSL_VISUAL_H
 #define CDSL_VISUAL_H
 
+#include "cdsl/util/portability.h"
+
 #include "cdsl/ast.h"
 #include "cdsl/schema.h"
 #include "cdsl/ruleset.h"
 
-[[nodiscard]]
+CDSL_NODISCARD
 char* cdsl_rule_to_dot(const cdsl_rule_t* rule);
 int cdsl_rule_to_dot_file(const cdsl_rule_t* rule, const char* filepath);
-[[nodiscard]]
+CDSL_NODISCARD
 char* cdsl_ruleset_to_dot(const cdsl_ruleset_t* set);
 int cdsl_ruleset_to_dot_file(const cdsl_ruleset_t* set, const char* filepath);
 

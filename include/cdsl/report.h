@@ -8,6 +8,8 @@
 #ifndef CDSL_REPORT_H
 #define CDSL_REPORT_H
 
+#include "cdsl/util/portability.h"
+
 #include "cdsl/ast.h"
 #include "cdsl/schema.h"
 
@@ -60,7 +62,7 @@ struct cdsl_compiled_rule;
  * @param ctx      Context with variable bindings
  * @return Report with score, status, and per-metric results
  */
-[[nodiscard]]
+CDSL_NODISCARD
 cdsl_rule_report_t*
 cdsl_vm_execute(struct cdsl_vm* vm, const cdsl_rule_t* rule, struct cdsl_context* ctx);
 
@@ -81,7 +83,7 @@ void cdsl_report_print(const cdsl_rule_report_t* report);
  * @param report Report to serialize
  * @return malloc'd JSON string, or NULL on error
  */
-[[nodiscard]]
+CDSL_NODISCARD
 char* cdsl_report_to_json(const cdsl_rule_report_t* report);
 
 /**
@@ -91,7 +93,7 @@ char* cdsl_report_to_json(const cdsl_rule_report_t* report);
  * @param ctx      Context with variable bindings
  * @return Report with score, status, and per-metric results
  */
-[[nodiscard]]
+CDSL_NODISCARD
 cdsl_rule_report_t* cdsl_vm_execute_compiled(struct cdsl_vm* vm,
 					     struct cdsl_compiled_rule* compiled,
 					     struct cdsl_context* ctx);

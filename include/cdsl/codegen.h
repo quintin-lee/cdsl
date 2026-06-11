@@ -8,11 +8,13 @@
 #ifndef CDSL_CODEGEN_H
 #define CDSL_CODEGEN_H
 
+#include "cdsl/util/portability.h"
+
 #include "cdsl/ast.h"
 #include "cdsl/schema.h"
 #include "cdsl/ruleset.h"
 
-[[nodiscard]]
+CDSL_NODISCARD
 char* cdsl_codegen_rule_to_c(const cdsl_rule_t* rule, const cdsl_schema_t* schema);
 int
 cdsl_codegen_to_file(const cdsl_rule_t* rule, const cdsl_schema_t* schema, const char* filepath);

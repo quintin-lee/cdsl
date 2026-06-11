@@ -8,6 +8,8 @@
 #ifndef CDSL_CONTEXT_H
 #define CDSL_CONTEXT_H
 
+#include "cdsl/util/portability.h"
+
 #include "cdsl/schema.h"
 #include "cdsl/util/hashmap.h"
 #include <time.h>
@@ -59,7 +61,7 @@ typedef struct cdsl_context {
  * @param schema Schema defining allowed variables
  * @return New context, or NULL on allocation failure
  */
-[[nodiscard]]
+CDSL_NODISCARD
 cdsl_context_t* cdsl_context_create(const cdsl_schema_t* schema);
 
 /**

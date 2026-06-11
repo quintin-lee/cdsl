@@ -8,6 +8,9 @@
 #ifndef CDSL_UTIL_ERROR_H
 #define CDSL_UTIL_ERROR_H
 
+#include "cdsl/util/portability.h"
+
+#include "cdsl/util/portability.h"
 #include <stdbool.h>
 
 /**
@@ -41,7 +44,7 @@ typedef struct cdsl_error {
  * @param hint Optional hint (duplicated internally, may be NULL)
  * @return Newly allocated error (must be freed with cdsl_error_free)
  */
-[[nodiscard]]
+CDSL_NODISCARD
 cdsl_error_t* cdsl_error_create(
     cdsl_error_kind_t kind, int line, int column, const char* message, const char* hint);
 
@@ -70,7 +73,7 @@ typedef struct cdsl_error_list {
  * @brief Create a new empty error list.
  * @return Newly allocated list (must be freed with cdsl_error_list_free)
  */
-[[nodiscard]]
+CDSL_NODISCARD
 cdsl_error_list_t* cdsl_error_list_create(void);
 
 /**

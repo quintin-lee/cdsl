@@ -12,6 +12,8 @@
 #ifndef CDSL_AST_H
 #define CDSL_AST_H
 
+#include "cdsl/util/portability.h"
+
 #include "cdsl/util/arena.h"
 #include "cdsl/util/error.h"
 #include <stddef.h>
@@ -516,7 +518,7 @@ void cdsl_free_rule(cdsl_rule_t* rule);
  *                 If an error list already exists, errors are appended.
  * @return Parsed rule, or NULL on parse error
  */
-[[nodiscard]]
+CDSL_NODISCARD
 cdsl_rule_t* cdsl_parse_string(const char* dsl_code, cdsl_error_list_t** errors);
 
 /** @name Template Registry */

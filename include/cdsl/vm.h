@@ -12,10 +12,11 @@
 #ifndef CDSL_VM_H
 #define CDSL_VM_H
 
+#include "cdsl/util/portability.h"
+
 #include "cdsl/schema.h"
 #include "cdsl/context.h"
 #include "cdsl/ast.h"
-#include <stdatomic.h>
 #include <time.h>
 
 struct cdsl_vm;
@@ -67,12 +68,12 @@ typedef struct cdsl_func_entry {
  * rule execution.  Time values are in microseconds (monotonic clock).
  */
 typedef struct cdsl_stats {
-	_Atomic long total_executions;	      /**< Total cdsl_vm_execute() calls */
-	_Atomic long total_rules_executed;    /**< Individual rule evaluations */
-	_Atomic long total_metrics_evaluated; /**< Metric CASE evaluations */
-	_Atomic long total_actions_triggered; /**< THEN action invocations */
-	double total_time_us;		      /**< Cumulative execution time (us) */
-	double avg_time_us;		      /**< Average time per execution (us) */
+	cdsl_atomic_long_t total_executions;	    /**< Total cdsl_vm_execute() calls */
+	cdsl_atomic_long_t total_rules_executed;    /**< Individual rule evaluations */
+	cdsl_atomic_long_t total_metrics_evaluated; /**< Metric CASE evaluations */
+	cdsl_atomic_long_t total_actions_triggered; /**< THEN action invocations */
+	double total_time_us;			    /**< Cumulative execution time (us) */
+	double avg_time_us;			    /**< Average time per execution (us) */
 } cdsl_stats_t;
 
 /* ---- Execution tracer types ---- */
@@ -122,12 +123,12 @@ typedef struct cdsl_vm {
 	int max_expr_depth;		   /**< Max expression nesting (default 64) */
 
 	/* ---- Sandboxing quotas ---- */
-	int64_t timeout_us;		   /**< Per-execution timeout in us; 0=unlimited */
-	int64_t memory_limit;		   /**< Per-execution allocation cap; 0=unlimited */
-	int64_t instruction_limit;	   /**< Max instructions allowed; 0=unlimited */
-	_Atomic int64_t alloc_bytes;	   /**< Current allocation counter */
-	_Atomic int64_t instruction_count; /**< Instructions executed */
-	_Atomic int error_state;	   /**< Non-zero if execution was aborted */
+	int64_t timeout_us;		       /**< Per-execution timeout in us; 0=unlimited */
+	int64_t memory_limit;		       /**< Per-execution allocation cap; 0=unlimited */
+	int64_t instruction_limit;	       /**< Max instructions allowed; 0=unlimited */
+	cdsl_atomic_int64_t alloc_bytes;       /**< Current allocation counter */
+	cdsl_atomic_int64_t instruction_count; /**< Instructions executed */
+	cdsl_atomic_int_t error_state;	       /**< Non-zero if execution was aborted */
 
 	/* ---- Tracing ---- */
 	cdsl_trace_cb_t trace_cb; /**< Optional trace callback (NULL=disabled) */
@@ -143,7 +144,7 @@ typedef struct cdsl_vm {
  * @param schema  Schema for type resolution (may be NULL)
  * @return        New VM (must be freed with cdsl_vm_free), or NULL on OOM
  */
-[[nodiscard]]
+CDSL_NODISCARD
 cdsl_vm_t* cdsl_vm_create(const cdsl_schema_t* schema);
 
 /**
@@ -223,7 +224,7 @@ void cdsl_vm_set_max_expr_depth(cdsl_vm_t* vm, int depth);
  * @param vm  Target VM
  * @return    Heap-allocated stats snapshot, or NULL if vm is NULL
  */
-[[nodiscard]]
+CDSL_NODISCARD
 cdsl_stats_t* cdsl_vm_get_stats(const cdsl_vm_t* vm);
 
 /**

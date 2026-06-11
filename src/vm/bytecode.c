@@ -816,9 +816,9 @@ cdsl_bytecode_execute(cdsl_vm_t* vm, const cdsl_bytecode_t* bc, cdsl_context_t* 
 	while (ip < end) {
 		/* instruction count check */
 		if (vm->instruction_limit > 0) {
-			int64_t count = atomic_fetch_add(&vm->instruction_count, 1) + 1;
+			int64_t count = CDSL_ATOMIC_FETCH_ADD(&vm->instruction_count, 1) + 1;
 			if (count > vm->instruction_limit) {
-				vm->error_state = 1;
+				CDSL_ATOMIC_STORE(&vm->error_state, 1);
 				result.type = CDSL_TYPE_VOID;
 				goto done;
 			}
@@ -1173,7 +1173,7 @@ cdsl_bytecode_execute_rule(cdsl_vm_t* vm, const cdsl_bytecode_t* bc, cdsl_contex
 
 	while (ip < end) {
 		if (vm->instruction_limit > 0) {
-			int64_t count = atomic_fetch_add(&vm->instruction_count, 1) + 1;
+			int64_t count = CDSL_ATOMIC_FETCH_ADD(&vm->instruction_count, 1) + 1;
 			if (count > vm->instruction_limit) {
 				report->status = CDSL_STATUS_ERROR;
 				goto done;

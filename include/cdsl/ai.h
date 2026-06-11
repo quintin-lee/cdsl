@@ -13,6 +13,8 @@
 #ifndef CDSL_AI_H
 #define CDSL_AI_H
 
+#include "cdsl/util/portability.h"
+
 #include "cdsl/schema.h"
 
 /**
@@ -142,7 +144,7 @@ cdsl_ai_config_t cdsl_ai_config_default(void);
  * @param config AI configuration (controls mock mode, API credentials, and model selection)
  * @return Newly allocated DSL string (must be freed with @c free()), or NULL on network/translation error
  */
-[[nodiscard]]
+CDSL_NODISCARD
 char* cdsl_ai_translate(const char* natural_language,
 			const cdsl_schema_t* schema,
 			const cdsl_ai_config_t* config);
@@ -161,7 +163,7 @@ char* cdsl_ai_translate(const char* natural_language,
  * @param config AI configuration
  * @return Review result structure containing approval status and risk score (must be freed with cdsl_ai_review_free)
  */
-[[nodiscard]]
+CDSL_NODISCARD
 cdsl_ai_review_t*
 cdsl_ai_review(const char* dsl_code, const cdsl_schema_t* schema, const cdsl_ai_config_t* config);
 
@@ -193,7 +195,7 @@ typedef void (*cdsl_ai_stream_cb_t)(const char* chunk, void* user_data);
  * @param user_data User-provided data pointer passed to the callback
  * @return Full translated DSL string (must be freed with @c free()), or NULL on error
  */
-[[nodiscard]]
+CDSL_NODISCARD
 char* cdsl_ai_translate_stream(const char* natural_language,
 			       const cdsl_schema_t* schema,
 			       const cdsl_ai_config_t* config,

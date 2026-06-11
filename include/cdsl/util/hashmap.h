@@ -8,6 +8,9 @@
 #ifndef CDSL_UTIL_HASHMAP_H
 #define CDSL_UTIL_HASHMAP_H
 
+#include "cdsl/util/portability.h"
+
+#include "cdsl/util/portability.h"
 #include <stdbool.h>
 #include <stddef.h>
 
@@ -39,7 +42,7 @@ typedef void (*cdsl_hashmap_free_fn)(void* value);
  * @param bucket_count Number of buckets (0 for default 64)
  * @return Newly allocated hash map
  */
-[[nodiscard]]
+CDSL_NODISCARD
 cdsl_hashmap_t* cdsl_hashmap_create(int bucket_count);
 
 /**
@@ -64,7 +67,7 @@ bool cdsl_hashmap_put(cdsl_hashmap_t* map, const char* key, void* value);
  * @param key Key to search for
  * @return Value pointer, or NULL if not found
  */
-[[nodiscard]]
+CDSL_NODISCARD
 void* cdsl_hashmap_get(cdsl_hashmap_t* map, const char* key);
 
 /**
@@ -107,7 +110,7 @@ void cdsl_hashmap_iterate(const cdsl_hashmap_t* map, cdsl_hashmap_iter_fn cb, vo
  * @param count Optional output for key count (may be NULL)
  * @return Allocated array of duplicated key strings, or NULL if empty
  */
-[[nodiscard]]
+CDSL_NODISCARD
 char** cdsl_hashmap_keys(const cdsl_hashmap_t* map, int* count);
 
 #endif

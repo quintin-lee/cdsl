@@ -126,9 +126,9 @@ cdsl_vm_track_alloc(cdsl_vm_t* vm, size_t bytes)
 	if (vm->memory_limit <= 0) {
 		return 1;
 	}
-	int64_t cur = atomic_fetch_add(&vm->alloc_bytes, (int64_t)bytes) + (int64_t)bytes;
+	int64_t cur = CDSL_ATOMIC_FETCH_ADD(&vm->alloc_bytes, (int64_t)bytes) + (int64_t)bytes;
 	if (cur > vm->memory_limit) {
-		vm->error_state = 1;
+		CDSL_ATOMIC_STORE(&vm->error_state, 1);
 		return 0;
 	}
 	return 1;
@@ -143,7 +143,7 @@ cdsl_vm_track_free(cdsl_vm_t* vm, size_t bytes)
 	if (!vm || !bytes) {
 		return;
 	}
-	atomic_fetch_sub(&vm->alloc_bytes, (int64_t)bytes);
+	CDSL_ATOMIC_FETCH_SUB(&vm->alloc_bytes, (int64_t)bytes);
 }
 
 /**
@@ -155,13 +155,13 @@ cdsl_vm_check_abort(cdsl_vm_t* vm, double start_time_us)
 	if (!vm) {
 		return 0;
 	}
-	if (vm->error_state) {
+	if (CDSL_ATOMIC_LOAD(&vm->error_state)) {
 		return 1;
 	}
 	if (vm->timeout_us > 0) {
 		double elapsed = cdsl_get_time_us_internal() - start_time_us;
 		if (elapsed > (double)vm->timeout_us) {
-			vm->error_state = 1;
+			CDSL_ATOMIC_STORE(&vm->error_state, 1);
 			return 1;
 		}
 	}
@@ -583,10 +583,10 @@ cdsl_vm_get_stats(const cdsl_vm_t* vm)
 	if (!s) {
 		return NULL;
 	}
-	s->total_executions = atomic_load(&vm->stats.total_executions);
-	s->total_rules_executed = atomic_load(&vm->stats.total_rules_executed);
-	s->total_metrics_evaluated = atomic_load(&vm->stats.total_metrics_evaluated);
-	s->total_actions_triggered = atomic_load(&vm->stats.total_actions_triggered);
+	s->total_executions = CDSL_ATOMIC_LOAD(&vm->stats.total_executions);
+	s->total_rules_executed = CDSL_ATOMIC_LOAD(&vm->stats.total_rules_executed);
+	s->total_metrics_evaluated = CDSL_ATOMIC_LOAD(&vm->stats.total_metrics_evaluated);
+	s->total_actions_triggered = CDSL_ATOMIC_LOAD(&vm->stats.total_actions_triggered);
 	s->total_time_us = vm->stats.total_time_us;
 	s->avg_time_us = vm->stats.avg_time_us;
 	if (s->total_executions > 0) {
@@ -599,10 +599,10 @@ void
 cdsl_vm_reset_stats(cdsl_vm_t* vm)
 {
 	if (vm) {
-		atomic_store(&vm->stats.total_executions, 0);
-		atomic_store(&vm->stats.total_rules_executed, 0);
-		atomic_store(&vm->stats.total_metrics_evaluated, 0);
-		atomic_store(&vm->stats.total_actions_triggered, 0);
+		CDSL_ATOMIC_STORE(&vm->stats.total_executions, 0);
+		CDSL_ATOMIC_STORE(&vm->stats.total_rules_executed, 0);
+		CDSL_ATOMIC_STORE(&vm->stats.total_metrics_evaluated, 0);
+		CDSL_ATOMIC_STORE(&vm->stats.total_actions_triggered, 0);
 		vm->stats.total_time_us = 0;
 		vm->stats.avg_time_us = 0;
 	}

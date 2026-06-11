@@ -8,6 +8,8 @@
 #ifndef CDSL_CACHE_H
 #define CDSL_CACHE_H
 
+#include "cdsl/util/portability.h"
+
 #include "cdsl/ast.h"
 #include "cdsl/schema.h"
 #include "cdsl/util/hashmap.h"
@@ -32,13 +34,13 @@ typedef struct cdsl_compile_cache {
 	pthread_rwlock_t lock;
 } cdsl_compile_cache_t;
 
-[[nodiscard]]
+CDSL_NODISCARD
 cdsl_compiled_rule_t* cdsl_compile(cdsl_compile_cache_t* cache,
 				   const char* dsl_code,
 				   const cdsl_schema_t* schema,
 				   char* err_buf,
 				   int err_buf_sz);
-[[nodiscard]]
+CDSL_NODISCARD
 cdsl_compile_cache_t* cdsl_compile_cache_create(int capacity);
 void cdsl_compile_cache_free(cdsl_compile_cache_t* cache);
 /**

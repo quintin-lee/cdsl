@@ -11,6 +11,7 @@
 #ifndef CDSL_UTIL_ARENA_H
 #define CDSL_UTIL_ARENA_H
 
+#include "cdsl/util/portability.h"
 #include <stddef.h>
 #include <stdint.h>
 
@@ -36,7 +37,7 @@ typedef struct cdsl_arena {
 } cdsl_arena_t;
 
 /** @brief Default block size for new arenas (64 KB). */
-constexpr size_t CDSL_ARENA_DEFAULT_BLOCK_SIZE = 65536;
+#define CDSL_ARENA_DEFAULT_BLOCK_SIZE 65536
 
 static_assert(CDSL_ARENA_DEFAULT_BLOCK_SIZE >= 16,
 	      "Arena block size must accommodate 8-byte alignment");
@@ -46,7 +47,7 @@ static_assert(CDSL_ARENA_DEFAULT_BLOCK_SIZE >= 16,
  * @param block_size Block size in bytes (0 for default 64KB)
  * @return Newly allocated arena, or NULL on failure
  */
-[[nodiscard]]
+CDSL_NODISCARD
 cdsl_arena_t* cdsl_arena_create(size_t block_size);
 
 /**
@@ -61,7 +62,7 @@ void cdsl_arena_free(cdsl_arena_t* arena);
  * @param size Number of bytes to allocate (0 returns NULL)
  * @return Pointer to allocated memory, or NULL on failure
  */
-[[nodiscard]]
+CDSL_NODISCARD
 void* cdsl_arena_alloc(cdsl_arena_t* arena, size_t size);
 
 /**
@@ -70,7 +71,7 @@ void* cdsl_arena_alloc(cdsl_arena_t* arena, size_t size);
  * @param s String to duplicate (NULL-safe, returns NULL)
  * @return Arena-allocated copy of s, or NULL on failure
  */
-[[nodiscard]]
+CDSL_NODISCARD
 char* cdsl_arena_strdup(cdsl_arena_t* arena, const char* s);
 
 #endif

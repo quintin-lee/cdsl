@@ -9,6 +9,17 @@ set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
 include(GNUInstallDirs)
 
+# 13. Code coverage (Moved up to apply to all targets)
+option(CDSL_ENABLE_COVERAGE "Enable gcov code coverage reporting" OFF)
+if(CDSL_ENABLE_COVERAGE)
+    if(NOT CMAKE_BUILD_TYPE STREQUAL "Debug")
+        message(WARNING "Coverage works best with Debug builds. Current: ${CMAKE_BUILD_TYPE}")
+    endif()
+    add_compile_options(--coverage)
+    add_link_options(--coverage)
+    message(STATUS "Code coverage enabled (--coverage)")
+endif()
+
 # 1. Flex & Bison
 find_package(FLEX REQUIRED)
 find_package(BISON REQUIRED)
@@ -305,17 +316,6 @@ if(DOXYGEN_FOUND)
     endif()
 else()
     message(STATUS "Doxygen not found - 'doc' target will not be available")
-endif()
-
-# 13. Code coverage
-option(CDSL_ENABLE_COVERAGE "Enable gcov code coverage reporting" OFF)
-if(CDSL_ENABLE_COVERAGE)
-    if(NOT CMAKE_BUILD_TYPE STREQUAL "Debug")
-        message(WARNING "Coverage works best with Debug builds. Current: ${CMAKE_BUILD_TYPE}")
-    endif()
-    add_compile_options(--coverage)
-    add_link_options(--coverage)
-    message(STATUS "Code coverage enabled (--coverage)")
 endif()
 
 # 14. Fuzz target (requires Clang with libFuzzer)

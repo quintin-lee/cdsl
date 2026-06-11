@@ -34,7 +34,7 @@
 #include <string.h>
 #include <stdio.h>
 #include <math.h>
-#include <stdatomic.h>
+#include "cdsl/util/portability.h"
 #include <errno.h>
 
 /**
@@ -230,9 +230,9 @@ cdsl_eval_expr_internal(
 
 	/* Instruction quota check for tree-walk evaluator */
 	if (vm && vm->instruction_limit > 0) {
-		int64_t count = atomic_fetch_add(&vm->instruction_count, 1) + 1;
+		int64_t count = CDSL_ATOMIC_FETCH_ADD(&vm->instruction_count, 1) + 1;
 		if (count > vm->instruction_limit) {
-			vm->error_state = 1;
+			CDSL_ATOMIC_STORE(&vm->error_state, 1);
 			return result;
 		}
 	}
@@ -713,7 +713,7 @@ execute_metric_rule(cdsl_vm_t* vm, const cdsl_rule_t* rule, cdsl_context_t* ctx)
 
 	int idx = 0;
 	for (cdsl_metric_node_t* m = rule->metrics; m; m = m->next, idx++) {
-		if (vm->error_state) {
+		if (CDSL_ATOMIC_LOAD(&vm->error_state)) {
 			break;
 		}
 		cdsl_metric_result_t* mr = &report->metrics[idx];
@@ -735,7 +735,7 @@ execute_metric_rule(cdsl_vm_t* vm, const cdsl_rule_t* rule, cdsl_context_t* ctx)
 			}
 			cdsl_value_t cond =
 			    cdsl_eval_expr_internal(c->condition, ctx, vm, vm->debug_enabled, 0);
-			if (vm->error_state) {
+			if (CDSL_ATOMIC_LOAD(&vm->error_state)) {
 				break;
 			}
 			if (cond.type == CDSL_TYPE_BOOL && cond.data.bool_val) {
@@ -749,7 +749,7 @@ execute_metric_rule(cdsl_vm_t* vm, const cdsl_rule_t* rule, cdsl_context_t* ctx)
 					    c->action->args->expr, ctx, vm, vm->debug_enabled, 0);
 					mr->score_obtained =
 					    (sv.type == CDSL_TYPE_INT) ? sv.data.int_val : 0;
-					if (vm->error_state) {
+					if (CDSL_ATOMIC_LOAD(&vm->error_state)) {
 						break;
 					}
 				} else {
@@ -766,7 +766,7 @@ execute_metric_rule(cdsl_vm_t* vm, const cdsl_rule_t* rule, cdsl_context_t* ctx)
 				break;
 			}
 		}
-		if (vm->error_state) {
+		if (CDSL_ATOMIC_LOAD(&vm->error_state)) {
 			break;
 		}
 
@@ -775,14 +775,14 @@ execute_metric_rule(cdsl_vm_t* vm, const cdsl_rule_t* rule, cdsl_context_t* ctx)
 				fprintf(stderr, "[TRACE]   no CASE matched, executing DEFAULT\n");
 			}
 			cdsl_trigger_action_internal(vm, m->default_action);
-			if (!vm->error_state && m->default_action &&
+			if (!CDSL_ATOMIC_LOAD(&vm->error_state) && m->default_action &&
 			    strcmp(m->default_action->action_name, "score") == 0 &&
 			    m->default_action->args) {
 				cdsl_value_t sv = cdsl_eval_expr_internal(
 				    m->default_action->args->expr, ctx, vm, vm->debug_enabled, 0);
 				mr->score_obtained =
 				    (sv.type == CDSL_TYPE_INT) ? sv.data.int_val : 0;
-			} else if (!vm->error_state && m->default_action &&
+			} else if (!CDSL_ATOMIC_LOAD(&vm->error_state) && m->default_action &&
 				   strcmp(m->default_action->action_name, "fail_metric") == 0) {
 				mr->score_obtained = 0;
 				if (m->default_action->args && m->default_action->args->next) {
@@ -792,8 +792,8 @@ execute_metric_rule(cdsl_vm_t* vm, const cdsl_rule_t* rule, cdsl_context_t* ctx)
 					    vm,
 					    vm->debug_enabled,
 					    0);
-					if (!vm->error_state && rv.type == CDSL_TYPE_STRING &&
-					    rv.data.string_val) {
+					if (!CDSL_ATOMIC_LOAD(&vm->error_state) &&
+					    rv.type == CDSL_TYPE_STRING && rv.data.string_val) {
 						mr->violation_reason = strdup(rv.data.string_val);
 					}
 				}
@@ -895,12 +895,12 @@ execute_simple_rule(cdsl_vm_t* vm,
 		fprintf(stderr, "[TRACE] Evaluating simple rule '%s'\n", rule->name);
 	}
 	/* Abort if timeout or OOM */
-	if (vm->error_state) {
+	if (CDSL_ATOMIC_LOAD(&vm->error_state)) {
 		cdsl_report_free(report);
 		return NULL;
 	}
 	cdsl_value_t cond = evaluate_condition(rule->when_expr, ctx, vm, bc, vm->debug_enabled);
-	if (vm->error_state) {
+	if (CDSL_ATOMIC_LOAD(&vm->error_state)) {
 		cdsl_report_free(report);
 		return NULL;
 	}
@@ -973,14 +973,14 @@ cdsl_vm_execute(cdsl_vm_t* vm, const cdsl_rule_t* rule, cdsl_context_t* ctx)
 	double t0 = cdsl_get_time_us_internal();
 	cdsl_rule_report_t* rpt;
 	/* Reset error state for each execution */
-	vm->error_state = 0;
+	CDSL_ATOMIC_STORE(&vm->error_state, 0);
 	if (rule->metrics) {
 		rpt = execute_metric_rule(vm, rule, ctx);
 	} else {
 		rpt = execute_simple_rule(vm, rule, ctx, NULL);
 	}
 	/* Check if aborted (instruction quota, timeout, etc.) */
-	if (vm->error_state) {
+	if (CDSL_ATOMIC_LOAD(&vm->error_state)) {
 		if (!rpt) {
 			rpt = calloc(1, sizeof(cdsl_rule_report_t));
 		}

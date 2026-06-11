@@ -21,9 +21,18 @@
 %{
 #include "cdsl/ast.h"
 #include "cdsl/util/error.h"
+#include "cdsl/util/portability.h"
 #include "parser.tab.h"
 #include <string.h>
 #include <stdlib.h>
+
+#ifdef _WIN32
+#include <io.h>
+#define isatty _isatty
+#define fileno _fileno
+#else
+#include <unistd.h>
+#endif
 %}
 
 %option noyywrap
@@ -33,6 +42,7 @@
 %option reentrant
 %option bison-bridge
 %option extra-type="struct cdsl_error_list*"
+%option nounistd
 
 %x BLOCK_COMMENT
 

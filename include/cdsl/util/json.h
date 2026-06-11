@@ -8,6 +8,10 @@
 #ifndef CDSL_UTIL_JSON_H
 #define CDSL_UTIL_JSON_H
 
+#include "cdsl/util/portability.h"
+
+#include "cdsl/util/portability.h"
+
 /**
  * @brief JSON value type.
  */
@@ -47,7 +51,7 @@ typedef struct cdsl_json_value {
  * @param json Null-terminated JSON string
  * @return Root value (must be freed with cdsl_json_free), or NULL on error
  */
-[[nodiscard]]
+CDSL_NODISCARD
 cdsl_json_value_t* cdsl_json_parse(const char* json);
 
 /**
