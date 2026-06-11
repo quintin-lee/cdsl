@@ -47,6 +47,51 @@ jobs:
           retention-days: 1
 
   ##########################################################################
+  # Build & Test (macOS)
+  ##########################################################################
+  build-macos:
+    runs-on: macos-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install dependencies
+        run: |
+          brew install cmake flex bison
+
+      - name: Configure
+        run: cmake -B build -DCDSL_GENERATE_DOCS=OFF -DCMAKE_BUILD_TYPE=Debug
+
+      - name: Build
+        run: cmake --build build -j$(sysctl -n hw.ncpu)
+
+      - name: Test
+        run: ctest --test-dir build --output-on-failure
+
+  ##########################################################################
+  # Build & Test (Windows - experimental)
+  ##########################################################################
+  build-windows:
+    runs-on: windows-latest
+    continue-on-error: true
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install dependencies
+        run: |
+          choco install winflexbison3 cmake
+
+      - name: Configure
+        run: cmake -B build -DCDSL_GENERATE_DOCS=OFF -DCMAKE_BUILD_TYPE=Debug
+
+      - name: Build
+        run: cmake --build build --config Debug
+
+      - name: Test
+        run: ctest --test-dir build --output-on-failure -C Debug
+
+  ##########################################################################
   # Fuzz Test (libFuzzer + AddressSanitizer)
   ##########################################################################
   fuzz:
