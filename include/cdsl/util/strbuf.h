@@ -6,6 +6,7 @@
 #ifndef CDSL_UTIL_STRBUF_H
 #define CDSL_UTIL_STRBUF_H
 
+#include "cdsl/util/portability.h"
 #include <stddef.h>
 #include <stdlib.h>
 #include <string.h>
@@ -36,14 +37,7 @@ cdsl_strbuf_free(cdsl_strbuf_t* sb)
 	sb->buf = NULL;
 }
 
-#if defined(__GNUC__) || defined(__clang__)
-#define CDSL_PRINTF_FORMAT(a, b) __attribute__((format(printf, a, b)))
-#else
-#define CDSL_PRINTF_FORMAT(a, b)
-#endif
-
-static inline CDSL_PRINTF_FORMAT(2,
-				 3) void cdsl_strbuf_printf(cdsl_strbuf_t* sb, const char* fmt, ...)
+static inline CDSL_PRINTF_FORMAT(2, 3) void cdsl_strbuf_printf(cdsl_strbuf_t* sb, const char* fmt, ...)
 {
 	va_list ap;
 	va_start(ap, fmt);

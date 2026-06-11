@@ -23,6 +23,13 @@
 #define CDSL_NODISCARD
 #endif
 
+/* printf format attribute */
+#if defined(__GNUC__) || defined(__clang__)
+#define CDSL_PRINTF_FORMAT(a, b) __attribute__((format(printf, a, b)))
+#else
+#define CDSL_PRINTF_FORMAT(a, b)
+#endif
+
 /* MSVC-specific fixes */
 #ifdef _MSC_VER
 #ifndef _CRT_SECURE_NO_WARNINGS

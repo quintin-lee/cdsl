@@ -24,6 +24,7 @@
 #include "cdsl/ai.h"
 #include "cdsl/util/json.h"
 #include "cdsl/util/hashmap.h"
+#include "cdsl/util/portability.h"
 #include <stdlib.h>
 #include <string.h>
 #include <stdio.h>
@@ -692,7 +693,7 @@ count_schema_vars(const cdsl_schema_t* schema)
  * @brief Safe append to a buffer with overflow protection.
  * @return New string length, capped at sz-1
  */
-static size_t __attribute__((format(printf, 4, 5)))
+static size_t CDSL_PRINTF_FORMAT(4, 5)
 safe_append(char* buf, size_t sz, size_t pos, const char* fmt, ...)
 {
 	if (pos >= sz - 1) {

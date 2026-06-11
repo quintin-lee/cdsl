@@ -20,6 +20,11 @@ if(CDSL_ENABLE_COVERAGE)
     message(STATUS "Code coverage enabled (--coverage -fprofile-update=atomic)")
 endif()
 
+# MSVC security warnings
+if(MSVC)
+    add_compile_definitions(_CRT_SECURE_NO_WARNINGS)
+endif()
+
 # 1. Flex & Bison
 find_package(FLEX REQUIRED)
 find_package(BISON REQUIRED)
