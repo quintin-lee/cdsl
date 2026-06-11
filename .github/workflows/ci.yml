@@ -47,6 +47,49 @@ jobs:
           retention-days: 1
 
   ##########################################################################
+  # Fuzz Test (libFuzzer + AddressSanitizer)
+  ##########################################################################
+  fuzz:
+    runs-on: ubuntu-latest
+    continue-on-error: true
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install dependencies
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq \
+            cmake \
+            clang \
+            flex \
+            bison \
+            libpthread-stubs0-dev
+
+      - name: Configure fuzz target
+        run: |
+          cmake -B build \
+            -DCMAKE_BUILD_TYPE=Debug \
+            -DCMAKE_C_COMPILER=clang \
+            -DCDSL_BUILD_FUZZ=ON \
+            -DCDSL_GENERATE_DOCS=OFF
+
+      - name: Build fuzz target
+        run: cmake --build build --target cdsl_fuzz_parse -j$(nproc)
+
+      - name: Run fuzz target (60 seconds)
+        run: |
+          mkdir -p build/corpus
+          ./build/cdsl_fuzz_parse -max_total_time=60 -max_len=4096 build/corpus
+
+      - name: Upload crash artifacts
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: fuzz-crash-artifacts
+          path: ./crash-*
+
+  ##########################################################################
   # Sanitizer Build (AddressSanitizer + UndefinedBehaviorSanitizer)
   ##########################################################################
   sanitize:
