@@ -267,7 +267,7 @@ builtin_uppercase(const char* name, cdsl_arg_node_t* args, cdsl_context_t* ctx, 
 	if (v.type != CDSL_TYPE_STRING || !v.data.string_val) {
 		return res;
 	}
-	static _Thread_local char buf[4096];
+	static THREAD_LOCAL char buf[4096];
 	size_t len = strlen(v.data.string_val);
 	if (len >= sizeof(buf)) {
 		return res;
@@ -295,7 +295,7 @@ builtin_lowercase(const char* name, cdsl_arg_node_t* args, cdsl_context_t* ctx, 
 	if (v.type != CDSL_TYPE_STRING || !v.data.string_val) {
 		return res;
 	}
-	static _Thread_local char buf[4096];
+	static THREAD_LOCAL char buf[4096];
 	size_t len = strlen(v.data.string_val);
 	if (len >= sizeof(buf)) {
 		return res;
@@ -328,7 +328,7 @@ builtin_trim(const char* name, cdsl_arg_node_t* args, cdsl_context_t* ctx, cdsl_
 		s++;
 	}
 	if (*s == '\0') {
-		static _Thread_local char empty[1];
+		static THREAD_LOCAL char empty[1];
 		empty[0] = '\0';
 		res.data.string_val = empty;
 		return res;
@@ -337,7 +337,7 @@ builtin_trim(const char* name, cdsl_arg_node_t* args, cdsl_context_t* ctx, cdsl_
 	while (len > 0 && isspace((unsigned char)s[len - 1])) {
 		len--;
 	}
-	static _Thread_local char buf[4096];
+	static THREAD_LOCAL char buf[4096];
 	if (len >= sizeof(buf)) {
 		return res;
 	}

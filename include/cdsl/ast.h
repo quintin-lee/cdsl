@@ -20,17 +20,6 @@
 #include <stdint.h>
 #include <time.h>
 
-/* Thread-local storage specifier, portable across compilers */
-#if __STDC_VERSION__ >= 201112L
-#define THREAD_LOCAL _Thread_local
-#elif defined(__GNUC__) || defined(__clang__)
-#define THREAD_LOCAL __thread
-#elif defined(_MSC_VER)
-#define THREAD_LOCAL __declspec(thread)
-#else
-#define THREAD_LOCAL
-#endif
-
 #define CDSL_MAX_EXPR_DEPTH 64
 #define CDSL_MAX_CASES 16
 #define CDSL_MAX_RULES 128

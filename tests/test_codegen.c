@@ -171,7 +171,11 @@ test_codegen_to_file()
 	TEST_ASSERT_NOT_NULL(rule, "Rule should parse");
 
 	// Generate code to file
+#ifdef _WIN32
+	const char* test_file = "test_generated_code.c";
+#else
 	const char* test_file = "/tmp/test_generated_code.c";
+#endif
 	int result = cdsl_codegen_to_file(rule, schema, test_file);
 
 	TEST_ASSERT(result == 1, "Code generation to file should succeed");

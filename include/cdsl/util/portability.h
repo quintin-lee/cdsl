@@ -30,6 +30,17 @@
 #define CDSL_PRINTF_FORMAT(a, b)
 #endif
 
+/* Thread-local storage specifier */
+#if defined(__STDC_VERSION__) && __STDC_VERSION__ >= 201112L && !defined(__STDC_NO_THREADS__)
+#define THREAD_LOCAL _Thread_local
+#elif defined(__GNUC__) || defined(__clang__)
+#define THREAD_LOCAL __thread
+#elif defined(_MSC_VER)
+#define THREAD_LOCAL __declspec(thread)
+#else
+#define THREAD_LOCAL
+#endif
+
 /* MSVC-specific fixes */
 #ifdef _MSC_VER
 #ifndef _CRT_SECURE_NO_WARNINGS
