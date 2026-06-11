@@ -202,6 +202,13 @@ configure_file(
     "${CMAKE_CURRENT_BINARY_DIR}/cdsl.pc"
     @ONLY
 )
+
+# 11. Python setup.py version
+configure_file(
+    "${CMAKE_CURRENT_SOURCE_DIR}/python/setup.py"
+    "${CMAKE_CURRENT_BINARY_DIR}/python/setup.py"
+    @ONLY
+)
 install(FILES "${CMAKE_CURRENT_BINARY_DIR}/cdsl.pc"
     DESTINATION ${CMAKE_INSTALL_LIBDIR}/pkgconfig
 )
