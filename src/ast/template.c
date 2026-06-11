@@ -162,6 +162,7 @@ cdsl_template_clear(void)
 	pthread_rwlock_unlock(&template_lock);
 	while (e) {
 		cdsl_template_entry_t* next = e->next;
+		cdsl_free_rule(e->rule);
 		free(e->name);
 		free(e);
 		e = next;
