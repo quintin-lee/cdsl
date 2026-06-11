@@ -15,9 +15,9 @@ if(CDSL_ENABLE_COVERAGE)
     if(NOT CMAKE_BUILD_TYPE STREQUAL "Debug")
         message(WARNING "Coverage works best with Debug builds. Current: ${CMAKE_BUILD_TYPE}")
     endif()
-    add_compile_options(--coverage)
+    add_compile_options(--coverage -fprofile-update=atomic)
     add_link_options(--coverage)
-    message(STATUS "Code coverage enabled (--coverage)")
+    message(STATUS "Code coverage enabled (--coverage -fprofile-update=atomic)")
 endif()
 
 # 1. Flex & Bison

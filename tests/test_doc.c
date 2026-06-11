@@ -6,7 +6,7 @@
 #include <string.h>
 #include <stdlib.h>
 #include <stdio.h>
-#include <pthread.h>
+#include "cdsl/util/threads.h"
 #include <unistd.h>
 #include "test.h"
 

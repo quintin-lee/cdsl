@@ -11,7 +11,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <stdio.h>
-#include <pthread.h>
+#include "cdsl/util/threads.h"
 
 /* ---- Deep-copy helpers (internal) ---- */
 
@@ -114,7 +114,7 @@ typedef struct cdsl_template_entry {
 } cdsl_template_entry_t;
 
 static cdsl_template_entry_t* template_registry = NULL;
-static pthread_rwlock_t template_lock = PTHREAD_RWLOCK_INITIALIZER;
+static cdsl_rwlock_t template_lock = CDSL_RWLOCK_INITIALIZER;
 
 void
 cdsl_template_register(cdsl_rule_t* template_rule)
@@ -132,34 +132,34 @@ cdsl_template_register(cdsl_rule_t* template_rule)
 		return;
 	}
 	e->rule = template_rule;
-	pthread_rwlock_wrlock(&template_lock);
+	CDSL_RWLOCK_WRLOCK(&template_lock);
 	e->next = template_registry;
 	template_registry = e;
-	pthread_rwlock_unlock(&template_lock);
+	CDSL_RWLOCK_UNLOCK_WR(&template_lock);
 }
 
 cdsl_rule_t*
 cdsl_template_get(const char* name)
 {
-	pthread_rwlock_rdlock(&template_lock);
+	CDSL_RWLOCK_RDLOCK(&template_lock);
 	for (cdsl_template_entry_t* e = template_registry; e; e = e->next) {
 		if (strcmp(e->name, name) == 0) {
 			cdsl_rule_t* r = e->rule;
-			pthread_rwlock_unlock(&template_lock);
+			CDSL_RWLOCK_UNLOCK_RD(&template_lock);
 			return r;
 		}
 	}
-	pthread_rwlock_unlock(&template_lock);
+	CDSL_RWLOCK_UNLOCK_RD(&template_lock);
 	return NULL;
 }
 
 void
 cdsl_template_clear(void)
 {
-	pthread_rwlock_wrlock(&template_lock);
+	CDSL_RWLOCK_WRLOCK(&template_lock);
 	cdsl_template_entry_t* e = template_registry;
 	template_registry = NULL;
-	pthread_rwlock_unlock(&template_lock);
+	CDSL_RWLOCK_UNLOCK_WR(&template_lock);
 	while (e) {
 		cdsl_template_entry_t* next = e->next;
 		cdsl_free_rule(e->rule);

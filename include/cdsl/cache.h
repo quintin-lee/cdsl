@@ -14,7 +14,7 @@
 #include "cdsl/schema.h"
 #include "cdsl/util/hashmap.h"
 #include "cdsl/bytecode.h"
-#include <pthread.h>
+#include "cdsl/util/threads.h"
 
 /**
  * @brief Handle to a compiled rule in the cache.
@@ -31,7 +31,7 @@ typedef struct cdsl_compiled_rule {
  */
 typedef struct cdsl_compile_cache {
 	cdsl_hashmap_t* map;
-	pthread_rwlock_t lock;
+	cdsl_rwlock_t lock;
 } cdsl_compile_cache_t;
 
 CDSL_NODISCARD

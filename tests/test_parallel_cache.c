@@ -10,7 +10,7 @@
  */
 
 #include "cdsl/execution.h"
-#include <pthread.h>
+#include "cdsl/util/threads.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -89,7 +89,7 @@ int
 main()
 {
 	cdsl_compile_cache_t* cache = cdsl_compile_cache_create(CACHE_SIZE);
-	pthread_t threads[NUM_THREADS];
+	cdsl_thread_t threads[NUM_THREADS];
 
 	printf("Starting %d threads, each doing %d cache compilations on size %d...\n",
 	       NUM_THREADS,
@@ -100,14 +100,14 @@ main()
 		cache_worker_arg_t* id = malloc(sizeof(cache_worker_arg_t));
 		id->cache = cache;
 		id->id = i;
-		if (pthread_create(&threads[i], NULL, cache_worker, id) != 0) {
+		if (CDSL_THREAD_CREATE(&threads[i], cache_worker, id) != 0) {
 			perror("pthread_create");
 			return 1;
 		}
 	}
 
 	for (int i = 0; i < NUM_THREADS; i++) {
-		pthread_join(threads[i], NULL);
+		CDSL_THREAD_JOIN(threads[i]);
 	}
 
 	cdsl_compile_cache_free(cache);

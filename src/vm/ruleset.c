@@ -20,7 +20,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <stdio.h>
-#include <pthread.h>
+#include "cdsl/util/threads.h"
 
 /**
  * @brief Create an empty ruleset.
