@@ -146,7 +146,15 @@ foreach(test_src ${TEST_SOURCES})
     endif()
 endforeach()
 
-# 8. LSP server (optional)
+# 8. Benchmarks
+option(CDSL_BUILD_BENCHMARKS "Build performance benchmarks" OFF)
+if(CDSL_BUILD_BENCHMARKS)
+    add_executable(cdsl_bench tests/bench_execution.c)
+    target_link_libraries(cdsl_bench PRIVATE cdsl_static)
+    message(STATUS "Benchmark target cdsl_bench enabled")
+endif()
+
+# 9. LSP server (optional)
 option(CDSL_BUILD_LSP "Build the cdsl-lsp language server" OFF)
 if(CDSL_BUILD_LSP)
     add_subdirectory(tools/cdsl-lsp)
