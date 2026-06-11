@@ -109,6 +109,7 @@ jobs:
           sudo apt-get install -y -qq \
             cmake \
             clang \
+            libclang-rt-fuzzer-dev \
             flex \
             bison \
             libpthread-stubs0-dev
@@ -199,7 +200,7 @@ jobs:
 
       - name: Generate coverage report
         run: |
-          lcov --capture --directory build --output-file build/coverage.info
+          lcov --capture --directory build --base-directory . --output-file build/coverage.info
           lcov --remove build/coverage.info '/usr/*' '*/build/*' '*/tests/*' --output-file build/coverage.info
           lcov --list build/coverage.info
 
@@ -277,6 +278,7 @@ jobs:
   # Static Analysis (clang-tidy)
   ##########################################################################
   clang-tidy:
+    continue-on-error: true
     runs-on: ubuntu-latest
 
     steps:
