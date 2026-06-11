@@ -32,15 +32,23 @@ typedef INIT_ONCE cdsl_once_t;
 #define CDSL_ONCE_INIT INIT_ONCE_STATIC_INIT
 
 /* Inline wrapper for InitOnceExecuteOnce to match void(void) signature */
-static inline BOOL CALLBACK cdsl_internal_once_wrapper(PINIT_ONCE once, PVOID param, PVOID *context) {
-    (void)once; (void)context;
-    void (*fn)(void) = (void (*)(void))param;
-    if (fn) fn();
-    return TRUE;
+static inline BOOL CALLBACK
+cdsl_internal_once_wrapper(PINIT_ONCE once, PVOID param, PVOID* context)
+{
+	(void)once;
+	(void)context;
+	void (*fn)(void) = (void (*)(void))param;
+	if (fn) {
+		fn();
+	}
+	return TRUE;
 }
-#define CDSL_ONCE_RUN(once, fn) InitOnceExecuteOnce(once, cdsl_internal_once_wrapper, (PVOID)fn, NULL)
+#define CDSL_ONCE_RUN(once, fn)                                                                    \
+	InitOnceExecuteOnce(once, cdsl_internal_once_wrapper, (PVOID)fn, NULL)
 
-#define CDSL_THREAD_CREATE(t, fn, arg) (*(t) = (HANDLE)_beginthreadex(NULL, 0, (unsigned (__stdcall *)(void *))fn, arg, 0, NULL), (*(t) == NULL))
+#define CDSL_THREAD_CREATE(t, fn, arg)                                                             \
+	(*(t) = (HANDLE)_beginthreadex(NULL, 0, (unsigned(__stdcall*)(void*))fn, arg, 0, NULL),    \
+	 (*(t) == NULL))
 #define CDSL_THREAD_JOIN(t) (WaitForSingleObject(t, INFINITE), CloseHandle(t))
 
 #else
@@ -68,7 +76,7 @@ typedef pthread_once_t cdsl_once_t;
 #define CDSL_ONCE_INIT PTHREAD_ONCE_INIT
 #define CDSL_ONCE_RUN(once, fn) pthread_once(once, fn)
 
-#define CDSL_THREAD_CREATE(t, fn, arg) pthread_create(t, NULL, (void *(*)(void *))fn, arg)
+#define CDSL_THREAD_CREATE(t, fn, arg) pthread_create(t, NULL, (void* (*)(void*))fn, arg)
 #define CDSL_THREAD_JOIN(t) pthread_join(t, NULL)
 
 #endif

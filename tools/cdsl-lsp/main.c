@@ -21,10 +21,16 @@
 
 /* ---- JSON helpers (minimal, no external lib) ---- */
 
-static char* json_esc(const char* s, char* buf, size_t sz) {
+static char*
+json_esc(const char* s, char* buf, size_t sz)
+{
 	size_t j = 0;
 	for (const char* p = s; *p && j < sz - 2; p++) {
-		if (*p == '"' || *p == '\\') { if (j < sz - 3) buf[j++] = '\\'; }
+		if (*p == '"' || *p == '\\') {
+			if (j < sz - 3) {
+				buf[j++] = '\\';
+			}
+		}
 		buf[j++] = *p;
 	}
 	buf[j] = '\0';
@@ -34,50 +40,72 @@ static char* json_esc(const char* s, char* buf, size_t sz) {
 #define MAX_MSG 65536
 static char g_in[MAX_MSG], g_out[MAX_MSG], g_work[8192];
 
-static int read_message(void) {
+static int
+read_message(void)
+{
 	char header[256];
-	if (!fgets(header, sizeof(header), stdin)) return 0;
+	if (!fgets(header, sizeof(header), stdin)) {
+		return 0;
+	}
 	int len = 0;
 	sscanf(header, "Content-Length: %d", &len);
 	/* skip optional Content-Type line and blank line */
 	while (1) {
 		int c = fgetc(stdin);
-		if (c == '\n') break;
+		if (c == '\n') {
+			break;
+		}
 	}
-	if (len <= 0 || len >= MAX_MSG) return 0;
+	if (len <= 0 || len >= MAX_MSG) {
+		return 0;
+	}
 	size_t total = 0;
 	while (total < (size_t)len) {
 		size_t n = fread(g_in + total, 1, (size_t)len - total, stdin);
-		if (n == 0) break;
+		if (n == 0) {
+			break;
+		}
 		total += n;
 	}
 	g_in[total] = '\0';
 	return 1;
 }
 
-static void send_message(const char* json) {
+static void
+send_message(const char* json)
+{
 	size_t len = strlen(json);
 	fprintf(stdout, "Content-Length: %zu\r\n\r\n%s", len, json);
 	fflush(stdout);
 }
 
-static int json_get_str(const char* json, const char* key, char* out, size_t sz) {
+static int
+json_get_str(const char* json, const char* key, char* out, size_t sz)
+{
 	char pat[256];
 	snprintf(pat, sizeof(pat), "\"%s\":\"", key);
 	const char* p = strstr(json, pat);
-	if (!p) return 0;
+	if (!p) {
+		return 0;
+	}
 	p += strlen(pat);
 	size_t i = 0;
-	while (*p && *p != '"' && i < sz - 1) out[i++] = *p++;
+	while (*p && *p != '"' && i < sz - 1) {
+		out[i++] = *p++;
+	}
 	out[i] = '\0';
 	return 1;
 }
 
-static int json_get_int(const char* json, const char* key, int* val) {
+static int
+json_get_int(const char* json, const char* key, int* val)
+{
 	char pat[128];
 	snprintf(pat, sizeof(pat), "\"%s\":", key);
 	const char* p = strstr(json, pat);
-	if (!p) return 0;
+	if (!p) {
+		return 0;
+	}
 	*val = atoi(p + strlen(pat));
 	return 1;
 }
@@ -89,8 +117,12 @@ static char g_uri[1024] = "";
 static char g_text[MAX_MSG] = "";
 static int g_doc_version = 0;
 
-static void init_schema(void) {
-	if (g_schema) cdsl_schema_free(g_schema);
+static void
+init_schema(void)
+{
+	if (g_schema) {
+		cdsl_schema_free(g_schema);
+	}
 	g_schema = cdsl_schema_create();
 	/* Register common domain variables */
 	cdsl_schema_register_var(g_schema, "user.age", CDSL_TYPE_INT);
@@ -115,29 +147,41 @@ static void init_schema(void) {
 	cdsl_schema_register_action(g_schema, "block", CDSL_TYPE_VOID, 1, CDSL_TYPE_STRING);
 	cdsl_schema_register_action(g_schema, "reject", CDSL_TYPE_VOID, 1, CDSL_TYPE_STRING);
 	cdsl_schema_register_action(g_schema, "approve", CDSL_TYPE_VOID, 1, CDSL_TYPE_STRING);
-	cdsl_schema_register_action(g_schema, "record_warning", CDSL_TYPE_VOID, 1, CDSL_TYPE_STRING);
+	cdsl_schema_register_action(
+	    g_schema, "record_warning", CDSL_TYPE_VOID, 1, CDSL_TYPE_STRING);
 	cdsl_schema_register_action(g_schema, "score", CDSL_TYPE_VOID, 1, CDSL_TYPE_INT);
 }
 
 /* ---- Diagnostics ---- */
 
-static void append_diag(char* items, int line, int severity, const char* msg, const char* hint) {
+static void
+append_diag(char* items, int line, int severity, const char* msg, const char* hint)
+{
 	char buf[1024], esc[1024], esc_hint[1024];
 	json_esc(msg, esc, sizeof(esc));
-	if (hint) json_esc(hint, esc_hint, sizeof(esc_hint));
+	if (hint) {
+		json_esc(hint, esc_hint, sizeof(esc_hint));
+	}
 	int has_hint = hint && hint[0];
-	snprintf(buf, sizeof(buf),
+	snprintf(buf,
+		 sizeof(buf),
 		 "{\"range\":{\"start\":{\"line\":%d,\"character\":0},"
 		 "\"end\":{\"line\":%d,\"character\":0}},"
 		 "\"severity\":%d,\"message\":\"%s\"%s%s%s}%s",
-		 line, line, severity, esc,
-		 has_hint ? ",\"hint\":\"" : "", has_hint ? esc_hint : "",
+		 line,
+		 line,
+		 severity,
+		 esc,
+		 has_hint ? ",\"hint\":\"" : "",
+		 has_hint ? esc_hint : "",
 		 has_hint ? "\"" : "",
 		 items[0] ? "," : "");
 	strcat(items, buf);
 }
 
-static void publish_diagnostics(void) {
+static void
+publish_diagnostics(void)
+{
 	char items[MAX_MSG] = "";
 	int n_diag = 0;
 
@@ -149,10 +193,16 @@ static void publish_diagnostics(void) {
 			cdsl_error_list_t* verr = cdsl_verify_rule_detailed(rule, g_schema);
 			if (verr) {
 				for (int i = 0; i < verr->count; i++) {
-					int line = verr->errors[i]->line > 0 ? verr->errors[i]->line - 1 : 0;
+					int line = verr->errors[i]->line > 0
+						       ? verr->errors[i]->line - 1
+						       : 0;
 					int sev = verr->errors[i]->kind == CDSL_ERR_WARNING ? 2 : 1;
-					append_diag(items, line, sev,
-						    verr->errors[i]->message ? verr->errors[i]->message : "",
+					append_diag(items,
+						    line,
+						    sev,
+						    verr->errors[i]->message
+							? verr->errors[i]->message
+							: "",
 						    verr->errors[i]->hint);
 					n_diag++;
 				}
@@ -163,9 +213,13 @@ static void publish_diagnostics(void) {
 
 		if (errs) {
 			for (int i = 0; i < errs->count; i++) {
-				int line = errs->errors[i]->line > 0 ? errs->errors[i]->line - 1 : 0;
-				append_diag(items, line, 1,
-					    errs->errors[i]->message ? errs->errors[i]->message : "",
+				int line =
+				    errs->errors[i]->line > 0 ? errs->errors[i]->line - 1 : 0;
+				append_diag(items,
+					    line,
+					    1,
+					    errs->errors[i]->message ? errs->errors[i]->message
+								     : "",
 					    errs->errors[i]->hint);
 				n_diag++;
 			}
@@ -173,101 +227,154 @@ static void publish_diagnostics(void) {
 		}
 	}
 
-	snprintf(g_out, sizeof(g_out),
+	snprintf(g_out,
+		 sizeof(g_out),
 		 "{\"jsonrpc\":\"2.0\",\"method\":\"textDocument/publishDiagnostics\","
 		 "\"params\":{\"uri\":\"%s\",\"diagnostics\":[%s]}}",
-		 g_uri, n_diag > 0 ? items : "");
+		 g_uri,
+		 n_diag > 0 ? items : "");
 	send_message(g_out);
 }
 
 /* ---- Completions ---- */
 
-static const char* g_keywords[] = {
-	"RULE", "META", "WHEN", "THEN", "METRIC", "CASE", "DEFAULT",
-	"TEMPLATE", "EXTENDS", "AND", "OR", "NOT", "true", "false", NULL
-};
-static const char* g_builtins[] = {
-	"strlen(", "contains(", "uppercase(", "lowercase(", "trim(",
-	"startswith(", "endswith(", "abs(", "min(", "max(", "round(",
-	"typeof(", "now(", "is_before(", "is_after(", "days_between(",
-	"date_add(", NULL
-};
-static const char* g_metas[] = {
-	"description", "weight", "is_critical", "pass_threshold",
-	"partial_threshold", "depends_on", NULL
-};
+static const char* g_keywords[] = {"RULE",
+				   "META",
+				   "WHEN",
+				   "THEN",
+				   "METRIC",
+				   "CASE",
+				   "DEFAULT",
+				   "TEMPLATE",
+				   "EXTENDS",
+				   "AND",
+				   "OR",
+				   "NOT",
+				   "true",
+				   "false",
+				   NULL};
+static const char* g_builtins[] = {"strlen(",
+				   "contains(",
+				   "uppercase(",
+				   "lowercase(",
+				   "trim(",
+				   "startswith(",
+				   "endswith(",
+				   "abs(",
+				   "min(",
+				   "max(",
+				   "round(",
+				   "typeof(",
+				   "now(",
+				   "is_before(",
+				   "is_after(",
+				   "days_between(",
+				   "date_add(",
+				   NULL};
+static const char* g_metas[] = {"description",
+				"weight",
+				"is_critical",
+				"pass_threshold",
+				"partial_threshold",
+				"depends_on",
+				NULL};
 static const char* g_types[] = {"INT", "FLOAT", "BOOL", "STRING", "DATE", "LONG", "VOID", NULL};
 
-static void send_completions(void) {
+static void
+send_completions(void)
+{
 	char items[MAX_MSG] = "";
 	char buf[512];
 
 	/* Keywords */
 	for (const char** k = g_keywords; *k; k++) {
-		snprintf(buf, sizeof(buf), "{\"label\":\"%s\",\"kind\":14}%s", *k, items[0]?",":"");
+		snprintf(
+		    buf, sizeof(buf), "{\"label\":\"%s\",\"kind\":14}%s", *k, items[0] ? "," : "");
 		strcat(items, buf);
 	}
 	/* Built-in functions */
 	for (const char** b = g_builtins; *b; b++) {
-		snprintf(buf, sizeof(buf), "{\"label\":\"%s\",\"kind\":2,\"insertText\":\"%s\"}%s",
-			 *b, *b, items[0]?",":"");
+		snprintf(buf,
+			 sizeof(buf),
+			 "{\"label\":\"%s\",\"kind\":2,\"insertText\":\"%s\"}%s",
+			 *b,
+			 *b,
+			 items[0] ? "," : "");
 		strcat(items, buf);
 	}
 	/* Schema variables */
 	if (g_schema) {
 		for (cdsl_var_schema_t* v = g_schema->vars; v; v = v->next) {
-			snprintf(buf, sizeof(buf),
+			snprintf(buf,
+				 sizeof(buf),
 				 "{\"label\":\"%s\",\"kind\":6,\"detail\":\"%s\"}%s",
-				 v->name, g_types[v->type], items[0]?",":"");
+				 v->name,
+				 g_types[v->type],
+				 items[0] ? "," : "");
 			strcat(items, buf);
 		}
 		/* Schema actions */
 		for (cdsl_action_schema_t* a = g_schema->actions; a; a = a->next) {
-			snprintf(buf, sizeof(buf),
+			snprintf(buf,
+				 sizeof(buf),
 				 "{\"label\":\"%s(\",\"kind\":2,\"detail\":\"action\"}%s",
-				 a->name, items[0]?",":"");
+				 a->name,
+				 items[0] ? "," : "");
 			strcat(items, buf);
 		}
 	}
 	/* Meta keys */
 	for (const char** m = g_metas; *m; m++) {
-		snprintf(buf, sizeof(buf), "{\"label\":\"%s\",\"kind\":14,\"detail\":\"META key\"}%s",
-			 *m, items[0]?",":"");
+		snprintf(buf,
+			 sizeof(buf),
+			 "{\"label\":\"%s\",\"kind\":14,\"detail\":\"META key\"}%s",
+			 *m,
+			 items[0] ? "," : "");
 		strcat(items, buf);
 	}
 
-	snprintf(g_out, sizeof(g_out),
+	snprintf(g_out,
+		 sizeof(g_out),
 		 "{\"jsonrpc\":\"2.0\",\"id\":%d,"
 		 "\"result\":{\"isIncomplete\":false,\"items\":[%s]}}",
-		 g_doc_version, items);
+		 g_doc_version,
+		 items);
 	send_message(g_out);
 }
 
 /* ---- Hover ---- */
 
-static void send_hover(void) {
+static void
+send_hover(void)
+{
 	char result[1024] = "\"No information available\"";
 	if (g_schema) {
 		for (cdsl_var_schema_t* v = g_schema->vars; v; v = v->next) {
 			if (strstr(g_in, v->name)) {
-				snprintf(result, sizeof(result),
+				snprintf(result,
+					 sizeof(result),
 					 "\"Variable `%s`: %s%s\"",
-					 v->name, g_types[v->type],
+					 v->name,
+					 g_types[v->type],
 					 v->is_readonly ? " (read-only)" : "");
 				break;
 			}
 		}
 	}
-	snprintf(g_out, sizeof(g_out),
+	snprintf(g_out,
+		 sizeof(g_out),
 		 "{\"jsonrpc\":\"2.0\",\"id\":%d,"
 		 "\"result\":{\"contents\":{\"kind\":\"markdown\",\"value\":%s}}}",
-		 g_doc_version, result);
+		 g_doc_version,
+		 result);
 	send_message(g_out);
 }
 
 /* ---- Main LSP loop ---- */
 
-int main(void) {
+int
+main(void)
+{
 	setvbuf(stdin, NULL, _IONBF, 0);
 	setvbuf(stdout, NULL, _IONBF, 0);
 	init_schema();
@@ -276,7 +383,8 @@ int main(void) {
 		if (strstr(g_in, "initialize")) {
 			g_doc_version = 1;
 			json_get_int(g_in, "id", &g_doc_version);
-			snprintf(g_out, sizeof(g_out),
+			snprintf(g_out,
+				 sizeof(g_out),
 				 "{\"jsonrpc\":\"2.0\",\"id\":%d,"
 				 "\"result\":{\"capabilities\":{"
 				 "\"textDocumentSync\":{\"openClose\":true,\"change\":2},"
@@ -297,11 +405,20 @@ int main(void) {
 				size_t n = 0;
 				while (*s && n < MAX_MSG - 1) {
 					if (*s == '\\' && s[1]) {
-						if (s[1] == 'n') { *d++ = '\n'; s += 2; }
-						else if (s[1] == 'r') { s += 2; }
-						else if (s[1] == '"') { *d++ = '"'; s += 2; }
-						else if (s[1] == '\\') { *d++ = '\\'; s += 2; }
-						else { *d++ = *s++; }
+						if (s[1] == 'n') {
+							*d++ = '\n';
+							s += 2;
+						} else if (s[1] == 'r') {
+							s += 2;
+						} else if (s[1] == '"') {
+							*d++ = '"';
+							s += 2;
+						} else if (s[1] == '\\') {
+							*d++ = '\\';
+							s += 2;
+						} else {
+							*d++ = *s++;
+						}
 					} else if (*s == '"') {
 						break;
 					} else {
@@ -323,8 +440,10 @@ int main(void) {
 			g_text[0] = '\0';
 		} else if (strstr(g_in, "shutdown")) {
 			json_get_int(g_in, "id", &g_doc_version);
-			snprintf(g_out, sizeof(g_out),
-				 "{\"jsonrpc\":\"2.0\",\"id\":%d,\"result\":null}", g_doc_version);
+			snprintf(g_out,
+				 sizeof(g_out),
+				 "{\"jsonrpc\":\"2.0\",\"id\":%d,\"result\":null}",
+				 g_doc_version);
 			send_message(g_out);
 		} else if (strstr(g_in, "exit")) {
 			break;

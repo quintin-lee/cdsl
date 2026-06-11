@@ -37,7 +37,8 @@ cdsl_strbuf_free(cdsl_strbuf_t* sb)
 	sb->buf = NULL;
 }
 
-static inline CDSL_PRINTF_FORMAT(2, 3) void cdsl_strbuf_printf(cdsl_strbuf_t* sb, const char* fmt, ...)
+static inline CDSL_PRINTF_FORMAT(2,
+				 3) void cdsl_strbuf_printf(cdsl_strbuf_t* sb, const char* fmt, ...)
 {
 	va_list ap;
 	va_start(ap, fmt);

@@ -694,7 +694,7 @@ count_schema_vars(const cdsl_schema_t* schema)
  * @return New string length, capped at sz-1
  */
 static size_t CDSL_PRINTF_FORMAT(4, 5)
-safe_append(char* buf, size_t sz, size_t pos, const char* fmt, ...)
+    safe_append(char* buf, size_t sz, size_t pos, const char* fmt, ...)
 {
 	if (pos >= sz - 1) {
 		return pos;

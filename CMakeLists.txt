@@ -23,6 +23,7 @@ endif()
 # MSVC security warnings
 if(MSVC)
     add_compile_definitions(_CRT_SECURE_NO_WARNINGS)
+    add_compile_options(/wd4702)
 endif()
 
 # 1. Flex & Bison
