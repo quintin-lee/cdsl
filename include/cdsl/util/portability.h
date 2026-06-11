@@ -33,9 +33,13 @@
 #define popen _popen
 #define pclose _pclose
 
-static inline struct tm* cdsl_localtime_r(const time_t* timer, struct tm* buf) {
-    if (localtime_s(buf, timer) == 0) return buf;
-    return NULL;
+static inline struct tm*
+cdsl_localtime_r(const time_t* timer, struct tm* buf)
+{
+	if (localtime_s(buf, timer) == 0) {
+		return buf;
+	}
+	return NULL;
 }
 #define CDSL_LOCALTIME_R cdsl_localtime_r
 

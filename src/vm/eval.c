@@ -30,6 +30,8 @@
 
 #include "cdsl/execution.h"
 #include "internal.h"
+#include "cdsl/cache.h"
+#include "cdsl/util/portability.h"
 #include <stdlib.h>
 #include <string.h>
 #include <stdio.h>
