@@ -209,6 +209,51 @@ jobs:
           retention-days: 7
 
   ##########################################################################
+  # Static Analysis (cppcheck + scan-build)
+  ##########################################################################
+  static-analysis:
+    runs-on: ubuntu-latest
+    continue-on-error: true
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install dependencies
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq \
+            cmake \
+            gcc \
+            clang \
+            cppcheck \
+            flex \
+            bison \
+            libpthread-stubs0-dev
+
+      - name: Run cppcheck
+        run: |
+          cppcheck --enable=all --error-exitcode=0 --std=c23 \
+            -I include -I build \
+            --suppress=missingIncludeSystem \
+            --suppress=unusedFunction \
+            --suppress=unmatchedSuppression \
+            src/ tests/ demo/ 2>&1 | tee cppcheck-report.txt
+
+      - name: Run scan-build
+        run: |
+          scan-build -o scan-build-report cmake -B build -DCDSL_GENERATE_DOCS=OFF
+          scan-build -o scan-build-report cmake --build build -j$(nproc)
+
+      - name: Upload static analysis reports
+        uses: actions/upload-artifact@v4
+        with:
+          name: static-analysis-reports
+          path: |
+            cppcheck-report.txt
+            scan-build-report/
+          retention-days: 7
+
+  ##########################################################################
   # Code Format Check
   ##########################################################################
   format:
