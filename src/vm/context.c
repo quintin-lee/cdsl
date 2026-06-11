@@ -32,9 +32,16 @@
 double
 cdsl_get_time_us_internal(void)
 {
+#ifdef _WIN32
+	LARGE_INTEGER freq, count;
+	QueryPerformanceFrequency(&freq);
+	QueryPerformanceCounter(&count);
+	return (double)count.QuadPart * 1e6 / (double)freq.QuadPart;
+#else
 	struct timespec ts;
 	clock_gettime(CLOCK_MONOTONIC, &ts);
 	return (double)ts.tv_sec * 1e6 + (double)ts.tv_nsec / 1e3;
+#endif
 }
 
 cdsl_context_entry_t*

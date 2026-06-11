@@ -31,11 +31,14 @@ typedef SRWLOCK cdsl_rwlock_t;
 typedef INIT_ONCE cdsl_once_t;
 #define CDSL_ONCE_INIT INIT_ONCE_STATIC_INIT
 
-static inline BOOL CALLBACK
-cdsl_internal_once_wrapper(PINIT_ONCE once, PVOID param, PVOID* context)
-{
-	void (*fn)(void) = (void (*)(void))param;
-	fn();
+static inline BOOL CALLBACK cdsl_internal_once_wrapper(PINIT_ONCE once, PVOID param, PVOID *context) {
+    (void)once;
+    (void)context;
+    void (*fn)(void) = (void (*)(void))param;
+    fn();
+    return TRUE;
+}
+
 	return TRUE;
 }
 #define CDSL_ONCE_RUN(once, fn)                                                                    \

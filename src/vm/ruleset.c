@@ -214,7 +214,7 @@ cdsl_vm_execute_ruleset_parallel(cdsl_vm_t* vm,
 	batch->rule_count = set->count;
 
 	parallel_worker_arg_t* args = calloc(set->count, sizeof(parallel_worker_arg_t));
-	pthread_t* threads = calloc(set->count, sizeof(pthread_t));
+	cdsl_thread_t* threads = calloc(set->count, sizeof(cdsl_thread_t));
 	if (!args || !threads) {
 		free(args);
 		free(threads);
@@ -243,7 +243,7 @@ cdsl_vm_execute_ruleset_parallel(cdsl_vm_t* vm,
 		args[idx].vm->user_data = vm->user_data;
 		args[idx].vm->debug_enabled = vm->debug_enabled;
 
-		if (pthread_create(&threads[idx], NULL, parallel_worker, &args[idx]) != 0) {
+		if (CDSL_THREAD_CREATE(&threads[idx], parallel_worker, &args[idx]) != 0) {
 			args[idx].result = NULL;
 			/* callbacks and functions are shared; set to NULL before free */
 			args[idx].vm->callbacks = NULL;
@@ -255,7 +255,7 @@ cdsl_vm_execute_ruleset_parallel(cdsl_vm_t* vm,
 
 	for (int i = 0; i < set->count; i++) {
 		if (args[i].vm) {
-			pthread_join(threads[i], NULL);
+			CDSL_THREAD_JOIN(threads[i]);
 		}
 		batch->rule_reports[i] = args[i].result;
 		if (batch->rule_reports[i]) {

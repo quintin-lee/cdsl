@@ -1,377 +1,154 @@
 /**
  * @file vm_visualize.c
  * @brief Graphviz DOT graph generation for rule visualization.
- *
- * Generates DOT (Graphviz) representations of:
- * - Individual rule ASTs (expressions, metrics, cases, actions)
- * - RuleSet dependency and priority graphs
- *
- * Visual output distinguishes node types by shape and color:
- * - Expressions: box (literals), ellipse (identifiers), diamond (operators)
- * - Metrics: rounded boxes colored by criticality
- * - RuleSet: LR layout with priority labels and dashed dependency edges
- *
- * @defgroup visualize Graphviz Visualization
- * @{
  */
 
 #include "cdsl/execution.h"
 #include "internal.h"
+#include "cdsl/util/strbuf.h"
+#include "cdsl/util/portability.h"
 #include <stdlib.h>
 #include <string.h>
 #include <stdio.h>
 #include <errno.h>
 
-/**
- * @brief Parse a string to int with error detection.
- * @return int value, or default_val on parse failure.
- */
 static int
 safe_atoi(const char* str, int default_val)
 {
-	if (!str) {
-		return default_val;
-	}
-	char* end = NULL;
-	errno = 0;
+	if (!str) return default_val;
+	char* end = NULL; errno = 0;
 	long val = strtol(str, &end, 10);
-	if (errno != 0 || end == str || *end != '\0') {
-		return default_val;
-	}
+	if (errno != 0 || end == str || *end != '\0') return default_val;
 	return (int)val;
 }
 
-/* Thread-local defined in cdsl/ast.h */
-
-/** @brief Sequential ID counter for DOT graph nodes (internal, thread-local). */
 static THREAD_LOCAL int dot_id = 0;
 
-/**
- * @brief Recursively emit a DOT subgraph for an expression (internal).
- */
 static void
-dot_expr(FILE* f, cdsl_expr_node_t* expr, int* id)
+dot_expr(cdsl_strbuf_t* sb, cdsl_expr_node_t* expr, int* id)
 {
-	if (!expr) {
-		return;
-	}
+	if (!expr) return;
 	int my_id = (*id)++;
 	switch (expr->type) {
-	case CDSL_EXPR_INT:
-		fprintf(f,
-			"  n%d [label=\"%d\",shape=box,style=filled,fillcolor=lightyellow];\n",
-			my_id,
-			expr->data.int_val);
-		break;
-	case CDSL_EXPR_FLOAT:
-		fprintf(f,
-			"  n%d [label=\"%.2f\",shape=box,style=filled,fillcolor=lightyellow];\n",
-			my_id,
-			expr->data.float_val);
-		break;
-	case CDSL_EXPR_BOOL:
-		fprintf(f,
-			"  n%d [label=\"%s\",shape=box,style=filled,fillcolor=lightyellow];\n",
-			my_id,
-			expr->data.bool_val ? "true" : "false");
-		break;
-	case CDSL_EXPR_STRING:
-		fprintf(
-		    f,
-		    "  n%d [label=\"\\\"%s\\\"\",shape=box,style=filled,fillcolor=lightyellow];\n",
-		    my_id,
-		    expr->data.string_val);
-		break;
+	case CDSL_EXPR_INT: cdsl_strbuf_printf(sb, "  n%d [label=\"%d\",shape=box,style=filled,fillcolor=lightyellow];\n", my_id, expr->data.int_val); break;
+	case CDSL_EXPR_FLOAT: cdsl_strbuf_printf(sb, "  n%d [label=\"%.2f\",shape=box,style=filled,fillcolor=lightyellow];\n", my_id, expr->data.float_val); break;
+	case CDSL_EXPR_BOOL: cdsl_strbuf_printf(sb, "  n%d [label=\"%s\",shape=box,style=filled,fillcolor=lightyellow];\n", my_id, expr->data.bool_val ? "true" : "false"); break;
+	case CDSL_EXPR_STRING: cdsl_strbuf_printf(sb, "  n%d [label=\"\\\"%s\\\"\",shape=box,style=filled,fillcolor=lightyellow];\n", my_id, expr->data.string_val); break;
 	case CDSL_EXPR_DATE: {
-		char buf[32];
-		struct tm tm_buf;
-		localtime_r(&expr->data.date_val, &tm_buf);
-		strftime(buf, sizeof(buf), "%Y-%m-%d", &tm_buf);
-		fprintf(f,
-			"  n%d [label=\"@%s\",shape=box,style=filled,fillcolor=lightyellow];\n",
-			my_id,
-			buf);
+		char b[32]; struct tm tmb; CDSL_LOCALTIME_R(&expr->data.date_val, &tmb);
+		strftime(b, sizeof(b), "%Y-%m-%d", &tmb);
+		cdsl_strbuf_printf(sb, "  n%d [label=\"@%s\",shape=box,style=filled,fillcolor=lightyellow];\n", my_id, b);
 		break;
 	}
-	case CDSL_EXPR_LONG:
-		fprintf(f,
-			"  n%d [label=\"%ldL\",shape=box,style=filled,fillcolor=lightyellow];\n",
-			my_id,
-			(long)expr->data.long_val);
-		break;
+	case CDSL_EXPR_LONG: cdsl_strbuf_printf(sb, "  n%d [label=\"%ldL\",shape=box,style=filled,fillcolor=lightyellow];\n", my_id, (long)expr->data.long_val); break;
 	case CDSL_EXPR_ARRAY:
-		fprintf(f,
-			"  n%d [label=\"[]\",shape=diamond,style=filled,fillcolor=lightgreen];\n",
-			my_id);
+		cdsl_strbuf_printf(sb, "  n%d [label=\"[]\",shape=diamond,style=filled,fillcolor=lightgreen];\n", my_id);
 		for (cdsl_arg_node_t* a = expr->data.array.elements; a; a = a->next) {
-			int child_id = *id;
-			dot_expr(f, a->expr, id);
-			fprintf(f, "  n%d -> n%d;\n", my_id, child_id);
+			int cid = *id; dot_expr(sb, a->expr, id);
+			cdsl_strbuf_printf(sb, "  n%d -> n%d;\n", my_id, cid);
 		}
 		break;
-	case CDSL_EXPR_ID:
-		fprintf(f,
-			"  n%d [label=\"%s\",shape=ellipse,style=filled,fillcolor=lightblue];\n",
-			my_id,
-			expr->data.id_val);
-		break;
+	case CDSL_EXPR_ID: cdsl_strbuf_printf(sb, "  n%d [label=\"%s\",shape=ellipse,style=filled,fillcolor=lightblue];\n", my_id, expr->data.id_val); break;
 	case CDSL_EXPR_BINARY: {
-		const char* op = "?";
-		switch (expr->data.binary.op) {
-		case CDSL_OP_EQ:
-			op = "==";
-			break;
-		case CDSL_OP_NE:
-			op = "!=";
-			break;
-		case CDSL_OP_LT:
-			op = "<";
-			break;
-		case CDSL_OP_GT:
-			op = ">";
-			break;
-		case CDSL_OP_LE:
-			op = "<=";
-			break;
-		case CDSL_OP_GE:
-			op = ">=";
-			break;
-		case CDSL_OP_AND:
-			op = "AND";
-			break;
-		case CDSL_OP_OR:
-			op = "OR";
-			break;
-		default:
-			break;
-		}
-		fprintf(f,
-			"  n%d [label=\"%s\",shape=diamond,style=filled,fillcolor=lightgreen];\n",
-			my_id,
-			op);
-		int left_id = *id;
-		dot_expr(f, expr->data.binary.left, id);
-		fprintf(f, "  n%d -> n%d;\n", my_id, left_id);
-		int right_id = *id;
-		dot_expr(f, expr->data.binary.right, id);
-		fprintf(f, "  n%d -> n%d;\n", my_id, right_id);
+		const char* ops[] = { "==", "!=", "<", ">", "<=", ">=", "AND", "OR", "+", "-", "*", "/" };
+		cdsl_strbuf_printf(sb, "  n%d [label=\"%s\",shape=diamond,style=filled,fillcolor=lightgreen];\n", my_id, ops[expr->data.binary.op]);
+		int lid = *id; dot_expr(sb, expr->data.binary.left, id);
+		cdsl_strbuf_printf(sb, "  n%d -> n%d;\n", my_id, lid);
+		int rid = *id; dot_expr(sb, expr->data.binary.right, id);
+		cdsl_strbuf_printf(sb, "  n%d -> n%d;\n", my_id, rid);
 		break;
 	}
 	case CDSL_EXPR_UNARY:
-		fprintf(f,
-			"  n%d [label=\"NOT\",shape=diamond,style=filled,fillcolor=lightgreen];\n",
-			my_id);
-		int child_id = *id;
-		dot_expr(f, expr->data.unary.expr, id);
-		fprintf(f, "  n%d -> n%d;\n", my_id, child_id);
+		cdsl_strbuf_printf(sb, "  n%d [label=\"NOT\",shape=diamond,style=filled,fillcolor=lightgreen];\n", my_id);
+		int cid = *id; dot_expr(sb, expr->data.unary.expr, id);
+		cdsl_strbuf_printf(sb, "  n%d -> n%d;\n", my_id, cid);
 		break;
-	case CDSL_EXPR_CALL:
-		fprintf(f,
-			"  n%d [label=\"%s()\",shape=box,style=filled,fillcolor=lightpink];\n",
-			my_id,
-			expr->data.call.func_name);
-		break;
+	case CDSL_EXPR_CALL: cdsl_strbuf_printf(sb, "  n%d [label=\"%s()\",shape=box,style=filled,fillcolor=lightpink];\n", my_id, expr->data.call.func_name); break;
 	}
 }
 
 char*
 cdsl_rule_to_dot(const cdsl_rule_t* rule)
 {
-	if (!rule) {
-		return NULL;
-	}
-	char* buf = NULL;
-	size_t len = 0;
-	FILE* f = open_memstream(&buf, &len);
-	if (!f) {
-		return NULL;
-	}
-
-	dot_id = 0;
-	const char* rule_name = rule->name ? rule->name : "anonymous";
-	fprintf(f, "digraph rule_%s {\n", rule_name);
-	fprintf(f, "  rankdir=TB;\n");
-	fprintf(f, "  node [fontname=\"Helvetica\"];\n\n");
-
+	if (!rule) return NULL;
+	cdsl_strbuf_t sb; cdsl_strbuf_init(&sb, 4096);
+	dot_id = 0; const char* rname = rule->name ? rule->name : "anonymous";
+	cdsl_strbuf_printf(&sb, "digraph rule_%s {\n  rankdir=TB;\n  node [fontname=\"Helvetica\"];\n\n", rname);
 	if (rule->metrics) {
-		fprintf(f,
-			"  rule_%s [label=\"%s\\n(Metric "
-			"Rule)\",shape=box,style=filled,fillcolor=gray];\n\n",
-			rule_name,
-			rule_name);
+		cdsl_strbuf_printf(&sb, "  rule_%s [label=\"%s\\n(Metric Rule)\",shape=box,style=filled,fillcolor=gray];\n\n", rname, rname);
 		for (cdsl_metric_node_t* m = rule->metrics; m; m = m->next) {
-			const char* w_meta = cdsl_meta_get(m->meta_list, "weight");
-			int weight = safe_atoi(w_meta, 0);
-			const char* c_meta = cdsl_meta_get(m->meta_list, "is_critical");
-			int critical = (strcmp(c_meta ? c_meta : "false", "true") == 0);
-			fprintf(
-			    f,
-			    "  metric_%s "
-			    "[label=\"%s\\n(weight=%d%s)\",shape=box,style=filled,fillcolor=%s];\n",
-			    m->name,
-			    m->name,
-			    weight,
-			    critical ? ",critical" : "",
-			    critical ? "salmon" : "lightcyan");
-			fprintf(f, "  rule_%s -> metric_%s;\n\n", rule->name, m->name);
-
-			int case_num = 0;
+			int weight = safe_atoi(cdsl_meta_get(m->meta_list, "weight"), 0);
+			int critical = (strcmp(cdsl_meta_get(m->meta_list, "is_critical") ? cdsl_meta_get(m->meta_list, "is_critical") : "false", "true") == 0);
+			cdsl_strbuf_printf(&sb, "  metric_%s [label=\"%s\\n(weight=%d%s)\",shape=box,style=filled,fillcolor=%s];\n", m->name, m->name, weight, critical ? ",critical" : "", critical ? "salmon" : "lightcyan");
+			cdsl_strbuf_printf(&sb, "  rule_%s -> metric_%s;\n\n", rname, m->name);
+			int cnum = 0;
 			for (cdsl_case_node_t* c = m->case_list; c; c = c->next) {
-				fprintf(f,
-					"  case_%s_%d [label=\"CASE "
-					"%d\",shape=diamond,style=filled,fillcolor=lightgreen];\n",
-					m->name,
-					case_num,
-					case_num + 1);
-				fprintf(
-				    f, "  metric_%s -> case_%s_%d;\n", m->name, m->name, case_num);
-				int expr_id = dot_id++;
-				dot_expr(f, c->condition, &expr_id);
-				fprintf(
-				    f, "  case_%s_%d -> n%d;\n", m->name, case_num, expr_id - 1);
-				case_num++;
+				cdsl_strbuf_printf(&sb, "  case_%s_%d [label=\"CASE %d\",shape=diamond,style=filled,fillcolor=lightgreen];\n", m->name, cnum, cnum + 1);
+				cdsl_strbuf_printf(&sb, "  metric_%s -> case_%s_%d;\n", m->name, m->name, cnum);
+				int eid = dot_id++; dot_expr(&sb, c->condition, &eid);
+				cdsl_strbuf_printf(&sb, "  case_%s_%d -> n%d;\n", m->name, cnum, eid - 1);
+				cnum++;
 			}
-			fprintf(f,
-				"  default_%s "
-				"[label=\"DEFAULT\",shape=box,style=filled,fillcolor=lightgray];\n",
-				m->name);
-			fprintf(f, "  metric_%s -> default_%s;\n\n", m->name, m->name);
+			cdsl_strbuf_printf(&sb, "  default_%s [label=\"DEFAULT\",shape=box,style=filled,fillcolor=lightgray];\n", m->name);
+			cdsl_strbuf_printf(&sb, "  metric_%s -> default_%s;\n\n", m->name, m->name);
 		}
 	} else {
-		fprintf(f,
-			"  rule_%s [label=\"%s\\n(Simple "
-			"Rule)\",shape=box,style=filled,fillcolor=gray];\n\n",
-			rule->name,
-			rule->name);
-		fprintf(
-		    f,
-		    "  when_%s [label=\"WHEN\",shape=diamond,style=filled,fillcolor=lightgreen];\n",
-		    rule->name);
-		fprintf(f, "  rule_%s -> when_%s;\n", rule->name, rule->name);
-		int expr_id = dot_id++;
-		dot_expr(f, rule->when_expr, &expr_id);
-		fprintf(f, "  when_%s -> n%d;\n", rule->name, expr_id - 1);
-
+		cdsl_strbuf_printf(&sb, "  rule_%s [label=\"%s\\n(Simple Rule)\",shape=box,style=filled,fillcolor=gray];\n\n", rname, rname);
+		cdsl_strbuf_printf(&sb, "  when_%s [label=\"WHEN\",shape=diamond,style=filled,fillcolor=lightgreen];\n", rname);
+		cdsl_strbuf_printf(&sb, "  rule_%s -> when_%s;\n", rname, rname);
+		int eid = dot_id++; dot_expr(&sb, rule->when_expr, &eid);
+		cdsl_strbuf_printf(&sb, "  when_%s -> n%d;\n", rname, eid - 1);
 		if (rule->then_action) {
-			fprintf(f,
-				"  then_%s [label=\"THEN: "
-				"%s()\",shape=box,style=filled,fillcolor=lightpink];\n",
-				rule->name,
-				rule->then_action->action_name);
-			fprintf(f, "  rule_%s -> then_%s;\n", rule->name, rule->name);
+			cdsl_strbuf_printf(&sb, "  then_%s [label=\"THEN: %s()\",shape=box,style=filled,fillcolor=lightpink];\n", rname, rule->then_action->action_name);
+			cdsl_strbuf_printf(&sb, "  rule_%s -> then_%s;\n", rname, rname);
 		}
-
-		fprintf(
-		    f,
-		    "  pass_%s [label=\"PASSED\",shape=box,style=filled,fillcolor=lightgreen];\n",
-		    rule->name);
-		fprintf(f,
-			"  fail_%s [label=\"FAILED\",shape=box,style=filled,fillcolor=salmon];\n",
-			rule->name);
-		fprintf(f, "  when_%s -> pass_%s [label=\"false\"];\n", rule->name, rule->name);
-		fprintf(f, "  when_%s -> fail_%s [label=\"true\"];\n", rule->name, rule->name);
+		cdsl_strbuf_printf(&sb, "  pass_%s [label=\"PASSED\",shape=box,style=filled,fillcolor=lightgreen];\n", rname);
+		cdsl_strbuf_printf(&sb, "  fail_%s [label=\"FAILED\",shape=box,style=filled,fillcolor=salmon];\n", rname);
+		cdsl_strbuf_printf(&sb, "  when_%s -> pass_%s [label=\"false\"];\n", rname, rname);
+		cdsl_strbuf_printf(&sb, "  when_%s -> fail_%s [label=\"true\"];\n", rname, rname);
 	}
-
-	fprintf(f, "}\n");
-	fflush(f);
-	fclose(f);
-	return buf;
+	cdsl_strbuf_printf(&sb, "}\n");
+	return sb.buf;
 }
 
-int
-cdsl_rule_to_dot_file(const cdsl_rule_t* rule, const char* filepath)
-{
-	if (!rule || !filepath) {
-		return 0;
-	}
+int cdsl_rule_to_dot_file(const cdsl_rule_t* rule, const char* filepath) {
 	char* dot = cdsl_rule_to_dot(rule);
-	if (!dot) {
-		return 0;
-	}
+	if (!dot) return 0;
 	FILE* f = fopen(filepath, "w");
-	if (!f) {
-		free(dot);
-		return 0;
-	}
-	fputs(dot, f);
-	fclose(f);
-	free(dot);
+	if (!f) { free(dot); return 0; }
+	fputs(dot, f); fclose(f); free(dot);
 	return 1;
 }
 
 char*
 cdsl_ruleset_to_dot(const cdsl_ruleset_t* set)
 {
-	if (!set) {
-		return NULL;
-	}
-	char* buf = NULL;
-	size_t len = 0;
-	FILE* f = open_memstream(&buf, &len);
-	if (!f) {
-		return NULL;
-	}
-
-	fprintf(f, "digraph ruleset {\n");
-	fprintf(f, "  rankdir=LR;\n");
-	fprintf(f, "  node [fontname=\"Helvetica\"];\n\n");
-
+	if (!set) return NULL;
+	cdsl_strbuf_t sb; cdsl_strbuf_init(&sb, 4096);
+	cdsl_strbuf_printf(&sb, "digraph ruleset {\n  rankdir=LR;\n  node [fontname=\"Helvetica\"];\n\n");
 	for (cdsl_ruleset_entry_t* e = set->entries; e; e = e->next) {
-		if (!e->rule) {
-			continue;
-		}
-		fprintf(f,
-			"  rule_%s "
-			"[label=\"%s\\npriority=%d\\n(vars: %s, action: "
-			"%s)\",shape=box,style=filled,fillcolor=lightblue];\n",
-			e->rule->name,
-			e->rule->name,
-			e->priority,
-			e->rule->when_expr ? "present" : "metrics",
-			e->rule->then_action ? e->rule->then_action->action_name : "multiple");
+		if (!e->rule) continue;
+		cdsl_strbuf_printf(&sb, "  rule_%s [label=\"%s\\npriority=%d\\n(vars: %s, action: %s)\",shape=box,style=filled,fillcolor=lightblue];\n", e->rule->name, e->rule->name, e->priority, e->rule->when_expr ? "present" : "metrics", e->rule->then_action ? e->rule->then_action->action_name : "multiple");
 		char* deps = cdsl_meta_get(e->rule->meta_list, "depends_on");
 		if (deps) {
-			char dep_buf[1024];
-			strncpy(dep_buf, deps, sizeof(dep_buf) - 1);
-			dep_buf[sizeof(dep_buf) - 1] = '\0';
-			char* token = strtok(dep_buf, ",");
-			while (token) {
-				while (*token == ' ') {
-					token++;
-				}
-				fprintf(f,
-					"  rule_%s -> rule_%s [style=dashed,color=gray];\n",
-					e->rule->name,
-					token);
-				token = strtok(NULL, ",");
+			char db[1024]; strncpy(db, deps, sizeof(db) - 1); db[sizeof(db) - 1] = '\0';
+			char* tok = strtok(db, ",");
+			while (tok) {
+				while (*tok == ' ') tok++;
+				cdsl_strbuf_printf(&sb, "  rule_%s -> rule_%s [style=dashed,color=gray];\n", e->rule->name, tok);
+				tok = strtok(NULL, ",");
 			}
 		}
 	}
-
-	fprintf(f, "}\n");
-	fflush(f);
-	fclose(f);
-	return buf;
+	cdsl_strbuf_printf(&sb, "}\n");
+	return sb.buf;
 }
 
-int
-cdsl_ruleset_to_dot_file(const cdsl_ruleset_t* set, const char* filepath)
-{
-	if (!set || !filepath) {
-		return 0;
-	}
+int cdsl_ruleset_to_dot_file(const cdsl_ruleset_t* set, const char* filepath) {
 	char* dot = cdsl_ruleset_to_dot(set);
-	if (!dot) {
-		return 0;
-	}
+	if (!dot) return 0;
 	FILE* f = fopen(filepath, "w");
-	if (!f) {
-		free(dot);
-		return 0;
-	}
-	fputs(dot, f);
-	fclose(f);
-	free(dot);
+	if (!f) { free(dot); return 0; }
+	fputs(dot, f); fclose(f); free(dot);
 	return 1;
 }
-/** @} */

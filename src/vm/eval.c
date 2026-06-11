@@ -34,7 +34,6 @@
 #include <string.h>
 #include <stdio.h>
 #include <math.h>
-#include "cdsl/util/portability.h"
 #include <errno.h>
 
 /**
@@ -275,7 +274,7 @@ cdsl_eval_expr_internal(
 		if (debug) {
 			char buf[32];
 			struct tm tm_buf;
-			localtime_r(&expr->data.date_val, &tm_buf);
+			CDSL_LOCALTIME_R(&expr->data.date_val, &tm_buf);
 			strftime(buf, sizeof(buf), "%Y-%m-%d %H:%M:%S", &tm_buf);
 			fprintf(stderr, "[TRACE]   literal date: %s\n", buf);
 		}
@@ -341,7 +340,7 @@ cdsl_eval_expr_internal(
 				case CDSL_TYPE_DATE: {
 					char buf[32];
 					struct tm tm_buf;
-					localtime_r(&e->value.data.date_val, &tm_buf);
+					CDSL_LOCALTIME_R(&e->value.data.date_val, &tm_buf);
 					strftime(buf, sizeof(buf), "%Y-%m-%d %H:%M:%S", &tm_buf);
 					fprintf(stderr, "%s\n", buf);
 					break;

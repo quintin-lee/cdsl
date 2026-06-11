@@ -6,6 +6,12 @@
 #ifndef CDSL_PORTABILITY_H
 #define CDSL_PORTABILITY_H
 
+#include <assert.h>
+#include <stdint.h>
+#include <stdio.h>
+#include <string.h>
+#include <time.h>
+
 /* [[nodiscard]] / warn_unused_result */
 #if defined(__STDC_VERSION__) && __STDC_VERSION__ >= 202311L
 #define CDSL_NODISCARD [[nodiscard]]
@@ -17,29 +23,36 @@
 #define CDSL_NODISCARD
 #endif
 
-/* static_assert */
-#include <assert.h>
-
 /* MSVC-specific fixes */
 #ifdef _MSC_VER
-/* Disable sscanf safety warnings */
 #ifndef _CRT_SECURE_NO_WARNINGS
 #define _CRT_SECURE_NO_WARNINGS
 #endif
 
-/* strdup is deprecated in MSVC, use _strdup */
-#include <string.h>
 #define strdup _strdup
+#define popen _popen
+#define pclose _pclose
 
-/* MSVC doesn't support C11 stdatomic.h well without special flags */
+static inline struct tm* cdsl_localtime_r(const time_t* timer, struct tm* buf) {
+    if (localtime_s(buf, timer) == 0) return buf;
+    return NULL;
+}
+#define CDSL_LOCALTIME_R cdsl_localtime_r
+
+/* MSVC doesn't have clock_gettime, use QueryPerformanceCounter wrapper or similar */
+#ifndef CLOCK_MONOTONIC
+#define CLOCK_MONOTONIC 1
+#endif
+
 #if !defined(__cplusplus) && (!defined(_MSVC_LANG) || _MSVC_LANG < 202002L)
 #define CDSL_NO_STDATOMIC
 #endif
+#else
+#define CDSL_LOCALTIME_R localtime_r
 #endif
 
 /* Atomics wrapper */
 #ifdef CDSL_NO_STDATOMIC
-#include <stdint.h>
 typedef long cdsl_atomic_long_t;
 typedef int cdsl_atomic_int_t;
 typedef int64_t cdsl_atomic_int64_t;
@@ -49,7 +62,6 @@ typedef int64_t cdsl_atomic_int64_t;
 #define CDSL_ATOMIC_FETCH_SUB(p, v) (*(p) -= (v), *(p) + (v))
 #else
 #include <stdatomic.h>
-#include <stdint.h>
 typedef _Atomic long cdsl_atomic_long_t;
 typedef _Atomic int cdsl_atomic_int_t;
 typedef _Atomic int64_t cdsl_atomic_int64_t;
