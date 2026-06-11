@@ -83,8 +83,7 @@ test_complex_ruleset_visualization()
 	const char* rules[] = {
 	    "RULE rule1 { WHEN user.age > 18 THEN log(\"Adult\") }",
 	    "RULE rule2 { WHEN user.score > 90 THEN email(\"High score!\") }",
-	    "RULE rule3 { WHEN user.age < 18 AND user.score > 80 THEN alert(\"Young high "
-	    "performer\") }",
+            "RULE rule3 { WHEN user.age < 18 AND user.score > 80 THEN alert(\"Young high performer\") }",
 	    "RULE rule4 { WHEN user.name == \"Admin\" THEN log(\"Administrator detected\") }"};
 
 	cdsl_rule_t* rules_array[4];

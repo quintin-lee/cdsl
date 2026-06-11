@@ -97,6 +97,8 @@ parse_date_internal(const char* s)
 %token <bool_val> BOOL_LIT
 %token <string_val> STRING_LIT DATE_LIT
 
+%destructor { free($$); } IDENTIFIER STRING_LIT DATE_LIT
+
 %left OR
 %left AND
 %left EQ NE
@@ -135,7 +137,14 @@ rule_declaration:
     | RULE IDENTIFIER EXTENDS IDENTIFIER LBRACE meta_block RBRACE {
         $$ = cdsl_create_extends_rule($2, $4, $6, NULL);
     }
-    | error { (*error_count)++; yyerrok; yyclearin; $$ = NULL; }
+    | error {
+        if (yychar == IDENTIFIER) {
+            free(yylval.id_val);
+        } else if (yychar == STRING_LIT || yychar == DATE_LIT) {
+            free(yylval.string_val);
+        }
+        (*error_count)++; yyerrok; yyclearin; $$ = NULL;
+    }
     ;
 
 template_declaration:

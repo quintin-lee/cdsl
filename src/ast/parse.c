@@ -16,7 +16,7 @@
 /* Flex/Bison reentrant scanner forward declarations */
 typedef void* yyscan_t;
 struct yy_buffer_state;
-int yylex_init_extra(void* extra, yyscan_t* scanner);
+int yylex_init_extra(struct cdsl_error_list* extra, yyscan_t* scanner);
 int yylex_destroy(yyscan_t scanner);
 struct yy_buffer_state* yy_scan_string(const char*, yyscan_t);
 void yy_delete_buffer(struct yy_buffer_state*, yyscan_t);
@@ -61,7 +61,7 @@ cdsl_parse_string(const char* dsl_code, cdsl_error_list_t** errors)
 		}
 	}
 
-	if (yylex_init_extra((void*)&error_list, &scanner) != 0) {
+	if (yylex_init_extra(error_list, &scanner) != 0) {
 		if (errors && !*errors) {
 			cdsl_error_list_free(error_list);
 		}
