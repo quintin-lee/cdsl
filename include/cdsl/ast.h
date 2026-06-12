@@ -448,6 +448,13 @@ cdsl_rule_t* cdsl_create_extends_rule(char* name,
 				      cdsl_metric_node_t* metrics);
 /** @} */
 
+/**
+ * @brief Deep-copy a metric list (internal, shared between template.c and ast.c).
+ * @param src Source metric list to copy
+ * @return Newly allocated copy of the metric list, or NULL on error
+ */
+cdsl_metric_node_t* copy_metric_list(const cdsl_metric_node_t* src);
+
 /** @name Memory Management */
 /** @{ */
 

@@ -87,7 +87,17 @@ endif()
 if(MSVC)
     target_compile_options(cdsl_objects PRIVATE /W4 /WX)
 else()
-    target_compile_options(cdsl_objects PRIVATE -Wall -Wextra -Wpedantic -Werror -Wshadow -Wformat=2)
+    target_compile_options(cdsl_objects PRIVATE
+        -Wall -Wextra -Wpedantic -Werror -Wshadow -Wformat=2
+        -Wdouble-promotion
+        -Wnull-dereference
+        -Wold-style-definition
+        -Wmissing-prototypes -Wmissing-declarations
+        -Wstrict-prototypes -Wundef)
+    if(CMAKE_COMPILER_IS_GNU)
+        target_compile_options(cdsl_objects PRIVATE
+            -Wduplicated-cond -Wlogical-op -Wrestrict)
+    endif()
 endif()
 
 # 3. Static library
@@ -125,10 +135,11 @@ set_target_properties(cdsl_shared PROPERTIES
 # 5. Default target alias
 add_library(cdsl ALIAS cdsl_static)
 
-# 6. Common warning flags for all executables
+# 6. Common warning flags for all executables (tests, demos, benchmarks)
 macro(cdsl_add_warning_flags target)
     if(NOT MSVC)
-        target_compile_options(${target} PRIVATE -Wall -Wextra -Wpedantic -Werror -Wshadow -Wformat=2)
+        target_compile_options(${target} PRIVATE
+            -Wall -Wextra -Wpedantic -Werror -Wshadow -Wformat=2)
     endif()
 endmacro()
 

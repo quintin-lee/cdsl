@@ -14,8 +14,7 @@
 
 static THREAD_LOCAL cdsl_arena_t* current_ast_arena = NULL;
 
-/* Forward declaration from template.c */
-cdsl_metric_node_t* copy_metric_list(cdsl_metric_node_t* src);
+/* From ast.h -- provided by template.c */
 
 void
 cdsl_ast_set_current_arena(cdsl_arena_t* arena)
