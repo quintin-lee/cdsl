@@ -4,4 +4,4 @@ target_include_directories(cdsl-lsp PRIVATE
     ${CMAKE_SOURCE_DIR}/include
     ${CMAKE_BINARY_DIR}
 )
-install(TARGETS cdsl-lsp RUNTIME DESTINATION bin)
+install(TARGETS cdsl-lsp RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR})

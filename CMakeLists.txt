@@ -132,8 +132,10 @@ set_target_properties(cdsl_shared PROPERTIES
     SOVERSION 1
 )
 
-# 5. Default target alias
+# 5. Build-tree aliases
 add_library(cdsl ALIAS cdsl_static)
+add_library(cdsl::cdsl_static ALIAS cdsl_static)
+add_library(cdsl::cdsl_shared ALIAS cdsl_shared)
 
 # 6. Common warning flags for all executables (tests, demos, benchmarks)
 macro(cdsl_add_warning_flags target)
@@ -143,19 +145,22 @@ macro(cdsl_add_warning_flags target)
     endif()
 endmacro()
 
-# 7. Demo
+# 7. Demo executables
 add_executable(cdsl_demo demo/main.c)
 cdsl_add_warning_flags(cdsl_demo)
 target_link_libraries(cdsl_demo PRIVATE cdsl_static)
+install(TARGETS cdsl_demo RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR} COMPONENT demos)
 
 add_executable(cdsl_official_review demo/official_review.c)
 cdsl_add_warning_flags(cdsl_official_review)
 target_link_libraries(cdsl_official_review PRIVATE cdsl_static)
+install(TARGETS cdsl_official_review RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR} COMPONENT demos)
 
 if(CDSL_USE_LIBREOFFICE)
     add_executable(cdsl_word_parser demo/word_parser.c)
     cdsl_add_warning_flags(cdsl_word_parser)
     target_link_libraries(cdsl_word_parser PRIVATE cdsl_static)
+    install(TARGETS cdsl_word_parser RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR} COMPONENT demos)
 endif()
 
 # 8. Tests
@@ -197,9 +202,10 @@ install(TARGETS cdsl_static cdsl_shared
     LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR}
     ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR}
     RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
+    COMPONENT libraries
 )
 
-install(DIRECTORY include/cdsl/ DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/cdsl)
+install(DIRECTORY include/cdsl/ DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/cdsl COMPONENT headers)
 # parser.tab.h is internal; installed only for build-time access via
 # BUILD_INTERFACE, not as a public API header
 
@@ -208,6 +214,7 @@ install(EXPORT cdslTargets
     FILE cdslTargets.cmake
     NAMESPACE cdsl::
     DESTINATION ${CMAKE_INSTALL_LIBDIR}/cmake/cdsl
+    COMPONENT cmake
 )
 
 include(CMakePackageConfigHelpers)
@@ -226,6 +233,7 @@ install(FILES
     "${CMAKE_CURRENT_BINARY_DIR}/cdslConfig.cmake"
     "${CMAKE_CURRENT_BINARY_DIR}/cdslConfigVersion.cmake"
     DESTINATION ${CMAKE_INSTALL_LIBDIR}/cmake/cdsl
+    COMPONENT cmake
 )
 
 # 10. pkg-config
@@ -243,6 +251,7 @@ configure_file(
 )
 install(FILES "${CMAKE_CURRENT_BINARY_DIR}/cdsl.pc"
     DESTINATION ${CMAKE_INSTALL_LIBDIR}/pkgconfig
+    COMPONENT pkgconfig
 )
 
 # 11. Code formatting (clang-format)
