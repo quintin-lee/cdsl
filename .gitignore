@@ -33,6 +33,14 @@ compile_commands.json
 Thumbs.db
 .worktrees/
 
+# Python
+__pycache__/
+*.pyc
+*.pyo
+
+# Static analysis
+scan-build-report/
+
 # Tool config (AI assistants, editors)
 .claude/
 .gemini/
