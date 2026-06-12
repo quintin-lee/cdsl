@@ -1,0 +1,43 @@
+# Auto-detect text files and normalize line endings
+* text=auto
+
+# C source
+*.c text diff=c
+*.h text diff=c
+*.y text
+*.l text
+
+# C++
+*.cpp text
+*.hpp text
+
+# Build system
+CMakeLists.txt text
+*.cmake text
+
+# Python
+*.py text diff=python
+
+# Markdown / docs
+*.md text
+*.txt text
+Doxyfile text
+
+# Shell
+*.sh text eol=lf
+
+# YAML/JSON
+*.yml text
+*.yaml text
+*.json text
+
+# Generated files - keep as-is
+*.tab.c -text
+*.tab.h -text
+*.lex.c -text
+
+# Binary files
+*.png binary
+*.jpg binary
+*.ico binary
+*.pdf binary

@@ -1,6 +1,10 @@
 # C-DSL Rule Engine
 
 [![CI](https://github.com/quintin-lee/cdsl/actions/workflows/ci.yml/badge.svg)](https://github.com/quintin-lee/cdsl/actions/workflows/ci.yml)
+[![Lint](https://github.com/quintin-lee/cdsl/actions/workflows/ci.yml/badge.svg?job=clang-tidy)](https://github.com/quintin-lee/cdsl/actions/workflows/ci.yml)
+[![Static Analysis](https://github.com/quintin-lee/cdsl/actions/workflows/ci.yml/badge.svg?job=static-analysis)](https://github.com/quintin-lee/cdsl/actions/workflows/ci.yml)
+[![Coverage](https://img.shields.io/badge/coverage-~61%25-yellow)](https://github.com/quintin-lee/cdsl/actions/workflows/ci.yml)
+[![Fuzz](https://github.com/quintin-lee/cdsl/actions/workflows/ci.yml/badge.svg?job=fuzz)](https://github.com/quintin-lee/cdsl/actions/workflows/ci.yml)
 [![Docs](https://img.shields.io/badge/docs-github--pages-blue)](https://quintin-lee.github.io/cdsl/)
 [![License: MIT](https://img.shields.io/badge/license-MIT-green)](LICENSE)
 [![C Standard](https://img.shields.io/badge/C-23-blue)](https://en.wikipedia.org/wiki/C23)
@@ -68,7 +72,7 @@
 | Tool     | Minimum Version |
 |----------|-----------------|
 | C23 compiler (GCC / Clang) | —               |
-| CMake    | 3.14            |
+| CMake    | 3.19            |
 | Flex     | 2.6             |
 | Bison    | 3.8             |
 
@@ -94,6 +98,21 @@ cmake --build build --target doc
 # Or view online: https://quintin-lee.github.io/cdsl/
 ```
 
+### CMake Options
+
+| Option                    | Default | Description                                |
+|---------------------------|---------|--------------------------------------------|
+| `CDSL_BUILD_FUZZ`         | OFF     | Build libFuzzer fuzz target                |
+| `CDSL_BUILD_LSP`          | OFF     | Build cdsl-lsp language server             |
+| `CDSL_ENABLE_COVERAGE`    | OFF     | Enable gcov code coverage (Debug only)     |
+| `CDSL_GENERATE_DOCS`      | OFF     | Auto-generate Doxygen on every build       |
+| `CDSL_FORMAT_ON_BUILD`    | OFF     | Run clang-format before every build        |
+
+Example:
+```bash
+cmake -B build -DCMAKE_BUILD_TYPE=Debug -DCDSL_ENABLE_COVERAGE=ON
+```
+
 ### Demo Scenarios
 
 | #  | Scenario                  | Description                                          |
@@ -109,22 +128,27 @@ cmake --build build --target doc
 
 ## Integration
 
-### Method 1: add_subdirectory
+### Method 1: Installed (find_package)
 
-```cmake
-add_subdirectory(path/to/cdsl)
-target_link_libraries(your_app PRIVATE cdsl)
-```
-
-### Method 2: Installed find_package
-
+Build and install:
 ```bash
-cmake --install build --prefix /usr/local
+cmake -B build -DCMAKE_BUILD_TYPE=Release
+cmake --build build -j$(nproc)
+cmake --install build --prefix /usr/local           # all components
+cmake --install build --component libraries --prefix /usr/local  # libraries only
+cmake --install build --component demos --prefix /usr/local      # demo executables
 ```
 
 ```cmake
 find_package(cdsl REQUIRED)
-target_link_libraries(your_app PRIVATE cdsl::cdsl_static)
+target_link_libraries(your_app PRIVATE cdsl::cdsl_static)  # or cdsl::cdsl_shared
+```
+
+### Method 2: add_subdirectory
+
+```cmake
+add_subdirectory(path/to/cdsl)
+target_link_libraries(your_app PRIVATE cdsl)
 ```
 
 ### Method 3: pkg-config
@@ -271,7 +295,7 @@ cdsl/
 │   ├── lexer.l
 │   └── parser.y
 ├── demo/main.c       # 6 demo scenarios
-├── tests/            # Unit tests (22 tests)
+├── tests/            # Unit tests (21 tests)
 ├── docs/             # Documentation
 │   ├── architecture.md
 │   ├── api-reference.md
