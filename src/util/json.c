@@ -420,7 +420,7 @@ cdsl_json_get_object(const cdsl_json_value_t* obj, const char* key)
 		cdsl_json_value_t* it = obj->value.object.items;
 		while (it) {
 			if (it->key && key && strcmp(it->key, key) == 0) {
-				return (cdsl_json_value_t*)it;
+				return it;
 			}
 			it = it->next;
 		}
@@ -443,7 +443,7 @@ cdsl_json_get_array(const cdsl_json_value_t* arr, int idx)
 	int i = 0;
 	while (it) {
 		if (i == idx) {
-			return (cdsl_json_value_t*)it;
+			return it;
 		}
 		it = it->next;
 		i++;

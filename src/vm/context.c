@@ -40,7 +40,7 @@ cdsl_get_time_us_internal(void)
 #else
 	struct timespec ts;
 	clock_gettime(CLOCK_MONOTONIC, &ts);
-	return (double)ts.tv_sec * 1e6 + (double)ts.tv_nsec / 1e3;
+	return ((double)ts.tv_sec * 1e6) + ((double)ts.tv_nsec / 1e3);
 #endif
 }
 

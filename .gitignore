@@ -1,5 +1,6 @@
 # Build
 build/
+build_cov/
 build_debug/
 cmake-build-*/
 
@@ -13,6 +14,11 @@ compile_commands.json
 # Object files
 *.o
 *.obj
+
+# Coverage data
+*.gcda
+*.gcno
+*.gcov
 
 # Libraries
 *.a

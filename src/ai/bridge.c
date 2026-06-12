@@ -161,7 +161,7 @@ escape_json_string(const char* s)
 		return NULL;
 	}
 	size_t len = strlen(s);
-	char* out = malloc(len * 4 + 1);
+	char* out = malloc((len * 4) + 1);
 	if (!out) {
 		return NULL;
 	}
@@ -198,7 +198,7 @@ static char* call_llm_api(const char* prompt, const cdsl_ai_config_t* config);
  * @brief Default built-in AI provider.
  */
 static char* default_translate(void* ctx,
-			       const char* nl,
+			       const char* natural_language,
 			       const cdsl_schema_t* schema,
 			       const cdsl_ai_config_t* config);
 
@@ -213,7 +213,7 @@ static char* call_llm_api_stream(const char* prompt,
 				 void* user_data);
 
 static char* default_translate_stream(void* ctx,
-				      const char* nl,
+				      const char* natural_language,
 				      const cdsl_schema_t* schema,
 				      const cdsl_ai_config_t* config,
 				      cdsl_ai_stream_cb_t callback,
@@ -1086,7 +1086,7 @@ default_review(void* ctx,
 			score += 10;
 		}
 
-		int risk = (score < 30) ? 100 - score * 2 : 100 - score;
+		int risk = (score < 30) ? 100 - (score * 2) : 100 - score;
 
 		cdsl_ai_review_t* rev = calloc(1, sizeof(*rev));
 		rev->approved = (score >= 40);

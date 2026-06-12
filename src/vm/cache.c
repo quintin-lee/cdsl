@@ -155,7 +155,7 @@ cdsl_compile_cache_remove(cdsl_compile_cache_t* cache, const char* dsl_code)
 		return 0;
 	}
 	CDSL_RWLOCK_WRLOCK(&cache->lock);
-	int removed = cdsl_hashmap_remove(cache->map, dsl_code, free_compiled_rule);
+	int removed = (int)cdsl_hashmap_remove(cache->map, dsl_code, free_compiled_rule);
 	CDSL_RWLOCK_UNLOCK_WR(&cache->lock);
 	return removed;
 }
