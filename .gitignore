@@ -41,6 +41,10 @@ __pycache__/
 # Static analysis
 scan-build-report/
 
+# Local / AI assistant data
+.local/
+openspec/
+
 # Tool config (AI assistants, editors)
 .claude/
 .gemini/
