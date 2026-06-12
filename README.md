@@ -79,6 +79,9 @@ git clone <repo-url>
 cd cdsl
 cmake -B build && cmake --build build -j$(nproc)
 
+# (Optional) Install pre-commit hook for auto-formatting
+cmake --build build --target install-git-hooks
+
 # Run demo (6 scenarios)
 ./build/cdsl_demo
 

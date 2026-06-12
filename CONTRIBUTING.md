@@ -38,7 +38,12 @@ cmake --build build --target cdsl_bench
 
 - C23 standard
 - Use `clang-format` with the provided `.clang-format` file
-- Run `cmake --build build --target check-format` before committing
+- **Install the pre-commit hook** to auto-format before every commit:
+  ```bash
+  cmake --build build --target install-git-hooks
+  ```
+  This copies `cmake/pre-commit.hook` into `.git/hooks/pre-commit` and ensures all staged `.c/.h` files are formatted before commit.
+- Run `cmake --build build --target check-format` before committing (or let the hook do it)
 - All public functions must be documented with Doxygen comments
 
 ## Commit Message Convention
@@ -69,10 +74,11 @@ Examples:
 ## Pull Request Process
 
 1. Fork the repository and create a feature branch
-2. Ensure all tests pass: `ctest --test-dir build --output-on-failure`
-3. Ensure code formatting is correct: `cmake --build build --target check-format`
-4. Update documentation if needed (Doxygen, README, docs/)
-5. Submit the PR with a clear description
+2. Install the pre-commit hook: `cmake --build build --target install-git-hooks`
+3. Ensure all tests pass: `ctest --test-dir build --output-on-failure`
+4. Ensure code formatting is correct: `cmake --build build --target check-format`
+5. Update documentation if needed (Doxygen, README, docs/)
+6. Submit the PR with a clear description
 
 ## Reporting Issues
 

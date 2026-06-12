@@ -274,6 +274,11 @@ if(CLANG_FORMAT)
         COMMENT "Installing git pre-commit hook for auto-formatting"
     )
 
+    # Auto-prompt for hook installation on first configure
+    if(EXISTS ${CMAKE_CURRENT_SOURCE_DIR}/.git AND NOT EXISTS ${CMAKE_CURRENT_SOURCE_DIR}/.git/hooks/pre-commit)
+        message(STATUS "Git pre-commit hook not installed — run 'make install-git-hooks' to enable auto-formatting before every commit")
+    endif()
+
     find_program(CLANG_TIDY clang-tidy)
     if(CLANG_TIDY)
         add_custom_target(check-tidy
