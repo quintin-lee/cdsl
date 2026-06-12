@@ -107,20 +107,10 @@ json_escape_len(const char* s)
 		switch (*p) {
 		case '"':
 		case '\\':
-			len += 2;
-			break;
 		case '\n':
-			len += 2;
-			break;
 		case '\r':
-			len += 2;
-			break;
 		case '\t':
-			len += 2;
-			break;
 		case '\b':
-			len += 2;
-			break;
 		case '\f':
 			len += 2;
 			break;

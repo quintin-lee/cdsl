@@ -9,8 +9,6 @@
 #define CDSL_UTIL_HASHMAP_H
 
 #include "cdsl/util/portability.h"
-
-#include "cdsl/util/portability.h"
 #include <stdbool.h>
 #include <stddef.h>
 

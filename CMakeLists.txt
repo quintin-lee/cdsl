@@ -1,4 +1,4 @@
-cmake_minimum_required(VERSION 3.14)
+cmake_minimum_required(VERSION 3.19)
 project(cdsl VERSION 1.0.0 LANGUAGES C CXX)
 
 set(CMAKE_C_STANDARD 23)
@@ -39,8 +39,8 @@ else()
 endif()
 
 # LibreOffice SDK for document parsing
-set(CDSL_LO_INCLUDE_DIR "/usr/include/libreoffice")
-set(CDSL_LO_LIB_DIR "/usr/lib/libreoffice/program")
+set(CDSL_LO_INCLUDE_DIR "/usr/include/libreoffice" CACHE PATH "LibreOffice SDK include directory")
+set(CDSL_LO_LIB_DIR "/usr/lib/libreoffice/program" CACHE PATH "LibreOffice SDK library directory")
 if(EXISTS "${CDSL_LO_INCLUDE_DIR}/LibreOfficeKit/LibreOfficeKit.h" AND
    EXISTS "${CDSL_LO_LIB_DIR}/libuno_sal.so.3")
     message(STATUS "Found LibreOffice SDK - document parsing enabled (CDSL_USE_LIBREOFFICE)")

@@ -7,7 +7,6 @@ Checks: >
   portability-*,
   readability-*,
   -bugprone-assignment-in-if-condition,
-  -bugprone-branch-clone,
   -bugprone-easily-swappable-parameters,
   -bugprone-multiple-new-in-one-expression,
   -bugprone-reserved-identifier,

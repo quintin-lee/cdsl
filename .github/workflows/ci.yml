@@ -75,7 +75,7 @@ jobs:
   ##########################################################################
   build-windows:
     runs-on: windows-latest
-    continue-on-error: true
+    continue-on-error: true # experimental: MSVC lacks C23 stdatomic
 
     steps:
       - uses: actions/checkout@v4
@@ -216,7 +216,6 @@ jobs:
   ##########################################################################
   static-analysis:
     runs-on: ubuntu-latest
-    continue-on-error: true
 
     steps:
       - uses: actions/checkout@v4
@@ -279,7 +278,6 @@ jobs:
   # Static Analysis (clang-tidy)
   ##########################################################################
   clang-tidy:
-    continue-on-error: true
     runs-on: ubuntu-latest
 
     steps:

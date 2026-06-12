@@ -10,8 +10,6 @@
 
 #include "cdsl/util/portability.h"
 
-#include "cdsl/util/portability.h"
-
 /**
  * @brief JSON value type.
  */

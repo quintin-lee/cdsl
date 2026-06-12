@@ -1,0 +1,9 @@
+.git/
+build/
+build_cov/
+*.md
+*.gcda
+*.gcno
+*.gcov
+__pycache__/
+*.pyc

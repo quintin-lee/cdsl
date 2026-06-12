@@ -30,13 +30,6 @@ cdsl_strbuf_init(cdsl_strbuf_t* sb, size_t initial_cap)
 	sb->size = 0;
 }
 
-static inline void
-cdsl_strbuf_free(cdsl_strbuf_t* sb)
-{
-	free(sb->buf);
-	sb->buf = NULL;
-}
-
 static inline CDSL_PRINTF_FORMAT(2,
 				 3) void cdsl_strbuf_printf(cdsl_strbuf_t* sb, const char* fmt, ...)
 {
