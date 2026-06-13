@@ -1054,8 +1054,45 @@ class Schema:
         errs = _lib.cdsl_analyze_rule(rule.ptr, self._ptr)
         return _collect_errors(errs)
 
+    def list_vars(self) -> List[Dict[str, Any]]:
+        """Return a list of registered variables."""
+        result: List[Dict[str, Any]] = []
+        if not self._ptr:
+            return result
+        v = self._ptr.contents.vars
+        while v:
+            result.append({
+                "name": _decode(v.contents.name),
+                "type": v.contents.type,
+                "readonly": bool(v.contents.is_readonly),
+            })
+            v = v.contents.next
+        return result
 
+    def list_actions(self) -> List[Dict[str, Any]]:
+        """Return a list of registered actions."""
+        result: List[Dict[str, Any]] = []
+        if not self._ptr:
+            return result
+        a = self._ptr.contents.actions
+        while a:
+            arg_types = [a.contents.arg_types[i] for i in range(a.contents.arg_count)]
+            result.append({
+                "name": _decode(a.contents.name),
+                "return_type": a.contents.return_type,
+                "arg_types": arg_types,
+            })
+            a = a.contents.next
+        return result
 
+    def has_var(self, name: str) -> bool:
+        return any(v["name"] == name for v in self.list_vars())
+
+    def has_action(self, name: str) -> bool:
+        return any(a["name"] == name for a in self.list_actions())
+
+    def __bool__(self) -> bool:
+        return self._ptr is not None
 
 
 class Rule(_RuleLike):
@@ -1090,6 +1127,48 @@ class Rule(_RuleLike):
             n = self._ptr.contents.name
             return n.decode("utf-8") if n else None
         return None
+
+    @property
+    def meta(self) -> Dict[str, str]:
+        """Return META key-value pairs as a dict."""
+        if not self._ptr:
+            return {}
+        result: Dict[str, str] = {}
+        m = self._ptr.contents.meta_list
+        while m:
+            k = _decode(m.contents.key)
+            v = _decode(m.contents.value)
+            if k is not None:
+                result[k] = v or ""
+            m = m.contents.next
+        return result
+
+    @property
+    def then_action(self) -> Optional[Dict[str, Any]]:
+        """Return the THEN action info (name and args)."""
+        if not self._ptr or not self._ptr.contents.then_action:
+            return None
+        a = self._ptr.contents.then_action.contents
+        arg_count = 0
+        arg = a.args
+        while arg:
+            arg_count += 1
+            arg = arg.contents.next
+        return {
+            "name": _decode(a.action_name),
+            "arg_count": arg_count,
+        }
+
+    @property
+    def metric_count(self) -> int:
+        if not self._ptr:
+            return 0
+        count = 0
+        m = self._ptr.contents.metrics
+        while m:
+            count += 1
+            m = m.contents.next
+        return count
 
     def __repr__(self) -> str:
         return f"Rule(name={self.name!r}, ptr={self._ptr})"
@@ -1195,12 +1274,44 @@ class Context:
             raise DSLError(f"Context.remove('{name}'): variable not found")
         return self
 
-    def load_json(self, json_str: str) -> None:
+    def load_json(self, json_str: str) -> Context:
         rc = _lib.cdsl_context_load_json(
             self._ptr, json_str.encode("utf-8"),
         )
-        if rc != 1:  # C returns 1 on success, 0 on parse failure
+        if rc != 1:
             raise DSLError("cdsl_context_load_json() failed (invalid JSON?)")
+        return self
+
+    def __contains__(self, name: str) -> bool:
+        if not self._ptr:
+            return False
+        e = self._ptr.contents.entries
+        name_b = name.encode("utf-8") if isinstance(name, str) else name
+        while e:
+            if e.contents.name and e.contents.name == name_b:
+                return True
+            e = e.contents.next
+        return False
+
+    def keys(self) -> List[str]:
+        if not self._ptr:
+            return []
+        result: List[str] = []
+        e = self._ptr.contents.entries
+        while e:
+            n = e.contents.name
+            if n:
+                result.append(n.decode("utf-8"))
+            e = e.contents.next
+        return result
+
+    def clear(self) -> Context:
+        for k in self.keys():
+            try:
+                self.remove(k)
+            except DSLError:
+                pass
+        return self
 
 
 class MetricResult:
@@ -1248,6 +1359,30 @@ class MetricResult:
     @property
     def violation_reason(self) -> str:
         return self._violation_reason
+
+    def to_dict(self) -> Dict[str, Any]:
+        return {
+            "metric_name": self._metric_name,
+            "description": self._description,
+            "max_weight": self._max_weight,
+            "score_obtained": self._score_obtained,
+            "is_critical": self._is_critical,
+            "is_passed": self._is_passed,
+            "matched_case_expr": self._matched_case_expr,
+            "violation_reason": self._violation_reason,
+        }
+
+    def __repr__(self) -> str:
+        return (
+            f"MetricResult(name={self.metric_name!r}, "
+            f"score={self.score_obtained}/{self.max_weight}, "
+            f"passed={self.is_passed})"
+        )
+
+    def __str__(self) -> str:
+        status = "PASS" if self.is_passed else "FAIL"
+        return f"[{status}] {self.metric_name} ({self.score_obtained}/{self.max_weight})"
+
 
 class RuleReport:
     """Result of a single rule execution."""
@@ -1538,7 +1673,23 @@ class Ruleset:
         self.free()
 
     def __repr__(self) -> str:
-        return f"Ruleset(count={self._ptr.contents.count if self._ptr else 0})"
+        return f"Ruleset(count={len(self)})"
+
+    def __len__(self) -> int:
+        return self._ptr.contents.count if self._ptr else 0
+
+    def __iter__(self):
+        if not self._ptr:
+            return
+        e = self._ptr.contents.entries
+        while e:
+            rule_ptr = e.contents.rule
+            if rule_ptr:
+                yield Rule(rule_ptr, owned=False)
+            e = e.contents.next
+
+    def __bool__(self) -> bool:
+        return self._ptr is not None and len(self) > 0
 
     def add(self, rule: _RuleLike, priority: int = 0) -> Ruleset:
         """Add a rule to the ruleset. Ownership transfers to the ruleset."""
@@ -1566,7 +1717,7 @@ class Ruleset:
             self._ptr, filepath.encode("utf-8"), priority,
             schema._ptr, err_buf, len(err_buf),
         )
-        if rc != 0:
+        if rc == 0:
             raise DSLError(err_buf.value.decode("utf-8", errors="replace"))
         return self
 
@@ -1581,7 +1732,7 @@ class Ruleset:
             self._ptr, dsl_code.encode("utf-8"), priority,
             schema._ptr, err_buf, len(err_buf),
         )
-        if rc != 0:
+        if rc == 0:
             raise DSLError(err_buf.value.decode("utf-8", errors="replace"))
         return self
 
@@ -1592,7 +1743,7 @@ class Ruleset:
             self._ptr, filepath.encode("utf-8"),
             schema._ptr, err_buf, len(err_buf),
         )
-        if rc != 0:
+        if rc == 0:
             raise DSLError(err_buf.value.decode("utf-8", errors="replace"))
         return self
 
