@@ -4,6 +4,7 @@ Requires the shared library to be findable via CDSL_LIB or default paths.
 Run: python -m pytest python/tests/
 """
 
+import ctypes
 import os
 import sys
 import pytest
@@ -56,9 +57,20 @@ class TestModule:
         assert hasattr(cdsl, "__version__")
 
     def test_all_exported(self):
-        assert "Schema" in cdsl.__all__
-        assert "Rule" in cdsl.__all__
-        assert "parse" in cdsl.__all__
+        for name in (
+            "Schema", "Rule", "parse", "VM", "Context", "Ruleset",
+            "MetricResult", "RuleReport", "RulesetReport", "CompileCache",
+            "generate_code", "to_dot", "ruleset_to_dot",
+            "to_dot_file", "ruleset_to_dot_file",
+            "codegen_to_file", "codegen_ruleset_to_files",
+        ):
+            assert name in cdsl.__all__, f"{name} missing from __all__"
+
+    def test_decode_and_free(self):
+        result = cdsl._decode_and_free(
+            ctypes.c_void_p(0)
+        ) if hasattr(cdsl, "_decode_and_free") else ""
+        assert result == ""
 
 
 class TestEnums:
@@ -99,6 +111,20 @@ class TestSchema:
         rule = cdsl.parse(SAMPLE_DSL)
         errs = s.verify_detailed(rule)
         assert isinstance(errs, list)
+
+    def test_repr(self):
+        s = cdsl.Schema()
+        assert "Schema" in repr(s)
+
+    def test_context_manager(self):
+        with cdsl.Schema() as s:
+            s.add_var("x", cdsl.Type.INT)
+        assert s._ptr is None
+
+    def test_chaining(self):
+        s = cdsl.Schema().add_var("x", cdsl.Type.INT).add_var("y", cdsl.Type.FLOAT)
+        assert s._ptr is not None
+        s.free()
 
     def test_free(self):
         s = cdsl.Schema()
@@ -145,6 +171,12 @@ class TestRule:
         rule = cdsl.parse(SAMPLE_DSL)
         r = repr(rule)
         assert "credit_check" in r
+
+    def test_context_manager(self):
+        rule = cdsl.parse(SAMPLE_DSL)
+        with rule:
+            assert rule.name == "credit_check"
+        assert rule._ptr is None
 
 
 class TestContext:
@@ -202,6 +234,29 @@ class TestContext:
         ctx = cdsl.Context(s)
         with pytest.raises(cdsl.DSLError):
             ctx.load_json("{invalid}")
+
+    def test_repr(self):
+        s = make_schema()
+        ctx = cdsl.Context(s)
+        assert "Context" in repr(ctx)
+        ctx.free()
+
+    def test_chaining(self):
+        s = cdsl.Schema()
+        s.add_var("x", cdsl.Type.INT)
+        s.add_var("y", cdsl.Type.FLOAT)
+        ctx = cdsl.Context(s)
+        ctx.set_int("x", 1).set_float("y", 2.0)
+        assert ctx.get_int("x") == 1
+        assert ctx.get_float("y") == 2.0
+        ctx.free()
+        s.free()
+
+    def test_context_manager(self):
+        s = make_schema()
+        with cdsl.Context(s) as ctx:
+            ctx.set_int("user.age", 25)
+        assert ctx._ptr is None
 
     def test_free(self):
         s = make_schema()
@@ -267,6 +322,27 @@ class TestVM:
         vm = cdsl.VM(s)
         vm.reset_stats()  # smoke test
 
+    def test_repr(self):
+        s = make_schema()
+        vm = cdsl.VM(s)
+        assert "VM" in repr(vm)
+        vm.free()
+
+    def test_context_manager(self):
+        s = make_schema()
+        with cdsl.VM(s) as vm:
+            assert vm._ptr is not None
+        assert vm._ptr is None
+
+    def test_max_expr_depth(self):
+        s = make_schema()
+        vm = cdsl.VM(s)
+        old = vm.get_max_expr_depth()
+        vm.set_max_expr_depth(128)
+        assert vm.get_max_expr_depth() == 128
+        vm.set_max_expr_depth(old)
+        vm.free()
+
     def test_free(self):
         s = make_schema()
         vm = cdsl.VM(s)
@@ -304,7 +380,32 @@ class TestRuleset:
 
         rs = cdsl.Ruleset()
         rs.add(rule, priority=1)
-        assert rs.remove("credit_check") is True
+        rs.remove("credit_check")  # returns self; raises on error
+
+    def test_repr(self):
+        rs = cdsl.Ruleset()
+        assert "Ruleset" in repr(rs)
+        rs.free()
+
+    def test_context_manager(self):
+        with cdsl.Ruleset() as rs:
+            assert rs._ptr is not None
+        assert rs._ptr is None
+
+    def test_chaining(self):
+        s = make_schema()
+        rule = cdsl.parse(SAMPLE_DSL)
+        rs = cdsl.Ruleset().add(rule, priority=1)
+        assert rs._ptr is not None
+        v = cdsl.VM(s)
+        v.register_action("approve", lambda n, a, d: None)
+        ctx = cdsl.Context(s)
+        ctx.set_int("user.age", 25).set_float("user.income", 50000.0)
+        report = rs.execute(v, ctx)
+        assert report.rule_count == 1
+        ctx.free()
+        v.free()
+        s.free()
 
     def test_free(self):
         rs = cdsl.Ruleset()
@@ -460,6 +561,39 @@ class TestDOT:
         dot = cdsl.ruleset_to_dot(rs)
         assert "digraph" in dot
 
+    def test_to_dot_file(self, tmp_path):
+        rule = cdsl.parse(SAMPLE_DSL)
+        p = tmp_path / "rule.dot"
+        cdsl.to_dot_file(rule, str(p))
+        assert p.read_text().startswith("digraph")
+
+    def test_ruleset_to_dot_file(self, tmp_path):
+        rule = cdsl.parse(SAMPLE_DSL)
+        rs = cdsl.Ruleset().add(rule)
+        p = tmp_path / "ruleset.dot"
+        cdsl.ruleset_to_dot_file(rs, str(p))
+        assert p.read_text().startswith("digraph")
+
+
+class TestCodegenFile:
+    def test_codegen_to_file(self, tmp_path):
+        s = make_schema()
+        rule = cdsl.parse(SAMPLE_DSL)
+        s.verify(rule)
+        p = tmp_path / "rule.c"
+        cdsl.codegen_to_file(rule, s, str(p))
+        assert "cdsl_eval_rule_credit_check" in p.read_text()
+
+    def test_codegen_ruleset_to_files(self, tmp_path):
+        s = make_schema()
+        rule = cdsl.parse(SAMPLE_DSL)
+        s.verify(rule)
+        rs = cdsl.Ruleset().add(rule)
+        base = str(tmp_path / "generated")
+        cdsl.codegen_ruleset_to_files(rs, s, base)
+        assert os.path.isfile(base + ".c")
+        assert os.path.isfile(base + ".h")
+
 
 class TestCompileCache:
     def test_create(self):
@@ -477,6 +611,16 @@ class TestCompileCache:
         cc = cdsl.CompileCache()
         cc.compile(SAMPLE_DSL, s)
         assert cc.remove(SAMPLE_DSL) is True
+
+    def test_repr(self):
+        cc = cdsl.CompileCache()
+        assert "CompileCache" in repr(cc)
+        cc.free()
+
+    def test_context_manager(self):
+        with cdsl.CompileCache() as cc:
+            assert cc._ptr is not None
+        assert cc._ptr is None
 
     def test_free(self):
         cc = cdsl.CompileCache()

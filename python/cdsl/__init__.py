@@ -64,13 +64,15 @@ from ctypes import (
     c_void_p,
     cdll,
 )
-from typing import Any, Callable, Dict, List, Optional, Tuple, Union as TypingUnion
+from typing import Any, Callable, Dict, List, Optional, Protocol, Tuple, Union as TypingUnion
 
 __all__ = [
     "DSLError", "Schema", "Rule", "Context", "VM", "Ruleset",
     "MetricResult", "RuleReport", "RulesetReport", "CompileCache",
     "Type", "Op", "ExprType", "Status", "TraceKind",
-    "parse", "parse_file", "generate_code", "to_dot", "ruleset_to_dot",
+    "parse", "parse_file",
+    "generate_code", "codegen_to_file", "codegen_ruleset_to_files",
+    "to_dot", "to_dot_file", "ruleset_to_dot", "ruleset_to_dot_file",
 ]
 __version__ = "1.1.0"
 
@@ -837,11 +839,110 @@ _lib.cdsl_bytecode_execute_rule.restype = POINTER(cdsl_rule_report)
 _lib.cdsl_bytecode_free.argtypes = [c_void_p]
 _lib.cdsl_bytecode_free.restype = None
 
+# Ruleset
+_lib.cdsl_ruleset_create.argtypes = []
+_lib.cdsl_ruleset_create.restype = POINTER(cdsl_ruleset)
+
+_lib.cdsl_ruleset_free.argtypes = [POINTER(cdsl_ruleset)]
+_lib.cdsl_ruleset_free.restype = None
+
+_lib.cdsl_ruleset_add.argtypes = [
+    POINTER(cdsl_ruleset), POINTER(cdsl_rule), c_int,
+]
+_lib.cdsl_ruleset_add.restype = None
+
+_lib.cdsl_ruleset_remove.argtypes = [POINTER(cdsl_ruleset), c_char_p]
+_lib.cdsl_ruleset_remove.restype = c_int
+
+_lib.cdsl_ruleset_load_file.argtypes = [
+    POINTER(cdsl_ruleset), c_char_p, c_int,
+    POINTER(cdsl_schema), c_char_p, c_int,
+]
+_lib.cdsl_ruleset_load_file.restype = c_int
+
+_lib.cdsl_ruleset_load_string.argtypes = [
+    POINTER(cdsl_ruleset), c_char_p, c_int,
+    POINTER(cdsl_schema), c_char_p, c_int,
+]
+_lib.cdsl_ruleset_load_string.restype = c_int
+
+_lib.cdsl_ruleset_reload_file.argtypes = [
+    POINTER(cdsl_ruleset), c_char_p,
+    POINTER(cdsl_schema), c_char_p, c_int,
+]
+_lib.cdsl_ruleset_reload_file.restype = c_int
+
+_lib.cdsl_ruleset_validate_deps.argtypes = [
+    POINTER(cdsl_ruleset), c_char_p, c_int,
+]
+_lib.cdsl_ruleset_validate_deps.restype = c_int
+
+_lib.cdsl_ruleset_topo_sort.argtypes = [POINTER(cdsl_ruleset)]
+_lib.cdsl_ruleset_topo_sort.restype = c_int
+
+_lib.cdsl_ruleset_report_free.argtypes = [POINTER(cdsl_ruleset_report)]
+_lib.cdsl_ruleset_report_free.restype = None
+
+_lib.cdsl_ruleset_report_print.argtypes = [POINTER(cdsl_ruleset_report)]
+_lib.cdsl_ruleset_report_print.restype = None
+
+_lib.cdsl_error_list_free.argtypes = [POINTER(cdsl_error_list)]
+_lib.cdsl_error_list_free.restype = None
+
+# VM extended
+_lib.cdsl_vm_get_max_expr_depth.argtypes = [POINTER(cdsl_vm)]
+_lib.cdsl_vm_get_max_expr_depth.restype = c_int
+
+_lib.cdsl_vm_set_max_expr_depth.argtypes = [POINTER(cdsl_vm), c_int]
+_lib.cdsl_vm_set_max_expr_depth.restype = None
+
+_lib.cdsl_vm_execute_ruleset.argtypes = [
+    POINTER(cdsl_vm), POINTER(cdsl_ruleset), POINTER(cdsl_context),
+]
+_lib.cdsl_vm_execute_ruleset.restype = POINTER(cdsl_ruleset_report)
+
+_lib.cdsl_vm_execute_ruleset_parallel.argtypes = [
+    POINTER(cdsl_vm), POINTER(cdsl_ruleset), POINTER(cdsl_context), c_int,
+]
+_lib.cdsl_vm_execute_ruleset_parallel.restype = POINTER(cdsl_ruleset_report)
+
+_lib.cdsl_vm_execute_compiled.argtypes = [
+    POINTER(cdsl_vm), c_void_p, POINTER(cdsl_context),
+]
+_lib.cdsl_vm_execute_compiled.restype = POINTER(cdsl_rule_report)
+
+# Codegen to file
+_lib.cdsl_codegen_to_file.argtypes = [
+    POINTER(cdsl_rule), POINTER(cdsl_schema), c_char_p,
+]
+_lib.cdsl_codegen_to_file.restype = c_int
+
+_lib.cdsl_codegen_ruleset_to_files.argtypes = [
+    POINTER(cdsl_ruleset), POINTER(cdsl_schema), c_char_p,
+]
+_lib.cdsl_codegen_ruleset_to_files.restype = c_int
+
 
 # ---- Pythonic wrapper API -----------------------------------------------------
 
 class DSLError(Exception):
     """Raised for parse/verify/analysis errors."""
+
+
+class _RuleLike(Protocol):
+    """Protocol for objects wrapping a cdsl_rule_t*."""
+    def _get_ptr(self):
+        ...
+
+
+def _decode_and_free(ptr) -> str:
+    """Decode a malloc'd C string (c_void_p) and free it."""
+    if not ptr:
+        return ""
+    p = ctypes.cast(ptr, c_char_p)
+    result = p.value.decode("utf-8", errors="replace")
+    _lib.free(ptr)
+    return result
 
 
 class Schema:
@@ -869,9 +970,18 @@ class Schema:
     def __del__(self) -> None:
         self.free()
 
+    def __repr__(self) -> str:
+        return f"Schema(ptr={self._ptr})"
+
+    def __enter__(self) -> Schema:
+        return self
+
+    def __exit__(self, *args) -> None:
+        self.free()
+
     def add_var(
         self, name: str, typ: int, *, readonly: bool = False
-    ) -> None:
+    ) -> Schema:
         name_b = name.encode("utf-8")
         if readonly:
             _lib.cdsl_schema_register_var_rw(
@@ -879,13 +989,14 @@ class Schema:
             )
         else:
             _lib.cdsl_schema_register_var(self._ptr, name_b, typ)
+        return self
 
     def add_action(
         self,
         name: str,
         return_type: int,
         arg_types: List[int],
-    ) -> None:
+    ) -> Schema:
         name_b = name.encode("utf-8")
         n = len(arg_types)
         if n == 0:
@@ -905,6 +1016,7 @@ class Schema:
             )
         else:
             raise ValueError("Too many action arg types (max 3)")
+        return self
 
     def verify(self, rule: _RuleLike) -> None:
         """Verify a rule against this schema. Raises DSLError on failure."""
@@ -924,10 +1036,7 @@ class Schema:
         return _collect_errors(errs)
 
 
-class _RuleLike:
-    """Mixin for objects that wrap a cdsl_rule_t*."""
-    def _get_ptr(self):
-        raise NotImplementedError
+
 
 
 class Rule(_RuleLike):
@@ -945,6 +1054,15 @@ class Rule(_RuleLike):
 
     def __del__(self) -> None:
         self.free()
+
+    def __enter__(self) -> Rule:
+        return self
+
+    def __exit__(self, *args) -> None:
+        self.free()
+
+    def __repr__(self) -> str:
+        return f"Rule(name={self.name!r}, ptr={self._ptr})"
 
     def _get_ptr(self):
         return self._ptr
@@ -974,25 +1092,40 @@ class Context:
     def __del__(self) -> None:
         self.free()
 
-    def set_int(self, name: str, val: int) -> None:
+    def __enter__(self) -> Context:
+        return self
+
+    def __exit__(self, *args) -> None:
+        self.free()
+
+    def __repr__(self) -> str:
+        return f"Context(ptr={self._ptr})"
+
+    def set_int(self, name: str, val: int) -> Context:
         _lib.cdsl_context_set_int(self._ptr, name.encode("utf-8"), val)
+        return self
 
-    def set_float(self, name: str, val: float) -> None:
+    def set_float(self, name: str, val: float) -> Context:
         _lib.cdsl_context_set_float(self._ptr, name.encode("utf-8"), val)
+        return self
 
-    def set_bool(self, name: str, val: bool) -> None:
+    def set_bool(self, name: str, val: bool) -> Context:
         _lib.cdsl_context_set_bool(self._ptr, name.encode("utf-8"), int(val))
+        return self
 
-    def set_string(self, name: str, val: str) -> None:
+    def set_string(self, name: str, val: str) -> Context:
         _lib.cdsl_context_set_string(
             self._ptr, name.encode("utf-8"), val.encode("utf-8"),
         )
+        return self
 
-    def set_date(self, name: str, val: int) -> None:
+    def set_date(self, name: str, val: int) -> Context:
         _lib.cdsl_context_set_date(self._ptr, name.encode("utf-8"), val)
+        return self
 
-    def set_long(self, name: str, val: int) -> None:
+    def set_long(self, name: str, val: int) -> Context:
         _lib.cdsl_context_set_long(self._ptr, name.encode("utf-8"), val)
+        return self
 
     def get_int(self, name: str, default: int = 0) -> int:
         return _lib.cdsl_context_get_int(
@@ -1149,13 +1282,8 @@ class RuleReport:
         return _decode(self._ptr.contents.decision_summary)
 
     def to_json(self) -> str:
-        c_str = _lib.cdsl_report_to_json(self._ptr)
-        if c_str:
-            p = ctypes.cast(c_str, c_char_p)
-            result = p.value.decode("utf-8", errors="replace")
-            _lib.free(c_str)
-            return result
-        return "{}"
+        result = _decode_and_free(_lib.cdsl_report_to_json(self._ptr))
+        return result if result else "{}"
 
     def print(self) -> None:
         _lib.cdsl_report_print(self._ptr)
@@ -1249,6 +1377,22 @@ class VM:
 
     def __del__(self) -> None:
         self.free()
+
+    def __enter__(self) -> VM:
+        return self
+
+    def __exit__(self, *args) -> None:
+        self.free()
+
+    def __repr__(self) -> str:
+        return f"VM(ptr={self._ptr})"
+
+    def get_max_expr_depth(self) -> int:
+        return _lib.cdsl_vm_get_max_expr_depth(self._ptr)
+
+    def set_max_expr_depth(self, depth: int) -> VM:
+        _lib.cdsl_vm_set_max_expr_depth(self._ptr, depth)
+        return self
 
     def register_action(
         self,
@@ -1354,23 +1498,36 @@ class Ruleset:
     def __del__(self) -> None:
         self.free()
 
-    def add(self, rule: _RuleLike, priority: int = 0) -> None:
+    def __enter__(self) -> Ruleset:
+        return self
+
+    def __exit__(self, *args) -> None:
+        self.free()
+
+    def __repr__(self) -> str:
+        return f"Ruleset(count={self._ptr.contents.count if self._ptr else 0})"
+
+    def add(self, rule: _RuleLike, priority: int = 0) -> Ruleset:
         """Add a rule to the ruleset. Ownership transfers to the ruleset."""
         _lib.cdsl_ruleset_add(self._ptr, rule._get_ptr(), priority)
         if isinstance(rule, Rule):
-            rule._owned = False  # ownership transferred to C
+            rule._owned = False
+        return self
 
-    def remove(self, rule_name: str) -> bool:
-        return _lib.cdsl_ruleset_remove(
+    def remove(self, rule_name: str) -> Ruleset:
+        rc = _lib.cdsl_ruleset_remove(
             self._ptr, rule_name.encode("utf-8"),
-        ) == 0
+        )
+        if rc == 0:
+            raise DSLError(f"remove('{rule_name}'): rule not found")
+        return self
 
     def load_file(
         self,
         filepath: str,
         priority: int,
         schema: Schema,
-    ) -> None:
+    ) -> Ruleset:
         err_buf = ctypes.create_string_buffer(4096)
         rc = _lib.cdsl_ruleset_load_file(
             self._ptr, filepath.encode("utf-8"), priority,
@@ -1378,13 +1535,14 @@ class Ruleset:
         )
         if rc != 0:
             raise DSLError(err_buf.value.decode("utf-8", errors="replace"))
+        return self
 
     def load_string(
         self,
         dsl_code: str,
         priority: int,
         schema: Schema,
-    ) -> None:
+    ) -> Ruleset:
         err_buf = ctypes.create_string_buffer(4096)
         rc = _lib.cdsl_ruleset_load_string(
             self._ptr, dsl_code.encode("utf-8"), priority,
@@ -1392,17 +1550,31 @@ class Ruleset:
         )
         if rc != 0:
             raise DSLError(err_buf.value.decode("utf-8", errors="replace"))
+        return self
 
-    def validate_deps(self) -> None:
+    def reload_file(self, filepath: str, schema: Schema) -> Ruleset:
+        """Reload rules from a file, replacing existing entries."""
+        err_buf = ctypes.create_string_buffer(4096)
+        rc = _lib.cdsl_ruleset_reload_file(
+            self._ptr, filepath.encode("utf-8"),
+            schema._ptr, err_buf, len(err_buf),
+        )
+        if rc != 0:
+            raise DSLError(err_buf.value.decode("utf-8", errors="replace"))
+        return self
+
+    def validate_deps(self) -> Ruleset:
         err_buf = ctypes.create_string_buffer(4096)
         rc = _lib.cdsl_ruleset_validate_deps(self._ptr, err_buf, len(err_buf))
         if rc != 0:
             raise DSLError(err_buf.value.decode("utf-8", errors="replace"))
+        return self
 
-    def topo_sort(self) -> None:
+    def topo_sort(self) -> Ruleset:
         rc = _lib.cdsl_ruleset_topo_sort(self._ptr)
         if rc != 0:
             raise DSLError("cdsl_ruleset_topo_sort() failed")
+        return self
 
     def execute(self, vm: VM, ctx: Context) -> RulesetReport:
         ptr = _lib.cdsl_vm_execute_ruleset(vm._ptr, self._ptr, ctx._ptr)
@@ -1436,6 +1608,15 @@ class CompileCache:
 
     def __del__(self) -> None:
         self.free()
+
+    def __enter__(self) -> CompileCache:
+        return self
+
+    def __exit__(self, *args) -> None:
+        self.free()
+
+    def __repr__(self) -> str:
+        return f"CompileCache(ptr={self._ptr})"
 
     def compile(self, dsl_code: str, schema: Schema) -> Any:
         err_buf = ctypes.create_string_buffer(4096)
@@ -1493,35 +1674,66 @@ def parse_file(filepath: str) -> Rule:
 
 def generate_code(rule: _RuleLike, schema: Schema) -> str:
     """Generate C source code for a rule."""
-    c_str = _lib.cdsl_codegen_rule_to_c(rule._get_ptr(), schema._ptr)
-    if not c_str:
+    result = _decode_and_free(
+        _lib.cdsl_codegen_rule_to_c(rule._get_ptr(), schema._ptr)
+    )
+    if not result:
         raise DSLError("Code generation failed")
-    p = ctypes.cast(c_str, c_char_p)
-    result = p.value.decode("utf-8", errors="replace")
-    _lib.free(c_str)
     return result
 
 
 def to_dot(rule: _RuleLike) -> str:
     """Generate Graphviz DOT representation of a rule."""
-    c_str = _lib.cdsl_rule_to_dot(rule._get_ptr())
-    if not c_str:
+    result = _decode_and_free(_lib.cdsl_rule_to_dot(rule._get_ptr()))
+    if not result:
         raise DSLError("DOT generation failed")
-    p = ctypes.cast(c_str, c_char_p)
-    result = p.value.decode("utf-8", errors="replace")
-    _lib.free(c_str)
     return result
+
+
+def to_dot_file(rule: _RuleLike, filepath: str) -> None:
+    """Write Graphviz DOT representation of a rule to a file."""
+    rc = _lib.cdsl_rule_to_dot_file(
+        rule._get_ptr(), filepath.encode("utf-8"),
+    )
+    if rc == 0:
+        raise DSLError("to_dot_file() failed")
 
 
 def ruleset_to_dot(ruleset: Ruleset) -> str:
     """Generate Graphviz DOT for a ruleset."""
-    c_str = _lib.cdsl_ruleset_to_dot(ruleset._ptr)
-    if not c_str:
+    result = _decode_and_free(_lib.cdsl_ruleset_to_dot(ruleset._ptr))
+    if not result:
         raise DSLError("DOT generation failed")
-    p = ctypes.cast(c_str, c_char_p)
-    result = p.value.decode("utf-8", errors="replace")
-    _lib.free(c_str)
     return result
+
+
+def ruleset_to_dot_file(ruleset: Ruleset, filepath: str) -> None:
+    """Write Graphviz DOT for a ruleset to a file."""
+    rc = _lib.cdsl_ruleset_to_dot_file(
+        ruleset._ptr, filepath.encode("utf-8"),
+    )
+    if rc == 0:
+        raise DSLError("ruleset_to_dot_file() failed")
+
+
+def codegen_to_file(rule: _RuleLike, schema: Schema, filepath: str) -> None:
+    """Generate C source and write to a file."""
+    rc = _lib.cdsl_codegen_to_file(
+        rule._get_ptr(), schema._ptr, filepath.encode("utf-8"),
+    )
+    if rc == 0:
+        raise DSLError("codegen_to_file() failed")
+
+
+def codegen_ruleset_to_files(
+    ruleset: Ruleset, schema: Schema, basename: str,
+) -> None:
+    """Generate C source and header files for a ruleset."""
+    rc = _lib.cdsl_codegen_ruleset_to_files(
+        ruleset._ptr, schema._ptr, basename.encode("utf-8"),
+    )
+    if rc == 0:
+        raise DSLError("codegen_ruleset_to_files() failed")
 
 
 # ---- Internal helpers ---------------------------------------------------------
