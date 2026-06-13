@@ -40,7 +40,7 @@ COPY --from=builder /build/build/cdsl_official_review /usr/local/bin/
 
 RUN ldconfig
 
-RUN useradd -m -u 1000 cdsl
+RUN useradd -m cdsl
 USER cdsl
 
 CMD ["/bin/bash"]
@@ -66,7 +66,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     pkg-config \
     && rm -rf /var/lib/apt/lists/*
 
-RUN useradd -m -u 1000 cdsl
+RUN useradd -m cdsl
 USER cdsl
 
 WORKDIR /cdsl
