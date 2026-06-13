@@ -113,7 +113,7 @@ else()
     endif()
     if(CMAKE_C_COMPILER_ID MATCHES "Clang")
         target_compile_options(cdsl_objects PRIVATE
-            -Wcovered-switch-default)
+            -Wno-covered-switch-default)
     endif()
 endif()
 
