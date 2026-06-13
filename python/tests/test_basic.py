@@ -129,6 +129,30 @@ class TestSchema:
         s.free()
         assert s._ptr is None
 
+    def test_list_vars(self):
+        s = cdsl.Schema().add_var("x", cdsl.Type.INT).add_var("y", cdsl.Type.FLOAT, readonly=True)
+        v = s.list_vars()
+        assert len(v) == 2
+        names = {x["name"] for x in v}
+        assert names == {"x", "y"}
+        ro = {x["name"] for x in v if x["readonly"]}
+        assert ro == {"y"}
+
+    def test_list_actions(self):
+        s = cdsl.Schema().add_action("a", cdsl.Type.VOID, [])
+        s.add_action("b", cdsl.Type.VOID, [cdsl.Type.INT, cdsl.Type.STRING])
+        a = s.list_actions()
+        assert len(a) == 2
+        assert {x["name"] for x in a} == {"a", "b"}
+
+    def test_has_var_action(self):
+        s = cdsl.Schema().add_var("x", cdsl.Type.INT)
+        s.add_action("approve", cdsl.Type.VOID, [])
+        assert s.has_var("x")
+        assert not s.has_var("y")
+        assert s.has_action("approve")
+        assert not s.has_action("reject")
+
 
 class TestParse:
     def test_parse_simple(self):
@@ -188,6 +212,23 @@ class TestRule:
         assert rule1 == rule2
         assert hash(rule1) == hash(rule2)
         assert len({rule1, rule2}) == 1
+
+    def test_meta(self):
+        rule = cdsl.parse(SAMPLE_DSL)
+        assert rule.meta.get("description") == "Credit approval check"
+
+    def test_then_action(self):
+        rule = cdsl.parse(SAMPLE_DSL)
+        ta = rule.then_action
+        assert ta is not None
+        assert ta["name"] == "approve"
+        assert ta["arg_count"] == 0
+
+    def test_metric_count(self):
+        simple = cdsl.parse(SAMPLE_DSL)
+        scoring = cdsl.parse(SCORING_DSL)
+        assert simple.metric_count == 0
+        assert scoring.metric_count == 2
 
     def test_inequality_different_rules(self):
         r1 = cdsl.parse(SAMPLE_DSL)
@@ -279,6 +320,32 @@ class TestContext:
         ctx = cdsl.Context(s)
         ctx.free()
         assert ctx._ptr is None
+
+    def test_contains(self):
+        s = make_schema()
+        ctx = cdsl.Context(s)
+        ctx.set_int("user.age", 25)
+        assert "user.age" in ctx
+        assert "nonexistent" not in ctx
+        ctx.free()
+
+    def test_keys(self):
+        s = cdsl.Schema()
+        s.add_var("a", cdsl.Type.INT)
+        s.add_var("b", cdsl.Type.STRING)
+        ctx = cdsl.Context(s)
+        ctx.set_int("a", 1).set_string("b", "x")
+        assert sorted(ctx.keys()) == ["a", "b"]
+        ctx.free()
+
+    def test_clear(self):
+        s = make_schema()
+        ctx = cdsl.Context(s)
+        ctx.set_int("user.age", 25).set_float("user.income", 100.0)
+        ctx.clear()
+        assert "user.age" not in ctx
+        assert len(ctx.keys()) == 0
+        ctx.free()
 
 
 class TestVM:
@@ -430,6 +497,38 @@ class TestRuleset:
         rs.free()
         assert rs._ptr is None
 
+    def test_len(self):
+        rs = cdsl.Ruleset()
+        assert len(rs) == 0
+        s = make_schema()
+        rule = cdsl.parse(SAMPLE_DSL)
+        rs.add(rule)
+        assert len(rs) == 1
+
+    def test_iter(self):
+        rs = cdsl.Ruleset()
+        assert list(rs) == []
+        s = make_schema()
+        r1 = cdsl.parse(SAMPLE_DSL)
+        r2 = cdsl.parse(SCORING_DSL)
+        rs.add(r1, 1).add(r2, 2)
+        names = [r.name for r in rs]
+        assert "credit_check" in names
+        assert "supplier_audit" in names
+
+    def test_bool(self):
+        assert not bool(cdsl.Ruleset())
+        s = make_schema()
+        rule = cdsl.parse(SAMPLE_DSL)
+        rs = cdsl.Ruleset().add(rule)
+        assert bool(rs) is True
+
+    def test_load_string(self):
+        s = make_schema()
+        rs = cdsl.Ruleset()
+        rs.load_string('RULE t { META { description = "t" } WHEN user.age >= 0 THEN approve() }', 1, s)
+        assert len(rs) == 1
+
 
 class TestRuleReport:
     def test_report_properties(self):
@@ -547,6 +646,29 @@ class TestMetricResult:
         assert isinstance(m.is_passed, bool)
         r = repr(m)
         assert "credit_check" in r
+
+    def test_to_dict(self):
+        s = cdsl.Schema()
+        s.add_var("x", cdsl.Type.INT)
+        s.add_action("score", cdsl.Type.VOID, [cdsl.Type.INT])
+        rule = cdsl.parse(SCORING_DSL.replace("supplier_audit", "sa"))
+        s.add_var("supplier.is_blacklisted", cdsl.Type.BOOL)
+        s.add_var("supplier.capital", cdsl.Type.LONG)
+        s.add_action("fail_metric", cdsl.Type.VOID, [cdsl.Type.INT, cdsl.Type.STRING])
+        s.verify(rule)
+        ctx = cdsl.Context(s)
+        ctx.set_bool("supplier.is_blacklisted", False)
+        ctx.set_long("supplier.capital", 10_000_000)
+        vm = cdsl.VM(s)
+        vm.register_action("score", lambda n, a, d: None)
+        vm.register_action("fail_metric", lambda n, a, d: None)
+        report = vm.execute(rule, ctx)
+        for m in report.metrics:
+            d = m.to_dict()
+            assert isinstance(d, dict)
+            assert "metric_name" in d
+            assert "max_weight" in d
+        vm.free(); ctx.free()
 
 
 class TestCodegen:
