@@ -69,9 +69,11 @@ from typing import Any, Callable, Dict, List, Optional, Protocol
 __all__ = [
     "DSLError", "Schema", "Rule", "Context", "VM", "Ruleset",
     "MetricResult", "RuleReport", "RulesetReport", "CompileCache",
+    "CompiledRule",
     "Type", "Op", "ExprType", "Status", "TraceKind",
     "parse", "parse_file",
-    "generate_code", "codegen_to_file", "codegen_ruleset_to_files",
+    "generate_code", "codegen_to_file",
+    "codegen_ruleset_to_files", "codegen_ruleset_to_h", "codegen_ruleset_to_c",
     "to_dot", "to_dot_file", "ruleset_to_dot", "ruleset_to_dot_file",
 ]
 __version__ = "1.1.0"
@@ -587,6 +589,50 @@ class cdsl_compile_cache(Structure):
     ]
 
 
+# Bytecode structures
+class bc_operand(Union):
+    _fields_ = [
+        ("int_val", c_int),
+        ("float_val", c_double),
+        ("bool_val", c_int),
+        ("const_idx", c_int),
+        ("date_val", c_int64),
+        ("long_val", c_int64),
+        ("jump_offset", c_int),
+    ]
+
+class bc_inst(Structure):
+    _fields_ = [
+        ("op", c_int),
+        ("operand", bc_operand),
+    ]
+
+
+class cdsl_bytecode(Structure):
+    _fields_ = [
+        ("code", POINTER(bc_inst)),
+        ("count", c_int),
+        ("capacity", c_int),
+        ("max_stack", c_int),
+        ("constants", POINTER(cdsl_value)),
+        ("const_count", c_int),
+        ("const_capacity", c_int),
+    ]
+
+
+# Bytecode opcode names for disassembly
+_BC_OP_NAMES = {
+    0: "PUSH_INT", 1: "PUSH_FLOAT", 2: "PUSH_BOOL", 3: "PUSH_STRING",
+    4: "PUSH_DATE", 5: "PUSH_LONG", 6: "PUSH_ARRAY", 7: "PUSH_VAR",
+    8: "POP", 9: "ADD", 10: "SUB", 11: "MUL", 12: "DIV",
+    13: "EQ", 14: "NE", 15: "LT", 16: "GT", 17: "LE", 18: "GE",
+    19: "NOT", 20: "NEG", 21: "CALL", 22: "DUP",
+    23: "JMP_IF_FALSE", 24: "JMP_IF_TRUE", 25: "JMP",
+    26: "METRIC_START", 27: "SET_SCORE", 28: "FAIL_METRIC",
+    29: "RULE_END", 30: "RET",
+}
+
+
 # Callback types (CFUNCTYPE)
 cdsl_action_cb_type = ctypes.CFUNCTYPE(
     None, c_char_p, POINTER(cdsl_arg_node), c_void_p,
@@ -794,9 +840,6 @@ _lib.cdsl_rule_to_dot_file.argtypes = [
     POINTER(cdsl_rule), c_char_p,
 ]
 _lib.cdsl_rule_to_dot_file.restype = c_int
-
-_lib.cdsl_ruleset_to_dot.argtypes = [POINTER(cdsl_ruleset)]
-_lib.cdsl_ruleset_to_dot.restype = c_void_p
 
 _lib.cdsl_ruleset_to_dot_file.argtypes = [
     POINTER(cdsl_ruleset), c_char_p,
@@ -1091,6 +1134,33 @@ class Schema:
     def has_action(self, name: str) -> bool:
         return any(a["name"] == name for a in self.list_actions())
 
+    def var_count(self) -> int:
+        count = 0
+        if self._ptr:
+            v = self._ptr.contents.vars
+            while v:
+                count += 1
+                v = v.contents.next
+        return count
+
+    def action_count(self) -> int:
+        count = 0
+        if self._ptr:
+            a = self._ptr.contents.actions
+            while a:
+                count += 1
+                a = a.contents.next
+        return count
+
+    def get_var_type(self, name: str) -> Optional[int]:
+        for v in self.list_vars():
+            if v["name"] == name:
+                return v["type"]
+        return None
+
+    def __len__(self) -> int:
+        return self.var_count()
+
     def __bool__(self) -> bool:
         return self._ptr is not None
 
@@ -1169,6 +1239,52 @@ class Rule(_RuleLike):
             count += 1
             m = m.contents.next
         return count
+
+    @property
+    def when_expr(self) -> Optional[Dict[str, Any]]:
+        """Return the WHEN expression as a nested dict tree."""
+        if not self._ptr or not self._ptr.contents.when_expr:
+            return None
+        return _expr_to_dict(self._ptr.contents.when_expr.contents)
+
+    def metrics_info(self) -> List[Dict[str, Any]]:
+        """Return info about each METRIC section."""
+        if not self._ptr:
+            return []
+        result = []
+        m = self._ptr.contents.metrics
+        while m:
+            cases = []
+            c = m.contents.case_list
+            while c:
+                cases.append({
+                    "condition": (
+                        _expr_to_dict(c.contents.condition.contents)
+                        if c.contents.condition else None
+                    ),
+                    "action": _action_to_dict(c.contents.action.contents)
+                    if c.contents.action else None,
+                })
+                c = c.contents.next
+            default = None
+            if m.contents.default_action:
+                default = _action_to_dict(m.contents.default_action.contents)
+            meta = {}
+            mi = m.contents.meta_list
+            while mi:
+                k = _decode(mi.contents.key)
+                v = _decode(mi.contents.value)
+                if k is not None:
+                    meta[k] = v or ""
+                mi = mi.contents.next
+            result.append({
+                "name": _decode(m.contents.name),
+                "cases": cases,
+                "default_action": default,
+                "meta": meta,
+            })
+            m = m.contents.next
+        return result
 
     def __repr__(self) -> str:
         return f"Rule(name={self.name!r}, ptr={self._ptr})"
@@ -1304,6 +1420,17 @@ class Context:
                 result.append(n.decode("utf-8"))
             e = e.contents.next
         return result
+
+    def get_type(self, name: str) -> Optional[int]:
+        if not self._ptr:
+            return None
+        e = self._ptr.contents.entries
+        name_b = name.encode("utf-8") if isinstance(name, str) else name
+        while e:
+            if e.contents.name and e.contents.name == name_b:
+                return e.contents.value.type
+            e = e.contents.next
+        return None
 
     def clear(self) -> Context:
         for k in self.keys():
@@ -1649,6 +1776,25 @@ class VM:
     def reset_stats(self) -> None:
         _lib.cdsl_vm_reset_stats(self._ptr)
 
+    def compile(self, rule: _RuleLike) -> CompiledRule:
+        bc = cdsl_bytecode()
+        rc = _lib.cdsl_bytecode_compile(
+            rule.ptr, self._schema._ptr, byref(bc),
+        )
+        if rc == 0:
+            raise DSLError("Bytecode compilation failed")
+        return CompiledRule(bc)
+
+    def execute_bytecode(
+        self, compiled: CompiledRule, ctx: Context,
+    ) -> RuleReport:
+        ptr = _lib.cdsl_bytecode_execute_rule(
+            self._ptr, byref(compiled._bc), ctx._ptr,
+        )
+        if not ptr:
+            raise DSLError("cdsl_bytecode_execute_rule() returned NULL")
+        return RuleReport._from_owned(ptr)
+
 
 class Ruleset:
     """Ordered collection of rules."""
@@ -1821,6 +1967,61 @@ class CompileCache:
         return self
 
 
+class CompiledRule:
+    """Bytecode-compiled rule for faster execution."""
+
+    def __init__(self, bc: cdsl_bytecode) -> None:
+        self._bc = bc
+
+    def free(self) -> None:
+        if self._bc is not None:
+            _lib.cdsl_bytecode_free(byref(self._bc))
+            self._bc = None
+
+    def __del__(self) -> None:
+        self.free()
+
+    def __enter__(self) -> CompiledRule:
+        return self
+
+    def __exit__(self, *args) -> None:
+        self.free()
+
+    def __repr__(self) -> str:
+        count = self._bc.count if self._bc is not None else 0
+        return f"CompiledRule(instructions={count})"
+
+    @property
+    def instruction_count(self) -> int:
+        return self._bc.count if self._bc is not None else 0
+
+    def disassemble(self) -> str:
+        if self._bc is None:
+            return ""
+        lines = []
+        inst = self._bc.code
+        for i in range(self._bc.count):
+            op_name = _BC_OP_NAMES.get(inst[i].op, f"UNKNOWN({inst[i].op})")
+            op_val = inst[i].operand
+            operand_str = ""
+            if inst[i].op <= 6:
+                operand_str = str(op_val.int_val)
+            elif inst[i].op == 7:
+                operand_str = f"#{op_val.const_idx}"
+            elif inst[i].op in (21, 26, 28):
+                operand_str = f"#{op_val.const_idx}"
+            elif 23 <= inst[i].op <= 25:
+                operand_str = str(op_val.jump_offset)
+            if operand_str:
+                lines.append(f"  {i:4d}: {op_name:<15} {operand_str}")
+            else:
+                lines.append(f"  {i:4d}: {op_name}")
+        return "\n".join(lines)
+
+    def execute(self, vm: VM, ctx: Context) -> RuleReport:
+        return vm.execute_bytecode(self, ctx)
+
+
 # ---- Top-level convenience functions -----------------------------------------
 
 def parse(dsl_code: str) -> Rule:
@@ -1926,6 +2127,34 @@ def codegen_ruleset_to_files(
         raise DSLError("codegen_ruleset_to_files() failed")
 
 
+def codegen_ruleset_to_h(
+    ruleset: Ruleset, schema: Schema, guard_name: str,
+) -> str:
+    """Generate C header code for a ruleset."""
+    result = _decode_and_free(
+        _lib.cdsl_codegen_ruleset_to_h(
+            ruleset._ptr, schema._ptr, guard_name.encode("utf-8"),
+        )
+    )
+    if not result:
+        raise DSLError("codegen_ruleset_to_h() failed")
+    return result
+
+
+def codegen_ruleset_to_c(
+    ruleset: Ruleset, schema: Schema, header_name: str,
+) -> str:
+    """Generate C source code for a ruleset (includes #include of header)."""
+    result = _decode_and_free(
+        _lib.cdsl_codegen_ruleset_to_c(
+            ruleset._ptr, schema._ptr, header_name.encode("utf-8"),
+        )
+    )
+    if not result:
+        raise DSLError("codegen_ruleset_to_c() failed")
+    return result
+
+
 # ---- Internal helpers ---------------------------------------------------------
 
 def _decode(p) -> Optional[str]:
@@ -1951,4 +2180,59 @@ def _collect_errors(err_ptr) -> List[Dict[str, Any]]:
             "kind": e.kind,
         })
     _lib.cdsl_error_list_free(err_ptr)
+    return result
+
+
+def _action_to_dict(action) -> Dict[str, Any]:
+    arg_count = 0
+    a = action.args
+    while a:
+        arg_count += 1
+        a = a.contents.next
+    return {
+        "name": _decode(action.action_name),
+        "arg_count": arg_count,
+    }
+
+
+def _expr_to_dict(expr) -> Dict[str, Any]:
+    """Convert a cdsl_expr_node_t to a Python dict recursively."""
+    typ = expr.type
+    result: Dict[str, Any] = {"type": typ}
+    if typ == ExprType.ID:
+        result["value"] = _decode(expr.data.id_val)
+    elif typ == ExprType.INT:
+        result["value"] = expr.data.int_val
+    elif typ == ExprType.FLOAT:
+        result["value"] = expr.data.float_val
+    elif typ == ExprType.BOOL:
+        result["value"] = bool(expr.data.bool_val)
+    elif typ == ExprType.STRING:
+        result["value"] = _decode(expr.data.string_val)
+    elif typ == ExprType.DATE:
+        result["value"] = expr.data.date_val
+    elif typ == ExprType.LONG:
+        result["value"] = expr.data.long_val
+    elif typ == ExprType.ARRAY:
+        elements = []
+        a = expr.data.array.elements
+        while a:
+            elements.append(_expr_to_dict(a.contents.expr.contents))
+            a = a.contents.next
+        result["elements"] = elements
+    elif typ == ExprType.BINARY:
+        result["op"] = expr.data.binary.op
+        result["left"] = _expr_to_dict(expr.data.binary.left.contents)
+        result["right"] = _expr_to_dict(expr.data.binary.right.contents)
+    elif typ == ExprType.UNARY:
+        result["op"] = expr.data.unary.op
+        result["expr"] = _expr_to_dict(expr.data.unary.expr.contents)
+    elif typ == ExprType.CALL:
+        args = []
+        a = expr.data.call.args
+        while a:
+            args.append(_expr_to_dict(a.contents.expr.contents))
+            a = a.contents.next
+        result["func_name"] = _decode(expr.data.call.func_name)
+        result["args"] = args
     return result

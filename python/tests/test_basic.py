@@ -153,6 +153,29 @@ class TestSchema:
         assert s.has_action("approve")
         assert not s.has_action("reject")
 
+    def test_var_count(self):
+        s = cdsl.Schema().add_var("x", cdsl.Type.INT).add_var("y", cdsl.Type.FLOAT)
+        assert s.var_count() == 2
+
+    def test_action_count(self):
+        s = cdsl.Schema().add_action("a", cdsl.Type.VOID, [])
+        s.add_action("b", cdsl.Type.VOID, [cdsl.Type.INT])
+        assert s.action_count() == 2
+
+    def test_get_var_type(self):
+        s = cdsl.Schema().add_var("x", cdsl.Type.INT).add_var("y", cdsl.Type.FLOAT)
+        assert s.get_var_type("x") == cdsl.Type.INT
+        assert s.get_var_type("y") == cdsl.Type.FLOAT
+        assert s.get_var_type("z") is None
+
+    def test_schema_len(self):
+        s = cdsl.Schema()
+        assert len(s) == 0
+        s.add_var("x", cdsl.Type.INT)
+        assert len(s) == 1
+        s.add_var("y", cdsl.Type.FLOAT)
+        assert len(s) == 2
+
 
 class TestParse:
     def test_parse_simple(self):
@@ -234,6 +257,25 @@ class TestRule:
         r1 = cdsl.parse(SAMPLE_DSL)
         r2 = cdsl.parse(SCORING_DSL)
         assert r1 != r2
+
+    def test_when_expr(self):
+        rule = cdsl.parse(SAMPLE_DSL)
+        we = rule.when_expr
+        assert we is not None
+        assert isinstance(we, dict)
+        assert we["type"] == cdsl.ExprType.BINARY
+        assert "op" in we
+        assert "left" in we
+        assert "right" in we
+
+    def test_metrics_info(self):
+        rule = cdsl.parse(SCORING_DSL)
+        mi = rule.metrics_info()
+        assert len(mi) == 2
+        assert mi[0]["name"] == "credit_check"
+        assert len(mi[0]["cases"]) == 1
+        assert mi[0]["default_action"] is not None
+        assert mi[0]["default_action"]["name"] == "fail_metric"
 
 
 class TestContext:
@@ -345,6 +387,15 @@ class TestContext:
         ctx.clear()
         assert "user.age" not in ctx
         assert len(ctx.keys()) == 0
+        ctx.free()
+
+    def test_get_type(self):
+        s = make_schema()
+        ctx = cdsl.Context(s)
+        ctx.set_int("user.age", 25).set_float("user.income", 100.0)
+        assert ctx.get_type("user.age") == cdsl.Type.INT
+        assert ctx.get_type("user.income") == cdsl.Type.FLOAT
+        assert ctx.get_type("nonexistent") is None
         ctx.free()
 
 
@@ -682,9 +733,24 @@ class TestCodegen:
     def test_generate_code_error(self):
         s = make_schema()
         rule = cdsl.parse(SAMPLE_DSL)
-        # No verify — should still generate (codegen doesn't need verification)
         code = cdsl.generate_code(rule, s)
         assert "cdsl_eval_rule_" in code
+
+    def test_codegen_ruleset_to_h(self):
+        s = make_schema()
+        rule = cdsl.parse(SAMPLE_DSL)
+        rs = cdsl.Ruleset().add(rule, 1)
+        h = cdsl.codegen_ruleset_to_h(rs, s, "MY_GUARD")
+        assert "#ifndef CDSL_GENERATED_MY_GUARD_H" in h
+        rs.free()
+
+    def test_codegen_ruleset_to_c(self):
+        s = make_schema()
+        rule = cdsl.parse(SAMPLE_DSL)
+        rs = cdsl.Ruleset().add(rule, 1)
+        c = cdsl.codegen_ruleset_to_c(rs, s, "my_header.h")
+        assert '#include' in c
+        rs.free()
 
 
 class TestDOT:
@@ -733,6 +799,54 @@ class TestCodegenFile:
         cdsl.codegen_ruleset_to_files(rs, s, base)
         assert os.path.isfile(base + ".c")
         assert os.path.isfile(base + ".h")
+
+
+class TestCompiledRule:
+    def test_compile_metric_rule(self):
+        s = cdsl.Schema()
+        s.add_var("x", cdsl.Type.INT)
+        s.add_action("score", cdsl.Type.VOID, [cdsl.Type.INT])
+        rule = cdsl.parse('RULE mr { METRIC m { CASE x >= 0 THEN score(10) DEFAULT score(0) } }')
+        vm = cdsl.VM(s)
+        cr = vm.compile(rule)
+        assert cr.instruction_count > 0
+        cr.free(); vm.free(); rule.free(); s.free()
+
+    def test_disassemble(self):
+        s = cdsl.Schema()
+        s.add_var("x", cdsl.Type.INT)
+        s.add_action("a", cdsl.Type.VOID, [])
+        rule = cdsl.parse('RULE t { WHEN x >= 0 THEN a() }')
+        vm = cdsl.VM(s)
+        cr = vm.compile(rule)
+        asm = cr.disassemble()
+        assert "PUSH_VAR" in asm or "PUSH_INT" in asm
+        cr.free(); vm.free(); rule.free(); s.free()
+
+    def test_bytecode_execute(self):
+        s = cdsl.Schema()
+        s.add_var("x", cdsl.Type.INT)
+        s.add_action("score", cdsl.Type.VOID, [cdsl.Type.INT])
+        rule = cdsl.parse('RULE mr { METRIC m { CASE x >= 0 THEN score(10) DEFAULT score(0) } }')
+        vm = cdsl.VM(s)
+        cr = vm.compile(rule)
+        ctx = cdsl.Context(s).set_int("x", 1)
+        vm.register_action("score", lambda name, args, data: None)
+        report = cr.execute(vm, ctx)
+        assert report.total_obtained_score == 10
+        cr.free(); vm.free(); ctx.free(); rule.free(); s.free()
+
+    def test_compile_rule_context_manager(self):
+        s = cdsl.Schema()
+        s.add_var("x", cdsl.Type.INT)
+        s.add_action("a", cdsl.Type.VOID, [])
+        rule = cdsl.parse('RULE t { WHEN x >= 0 THEN a() }')
+        vm = cdsl.VM(s)
+        cr = vm.compile(rule)
+        with cr:
+            assert cr.instruction_count > 0
+        assert cr._bc is None
+        vm.free(); rule.free(); s.free()
 
 
 class TestCompileCache:
