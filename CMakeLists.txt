@@ -9,6 +9,14 @@ set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
 include(GNUInstallDirs)
 
+# 14. ccache support
+find_program(CCACHE ccache)
+if(CCACHE)
+    set(CMAKE_C_COMPILER_LAUNCHER ${CCACHE})
+    set(CMAKE_CXX_COMPILER_LAUNCHER ${CCACHE})
+    message(STATUS "ccache found - compiler launcher enabled")
+endif()
+
 # 13. Code coverage (Moved up to apply to all targets)
 option(CDSL_ENABLE_COVERAGE "Enable gcov code coverage reporting" OFF)
 if(CDSL_ENABLE_COVERAGE)
@@ -263,7 +271,18 @@ install(FILES "${CMAKE_CURRENT_BINARY_DIR}/cdsl.pc"
     COMPONENT pkgconfig
 )
 
-# 11. Code formatting (clang-format)
+# 11. Uninstall target
+configure_file(
+    "${CMAKE_CURRENT_SOURCE_DIR}/cmake/cmake_uninstall.cmake.in"
+    "${CMAKE_CURRENT_BINARY_DIR}/cmake_uninstall.cmake"
+    IMMEDIATE @ONLY
+)
+add_custom_target(uninstall
+    COMMAND ${CMAKE_COMMAND} -P ${CMAKE_CURRENT_BINARY_DIR}/cmake_uninstall.cmake
+    COMMENT "Removing installed C-DSL files..."
+)
+
+# 12. Code formatting (clang-format)
 option(CDSL_FORMAT_ON_BUILD "Run clang-format before every build" OFF)
 
 find_program(CLANG_FORMAT clang-format)

@@ -10,6 +10,9 @@ concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
+env:
+  CCACHE_DIR: /tmp/ccache
+
 jobs:
   ##########################################################################
   # Build & Test
@@ -28,7 +31,15 @@ jobs:
             gcc \
             flex \
             bison \
-            libpthread-stubs0-dev
+            libpthread-stubs0-dev \
+            ccache
+
+      - name: Cache ccache
+        uses: actions/cache@v4
+        with:
+          path: /tmp/ccache
+          key: ccache-ubuntu-${{ hashFiles('src/**/*.c', 'include/**/*.h') }}
+          restore-keys: ccache-ubuntu-
 
       - name: Configure
         run: cmake -B build -DCDSL_GENERATE_DOCS=OFF -DCMAKE_BUILD_TYPE=Debug
@@ -335,6 +346,30 @@ jobs:
         uses: actions/upload-pages-artifact@v3
         with:
           path: build/docs/html
+
+  ##########################################################################
+  # Docker Build
+  ##########################################################################
+  docker:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build dev image
+        run: docker build --target dev -t cdsl-dev .
+
+      - name: Build release image
+        run: docker build --target release -t cdsl-runtime .
+
+      - name: Smoke test - dev image
+        run: |
+          docker run --rm cdsl-dev cmake --version
+          docker run --rm cdsl-dev clang-format --version
+
+      - name: Smoke test - release image
+        run: |
+          docker run --rm cdsl-runtime /usr/local/bin/cdsl_demo
 
   ##########################################################################
   # Deploy Docs to GitHub Pages
