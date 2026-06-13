@@ -926,13 +926,30 @@ _lib.cdsl_codegen_ruleset_to_files.restype = c_int
 # ---- Pythonic wrapper API -----------------------------------------------------
 
 class DSLError(Exception):
-    """Raised for parse/verify/analysis errors."""
+    """Raised for parse/verify/analysis errors.
+
+    Attributes:
+        message:  Human-readable error description.
+        errors:   List of dicts with keys ``line``, ``column``, ``message``,
+                  ``hint``, ``kind`` (empty for non-parse errors).
+    """
+
+    def __init__(self, message: str, errors: Optional[List[Dict[str, Any]]] = None):
+        super().__init__(message)
+        self.message = message
+        self.errors = errors or []
+
+    def __str__(self) -> str:
+        return self.message
+
+    def __repr__(self) -> str:
+        return f"DSLError({self.message}, errors={self.errors})"
 
 
 class _RuleLike(Protocol):
     """Protocol for objects wrapping a cdsl_rule_t*."""
-    def _get_ptr(self):
-        ...
+    @property
+    def ptr(self): ...
 
 
 def _decode_and_free(ptr) -> str:
@@ -1020,19 +1037,21 @@ class Schema:
 
     def verify(self, rule: _RuleLike) -> None:
         """Verify a rule against this schema. Raises DSLError on failure."""
-        err_buf = ctypes.create_string_buffer(4096)
-        ok = _lib.cdsl_verify_rule(
-            rule._get_ptr(), self._ptr, err_buf, len(err_buf),
-        )
-        if not ok:
-            raise DSLError(err_buf.value.decode("utf-8", errors="replace"))
+        errs = self.verify_detailed(rule)
+        if errs:
+            message = "Schema verification failed:\n" + "\n".join(
+                f"  line {e['line']}: {e['message']}"
+                + (f" ({e['hint']})" if e['hint'] else "")
+                for e in errs
+            )
+            raise DSLError(message, errors=errs)
 
     def verify_detailed(self, rule: _RuleLike) -> List[Dict[str, Any]]:
-        errs = _lib.cdsl_verify_rule_detailed(rule._get_ptr(), self._ptr)
+        errs = _lib.cdsl_verify_rule_detailed(rule.ptr, self._ptr)
         return _collect_errors(errs)
 
     def analyze(self, rule: _RuleLike) -> List[Dict[str, Any]]:
-        errs = _lib.cdsl_analyze_rule(rule._get_ptr(), self._ptr)
+        errs = _lib.cdsl_analyze_rule(rule.ptr, self._ptr)
         return _collect_errors(errs)
 
 
@@ -1061,10 +1080,8 @@ class Rule(_RuleLike):
     def __exit__(self, *args) -> None:
         self.free()
 
-    def __repr__(self) -> str:
-        return f"Rule(name={self.name!r}, ptr={self._ptr})"
-
-    def _get_ptr(self):
+    @property
+    def ptr(self):
         return self._ptr
 
     @property
@@ -1073,6 +1090,18 @@ class Rule(_RuleLike):
             n = self._ptr.contents.name
             return n.decode("utf-8") if n else None
         return None
+
+    def __repr__(self) -> str:
+        return f"Rule(name={self.name!r}, ptr={self._ptr})"
+
+    def __eq__(self, other) -> bool:
+        if not isinstance(other, Rule):
+            return NotImplemented
+        return self.name is not None and self.name == other.name
+
+    def __hash__(self) -> int:
+        n = self.name
+        return hash(n) if n else id(self._ptr)
 
 
 class Context:
@@ -1452,7 +1481,7 @@ class VM:
         _lib.cdsl_vm_set_trace_callback(self._ptr, self._trace_cb, None)
 
     def execute(self, rule: _RuleLike, ctx: Context) -> RuleReport:
-        ptr = _lib.cdsl_vm_execute(self._ptr, rule._get_ptr(), ctx._ptr)
+        ptr = _lib.cdsl_vm_execute(self._ptr, rule.ptr, ctx._ptr)
         if not ptr:
             raise DSLError("cdsl_vm_execute() returned NULL")
         return RuleReport._from_owned(ptr)
@@ -1513,7 +1542,7 @@ class Ruleset:
 
     def add(self, rule: _RuleLike, priority: int = 0) -> Ruleset:
         """Add a rule to the ruleset. Ownership transfers to the ruleset."""
-        _lib.cdsl_ruleset_add(self._ptr, rule._get_ptr(), priority)
+        _lib.cdsl_ruleset_add(self._ptr, rule.ptr, priority)
         if isinstance(rule, Rule):
             rule._owned = False
         return self
@@ -1655,19 +1684,22 @@ def parse(dsl_code: str) -> Rule:
     if err_ptr:
         errors = err_ptr.contents
         if errors.count > 0 or not ptr:
-            parts = []
+            raw = []
             for i in range(errors.count):
                 e = errors.errors[i].contents
-                line = e.line
-                msg = _decode(e.message) or "unknown error"
-                hint = _decode(e.hint)
-                part = f"  line {line}: {msg}"
-                if hint:
-                    part += f" ({hint})"
-                parts.append(part)
+                raw.append({
+                    "line": e.line,
+                    "column": e.column,
+                    "message": _decode(e.message) or "unknown error",
+                    "hint": _decode(e.hint),
+                    "kind": e.kind,
+                })
             _lib.cdsl_error_list_free(err_ptr)
             if not ptr:
-                raise DSLError("Parse failed:\n" + "\n".join(parts))
+                parts = [f"  line {e['line']}: {e['message']}"
+                         + (f" ({e['hint']})" if e['hint'] else "")
+                         for e in raw]
+                raise DSLError("Parse failed:\n" + "\n".join(parts), errors=raw)
     if not ptr:
         raise DSLError("Parse failed: unknown error")
     return Rule(ptr)
@@ -1682,7 +1714,7 @@ def parse_file(filepath: str) -> Rule:
 def generate_code(rule: _RuleLike, schema: Schema) -> str:
     """Generate C source code for a rule."""
     result = _decode_and_free(
-        _lib.cdsl_codegen_rule_to_c(rule._get_ptr(), schema._ptr)
+        _lib.cdsl_codegen_rule_to_c(rule.ptr, schema._ptr)
     )
     if not result:
         raise DSLError("Code generation failed")
@@ -1691,7 +1723,7 @@ def generate_code(rule: _RuleLike, schema: Schema) -> str:
 
 def to_dot(rule: _RuleLike) -> str:
     """Generate Graphviz DOT representation of a rule."""
-    result = _decode_and_free(_lib.cdsl_rule_to_dot(rule._get_ptr()))
+    result = _decode_and_free(_lib.cdsl_rule_to_dot(rule.ptr))
     if not result:
         raise DSLError("DOT generation failed")
     return result
@@ -1700,7 +1732,7 @@ def to_dot(rule: _RuleLike) -> str:
 def to_dot_file(rule: _RuleLike, filepath: str) -> None:
     """Write Graphviz DOT representation of a rule to a file."""
     rc = _lib.cdsl_rule_to_dot_file(
-        rule._get_ptr(), filepath.encode("utf-8"),
+        rule.ptr, filepath.encode("utf-8"),
     )
     if rc == 0:
         raise DSLError("to_dot_file() failed")
@@ -1726,7 +1758,7 @@ def ruleset_to_dot_file(ruleset: Ruleset, filepath: str) -> None:
 def codegen_to_file(rule: _RuleLike, schema: Schema, filepath: str) -> None:
     """Generate C source and write to a file."""
     rc = _lib.cdsl_codegen_to_file(
-        rule._get_ptr(), schema._ptr, filepath.encode("utf-8"),
+        rule.ptr, schema._ptr, filepath.encode("utf-8"),
     )
     if rc == 0:
         raise DSLError("codegen_to_file() failed")

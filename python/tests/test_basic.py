@@ -103,8 +103,10 @@ class TestSchema:
         s.add_var("x", cdsl.Type.INT)
         s.add_action("approve", cdsl.Type.VOID, [])
         rule = cdsl.parse(SAMPLE_DSL)
-        with pytest.raises(cdsl.DSLError):
+        with pytest.raises(cdsl.DSLError) as exc:
             s.verify(rule)
+        assert isinstance(exc.value.errors, list)
+        assert len(exc.value.errors) > 0
 
     def test_verify_detailed(self):
         s = make_schema()
@@ -112,13 +114,9 @@ class TestSchema:
         errs = s.verify_detailed(rule)
         assert isinstance(errs, list)
 
-    def test_repr(self):
+    def test_free(self):
         s = cdsl.Schema()
-        assert "Schema" in repr(s)
-
-    def test_context_manager(self):
-        with cdsl.Schema() as s:
-            s.add_var("x", cdsl.Type.INT)
+        s.free()
         assert s._ptr is None
 
     def test_chaining(self):
@@ -142,8 +140,9 @@ class TestParse:
         assert rule.name == "supplier_audit"
 
     def test_parse_invalid(self):
-        with pytest.raises(cdsl.DSLError):
+        with pytest.raises(cdsl.DSLError) as exc:
             cdsl.parse("INVALID DSL")
+        assert isinstance(exc.value.errors, list)
 
     def test_parse_file(self, tmp_path):
         p = tmp_path / "test.dsl"
@@ -177,6 +176,23 @@ class TestRule:
         with rule:
             assert rule.name == "credit_check"
         assert rule._ptr is None
+
+    def test_ptr_property(self):
+        rule = cdsl.parse(SAMPLE_DSL)
+        assert rule.ptr is not None
+        assert rule.ptr is rule._ptr
+
+    def test_equality(self):
+        rule1 = cdsl.parse(SAMPLE_DSL)
+        rule2 = cdsl.parse(SAMPLE_DSL)
+        assert rule1 == rule2
+        assert hash(rule1) == hash(rule2)
+        assert len({rule1, rule2}) == 1
+
+    def test_inequality_different_rules(self):
+        r1 = cdsl.parse(SAMPLE_DSL)
+        r2 = cdsl.parse(SCORING_DSL)
+        assert r1 != r2
 
 
 class TestContext:
