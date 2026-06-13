@@ -447,7 +447,7 @@ class TestRuleReport:
         vm = cdsl.VM(s)
         vm.register_action("approve", lambda name, args, data: None)
         report = vm.execute(rule, ctx)
-        report.print()  # smoke test
+        report.pprint()  # smoke test
 
     def test_report_to_json(self):
         s = make_schema()
@@ -500,7 +500,7 @@ class TestRulesetReport:
         vm.register_action("approve", lambda name, args, data: None)
         report = rs.execute(vm, ctx)
         r = repr(report)
-        report.print()
+        report.pprint()
 
 
 class TestMetricResult:

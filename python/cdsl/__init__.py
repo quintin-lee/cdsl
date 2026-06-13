@@ -64,7 +64,7 @@ from ctypes import (
     c_void_p,
     cdll,
 )
-from typing import Any, Callable, Dict, List, Optional, Protocol, Tuple, Union as TypingUnion
+from typing import Any, Callable, Dict, List, Optional, Protocol
 
 __all__ = [
     "DSLError", "Schema", "Rule", "Context", "VM", "Ruleset",
@@ -1220,14 +1220,6 @@ class MetricResult:
     def violation_reason(self) -> str:
         return self._violation_reason
 
-    def __repr__(self) -> str:
-        return (
-            f"MetricResult(name={self.metric_name!r}, "
-            f"score={self.score_obtained}/{self.max_weight}, "
-            f"passed={self.is_passed})"
-        )
-
-
 class RuleReport:
     """Result of a single rule execution."""
 
@@ -1288,7 +1280,7 @@ class RuleReport:
         result = _decode_and_free(_lib.cdsl_report_to_json(self._ptr))
         return result if result else "{}"
 
-    def print(self) -> None:
+    def pprint(self) -> None:
         _lib.cdsl_report_print(self._ptr)
 
     def __repr__(self) -> str:
@@ -1297,6 +1289,9 @@ class RuleReport:
             f"status={Status._names.get(self.status, '?')}, "
             f"score={self.total_obtained_score}/{self.total_max_score})"
         )
+
+    def __str__(self) -> str:
+        return f"[{Status._names.get(self.status, '?')}] {self.rule_name} ({self.total_obtained_score}/{self.total_max_score})"
 
 
 class RulesetReport:
@@ -1350,8 +1345,14 @@ class RulesetReport:
     def summary(self) -> Optional[str]:
         return _decode(self._ptr.contents.summary)
 
-    def print(self) -> None:
+    def pprint(self) -> None:
+        """Pretty-print the report to stdout."""
         _lib.cdsl_ruleset_report_print(self._ptr)
+
+    def __str__(self) -> str:
+        errors = self._ptr.contents.total_error if self._ptr else 0
+        return (f"PASSED={self.total_passed} FAILED={self.total_failed} "
+                f"ERRORS={errors} SCORE={self.aggregate_score}/{self.aggregate_max}")
 
     def __repr__(self) -> str:
         return (
@@ -1766,6 +1767,5 @@ def _collect_errors(err_ptr) -> List[Dict[str, Any]]:
             "hint": _decode(e.hint),
             "kind": e.kind,
         })
-    if errors.count > 0:
-        _lib.cdsl_error_list_free(err_ptr)
+    _lib.cdsl_error_list_free(err_ptr)
     return result
