@@ -317,6 +317,15 @@ jobs:
             ! -name 'parser.tab.c' \
             | xargs clang-tidy -p build --quiet 2>&1
 
+      - name: Run clang-tidy on test files (informational, no exit code)
+        run: |
+          find tests/ -name '*.c' \
+            ! -name 'lexer.c' \
+            ! -name 'parser.tab.c' \
+            | xargs clang-tidy -p build \
+              --checks='-clang-analyzer-core.NonNullParamChecker,-clang-analyzer-core.NullDereference,-bugprone-multi-level-implicit-pointer-conversion,-bugprone-narrowing-conversions' \
+              2>&1 || true
+
   ##########################################################################
   # Doxygen Documentation
   ##########################################################################
