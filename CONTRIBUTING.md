@@ -8,8 +8,8 @@ Thank you for your interest in contributing to C-DSL! This document provides gui
 
 | Tool     | Minimum Version |
 |----------|-----------------|
-| C23 compiler (GCC / Clang) | —               |
-| CMake    | 3.14            |
+| C23 compiler (GCC / Clang / MSVC) | —               |
+| CMake    | 3.19            |
 | Flex     | 2.6             |
 | Bison    | 3.8             |
 
@@ -30,8 +30,23 @@ ctest --test-dir build --output-on-failure
 
 ```bash
 cmake -B build -DCDSL_BUILD_BENCHMARKS=ON
-cmake --build build --target cdsl_bench
+cmake --build build -j$(nproc)
 ./build/cdsl_bench
+```
+
+### Running clang-tidy
+
+```bash
+cmake --build build --target check-tidy
+```
+
+### Building with coverage
+
+```bash
+cmake -B build -DCMAKE_BUILD_TYPE=Debug -DCDSL_ENABLE_COVERAGE=ON
+cmake --build build -j$(nproc)
+ctest --test-dir build
+# coverage report in build/coverage/index.html
 ```
 
 ## Code Style
@@ -44,6 +59,7 @@ cmake --build build --target cdsl_bench
   ```
   This copies `cmake/pre-commit.hook` into `.git/hooks/pre-commit` and ensures all staged `.c/.h` files are formatted before commit.
 - Run `cmake --build build --target check-format` before committing (or let the hook do it)
+- Run `cmake --build build --target check-tidy` to check clang-tidy compliance
 - All public functions must be documented with Doxygen comments
 
 ## Commit Message Convention
@@ -77,8 +93,9 @@ Examples:
 2. Install the pre-commit hook: `cmake --build build --target install-git-hooks`
 3. Ensure all tests pass: `ctest --test-dir build --output-on-failure`
 4. Ensure code formatting is correct: `cmake --build build --target check-format`
-5. Update documentation if needed (Doxygen, README, docs/)
-6. Submit the PR with a clear description
+5. Run clang-tidy: `cmake --build build --target check-tidy`
+6. Update documentation if needed (Doxygen, README, docs/)
+7. Submit the PR using the [template](.github/PULL_REQUEST_TEMPLATE.md)
 
 ## Reporting Issues
 

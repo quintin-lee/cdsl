@@ -1,5 +1,33 @@
 # Changelog
 
+## [1.1.0] - 2026-06-13
+
+### Added
+- **Compiler hardening**: 10+ GCC/Clang warning flags promoted to errors (`-Wshadow`, `-Wformat=2`, `-Wnull-dereference`, `-Wdouble-promotion`, `-Wundef`, etc.)
+- **ccache support**: Auto-detected compiler launcher for faster rebuilds
+- **Docker CI**: `docker build --target dev` / `release` with smoke tests
+- **CI caching**: `actions/cache` for ccache + apt packages
+- **CMake uninstall target**: `cmake --build build --target uninstall`
+- **PR template**: `.github/PULL_REQUEST_TEMPLATE.md` with build/test/format checklist
+- **`.git-blame-ignore-revs`**: Skip formatting-only commits in `git blame`
+- **clang-tidy on test files**: CI runs clang-tidy on `tests/` (informational)
+- **MSVC guard for Clang flags**: `-Wno-*` flags guarded with `if(NOT MSVC)` / `GNU|Clang`
+
+### Changed
+- **Static analysis**: cppcheck `--error-exitcode=0` → `1` (fail on real warnings); suppress `unusedFunction`/`unmatchedSuppression`
+- **Compiler flags**: `-Wcovered-switch-default` → `-Wno-covered-switch-default` for Apple Clang compat
+- **Test targets**: Suppressed `-Wno-null-dereference`, `-Wno-sign-compare`, `-Wno-unused-result` to fix GCC Release false positives
+- **`ast_alloc`**: Now `abort()` on OOM instead of returning NULL (eliminates `-Wnull-dereference` cascade)
+- **Generated files**: `set_source_files_properties` for lexer.c/parser.tab.c with `-Wno-null-dereference`
+- **README**: Updated CMake options table, added Docker/ccache/platform badges, updated project structure
+
+### Fixed
+- Docker: `useradd -u 1000` conflict with Ubuntu 24.04 base image → removed explicit UID
+- Docker: GCC Release `-Wnull-dereference` on `ast.c` + generated files + test files
+- Docker: GCC `-Wunused-result` on `fread()` in `test_codegen.c`
+- macOS: `-Wcovered-switch-default` + `-Werror` breaks on Apple Clang
+- Windows: MSVC `D8021` invalid flag `-Wno-null-dereference`
+
 ## [1.0.0] - 2026-05-31
 
 ### Added

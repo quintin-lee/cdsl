@@ -8,6 +8,7 @@
 [![Docs](https://img.shields.io/badge/docs-github--pages-blue)](https://quintin-lee.github.io/cdsl/)
 [![License: MIT](https://img.shields.io/badge/license-MIT-green)](LICENSE)
 [![C Standard](https://img.shields.io/badge/C-23-blue)](https://en.wikipedia.org/wiki/C23)
+[![Platforms](https://img.shields.io/badge/platforms-Linux%20|%20macOS%20|%20Windows-lightgrey)](https://github.com/quintin-lee/cdsl/actions)
 
 **C-DSL** is an AI-powered domain-specific language rule engine for business rule validation. It translates natural language rules into executable DSL, evaluates them with multi-metric scoring, and produces tri-state audit reports (PASSED / PARTIALLY PASSED / FAILED).
 
@@ -17,6 +18,7 @@
 
 - [Features](#features)
 - [Quick Start](#quick-start)
+- [Docker](#docker)
 - [Integration](#integration)
 - [Architecture Overview](#architecture-overview)
 - [DSL Syntax](#dsl-syntax)
@@ -51,6 +53,8 @@
 - **Expression compilation cache** — Cache parsed and verified rules by DSL hash
 - **Performance monitoring** — Per-VM execution statistics (counts, timing)
 - **Debug trace mode** — Step-by-step expression evaluation output
+- **Bytecode VM** — AST→bytecode compiler with 24-instruction ISA, constant folding, short-circuit evaluation
+- **Sandboxing** — Per-execution timeout, memory limit, instruction quota, read-only variables
 
 ### AI Integration
 
@@ -60,8 +64,16 @@
 
 ### Code Generation & Visualization
 
-- **C code generation** — Translate DSL rules to executable C code
+- **C code generation** — Translate DSL rules to executable C code with codegen API
 - **Graphviz DOT output** — Visualize rules and rule sets as directed graphs
+
+### Build & CI
+
+- **Multi-platform** — Linux (GCC), macOS (Apple Clang), Windows (MSVC), Docker
+- **Static analysis** — clang-tidy (30+ check groups), cppcheck, scan-build; all treated as errors
+- **Fuzz testing** — libFuzzer-based fuzz target with ASan
+- **Performance benchmarks** — 7-scenario benchmark suite
+- **ccache-aware** — Auto-detects ccache for faster rebuilds
 
 ---
 
@@ -71,7 +83,7 @@
 
 | Tool     | Minimum Version |
 |----------|-----------------|
-| C23 compiler (GCC / Clang) | —               |
+| C23 compiler (GCC / Clang / MSVC) | —               |
 | CMake    | 3.19            |
 | Flex     | 2.6             |
 | Bison    | 3.8             |
@@ -89,21 +101,29 @@ cmake --build build --target install-git-hooks
 # Run demo (6 scenarios)
 ./build/cdsl_demo
 
-# Run tests
+# Run tests (22+)
 ctest --test-dir build --output-on-failure
+
+# Run clang-tidy on source files
+cmake --build build --target check-tidy
 
 # Generate Doxygen docs
 cmake --build build --target doc
 # → build/docs/html/index.html
 # Or view online: https://quintin-lee.github.io/cdsl/
+
+# Uninstall (if installed)
+cmake --build build --target uninstall
 ```
 
 ### CMake Options
 
 | Option                    | Default | Description                                |
 |---------------------------|---------|--------------------------------------------|
-| `CDSL_BUILD_FUZZ`         | OFF     | Build libFuzzer fuzz target                |
+| `CDSL_BUILD_FUZZ`         | OFF     | Build libFuzzer fuzz target (requires Clang) |
 | `CDSL_BUILD_LSP`          | OFF     | Build cdsl-lsp language server             |
+| `CDSL_BUILD_BENCHMARKS`   | OFF     | Build performance benchmarks               |
+| `CDSL_UNITY_BUILD`        | OFF     | Enable jumbo / unity compilation           |
 | `CDSL_ENABLE_COVERAGE`    | OFF     | Enable gcov code coverage (Debug only)     |
 | `CDSL_GENERATE_DOCS`      | OFF     | Auto-generate Doxygen on every build       |
 | `CDSL_FORMAT_ON_BUILD`    | OFF     | Run clang-format before every build        |
@@ -111,6 +131,8 @@ cmake --build build --target doc
 Example:
 ```bash
 cmake -B build -DCMAKE_BUILD_TYPE=Debug -DCDSL_ENABLE_COVERAGE=ON
+cmake --build build -j$(nproc)
+ctest --test-dir build --output-on-failure
 ```
 
 ### Demo Scenarios
@@ -126,6 +148,20 @@ cmake -B build -DCMAKE_BUILD_TYPE=Debug -DCDSL_ENABLE_COVERAGE=ON
 
 ---
 
+## Docker
+
+```bash
+# Development image (build tools + runtime)
+docker build --target dev -t cdsl-dev .
+docker run -it --rm -v $(pwd):/cdsl cdsl-dev
+
+# Minimal runtime image (pre-built binaries only)
+docker build --target release -t cdsl-runtime .
+docker run --rm cdsl-runtime /usr/local/bin/cdsl_demo
+```
+
+---
+
 ## Integration
 
 ### Method 1: Installed (find_package)
@@ -135,8 +171,8 @@ Build and install:
 cmake -B build -DCMAKE_BUILD_TYPE=Release
 cmake --build build -j$(nproc)
 cmake --install build --prefix /usr/local           # all components
-cmake --install build --component libraries --prefix /usr/local  # libraries only
-cmake --install build --component demos --prefix /usr/local      # demo executables
+cmake --install build --component libraries         # libraries only
+cmake --install build --component demos             # demo executables
 ```
 
 ```cmake
@@ -185,8 +221,9 @@ pkg-config --cflags --libs cdsl
                      ▼
 ┌─────────────────────────────────────────────────────┐
 │  3. Execution Layer (VM + Context)                  │
-│     AST interpreter, scoring, report generation     │
-│     RuleSet / parallel / debug / stats / codegen    │
+│     AST interpreter / Bytecode VM                  │
+│     Scoring, report generation, debug trace         │
+│     RuleSet / parallel / stats / codegen / visual   │
 └─────────────────────────────────────────────────────┘
 ```
 
@@ -282,8 +319,9 @@ cdsl/
 │   │   ├── cache.c
 │   │   ├── ruleset.c
 │   │   ├── codegen.c
-│   │   ├── visual.c
-│   │   └── internal.h
+│   │   ├── bytecode.c
+│   │   ├── builtins.c
+│   │   └── visual.c
 │   ├── ai/
 │   │   └── bridge.c  # AI translation & review
 │   └── util/         # Infrastructure
@@ -294,15 +332,13 @@ cdsl/
 ├── parser/           # Flex/Bison grammar
 │   ├── lexer.l
 │   └── parser.y
-├── demo/main.c       # 6 demo scenarios
-├── tests/            # Unit tests (22 tests)
+├── demo/
+│   ├── main.c        # 6 demo scenarios
+│   └── official_review.c
+├── tests/            # Unit tests (22), fuzz, benchmarks
 ├── docs/             # Documentation
-│   ├── architecture.md
-│   ├── api-reference.md
-│   ├── dsl-syntax.md
-│   ├── modules.md
-│   └── user-guide.md
-└── cmake/            # Build configuration
+├── cmake/            # Build configuration
+└── .github/          # CI workflows + PR template
 ```
 
 ---
