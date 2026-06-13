@@ -31,14 +31,17 @@ cdsl_ast_get_current_arena(void)
 static void*
 ast_alloc(size_t size)
 {
+	void* ptr;
 	if (current_ast_arena) {
-		void* ptr = cdsl_arena_alloc(current_ast_arena, size);
-		if (ptr) {
-			memset(ptr, 0, size);
-		}
-		return ptr;
+		ptr = cdsl_arena_alloc(current_ast_arena, size);
+	} else {
+		ptr = calloc(1, size);
 	}
-	return calloc(1, size);
+	if (!ptr) {
+		abort();
+	}
+	memset(ptr, 0, size);
+	return ptr;
 }
 
 cdsl_expr_node_t*

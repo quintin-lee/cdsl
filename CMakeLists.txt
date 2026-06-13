@@ -64,6 +64,13 @@ bison_target(MyParser parser/parser.y ${CMAKE_CURRENT_BINARY_DIR}/parser.tab.c)
 flex_target(MyLexer parser/lexer.l ${CMAKE_CURRENT_BINARY_DIR}/lexer.c)
 add_flex_bison_dependency(MyLexer MyParser)
 
+# Suppress noisy -Wnull-dereference in generated flex/bison code (GCC, Release)
+set_source_files_properties(
+    ${BISON_MyParser_OUTPUTS}
+    ${FLEX_MyLexer_OUTPUTS}
+    PROPERTIES COMPILE_OPTIONS "-Wno-null-dereference"
+)
+
 file(GLOB_RECURSE CDSL_SOURCES CONFIGURE_DEPENDS "src/*.c")
 list(APPEND CDSL_SOURCES
     ${BISON_MyParser_OUTPUTS}
