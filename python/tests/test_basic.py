@@ -220,7 +220,7 @@ class TestContext:
         s = make_schema()
         ctx = cdsl.Context(s)
         ctx.set_int("user.age", 25)
-        assert ctx.remove("user.age") is True
+        ctx.remove("user.age")  # returns self; raises on missing
 
     def test_load_json(self):
         s = cdsl.Schema()
@@ -610,7 +610,7 @@ class TestCompileCache:
         s = make_schema()
         cc = cdsl.CompileCache()
         cc.compile(SAMPLE_DSL, s)
-        assert cc.remove(SAMPLE_DSL) is True
+        cc.remove(SAMPLE_DSL)  # returns self; raises on missing
 
     def test_repr(self):
         cc = cdsl.CompileCache()

@@ -1158,10 +1158,13 @@ class Context:
             self._ptr, name.encode("utf-8"), default,
         )
 
-    def remove(self, name: str) -> bool:
-        return _lib.cdsl_context_remove(
+    def remove(self, name: str) -> Context:
+        rc = _lib.cdsl_context_remove(
             self._ptr, name.encode("utf-8"),
-        ) == 0
+        )
+        if rc == 0:
+            raise DSLError(f"Context.remove('{name}'): variable not found")
+        return self
 
     def load_json(self, json_str: str) -> None:
         rc = _lib.cdsl_context_load_json(
@@ -1628,10 +1631,13 @@ class CompileCache:
             raise DSLError(err_buf.value.decode("utf-8", errors="replace"))
         return ptr
 
-    def remove(self, dsl_code: str) -> bool:
-        return _lib.cdsl_compile_cache_remove(
+    def remove(self, dsl_code: str) -> CompileCache:
+        rc = _lib.cdsl_compile_cache_remove(
             self._ptr, dsl_code.encode("utf-8"),
-        ) == 0
+        )
+        if rc == 0:
+            raise DSLError("CompileCache.remove(): rule not found")
+        return self
 
 
 # ---- Top-level convenience functions -----------------------------------------
