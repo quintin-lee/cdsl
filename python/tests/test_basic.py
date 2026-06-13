@@ -286,20 +286,22 @@ class TestVM:
         report = vm.execute(rule, ctx)
         assert report.status in (cdsl.Status.PASSED, cdsl.Status.FAILED)
 
-    def test_execute_fail(self):
+    def test_execute_pass_when_no_failure_defined(self):
+        """Rule without ELSE passes even when WHEN is false."""
         s = make_schema()
         rule = cdsl.parse(SAMPLE_DSL)
         s.verify(rule)
 
         ctx = cdsl.Context(s)
-        ctx.set_int("user.age", 16)  # under 18
+        ctx.set_int("user.age", 16)  # under 18 — condition false
         ctx.set_float("user.income", 0.0)
 
         vm = cdsl.VM(s)
         vm.register_action("approve", lambda name, args, data: None)
 
         report = vm.execute(rule, ctx)
-        assert report.status == cdsl.Status.FAILED
+        # No ELSE clause, so rule completes with PASSED even when WHEN is false
+        assert report.status == cdsl.Status.PASSED
 
     def test_sandboxing(self):
         s = make_schema()
