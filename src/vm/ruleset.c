@@ -30,7 +30,11 @@
 cdsl_ruleset_t*
 cdsl_ruleset_create(void)
 {
-	return calloc(1, sizeof(cdsl_ruleset_t));
+	cdsl_ruleset_t* set = calloc(1, sizeof(cdsl_ruleset_t));
+	if (!set) {
+		return NULL;
+	}
+	return set;
 }
 
 void
@@ -506,6 +510,11 @@ cdsl_ruleset_validate_deps(const cdsl_ruleset_t* set, char* err_buf, int err_buf
 	int* states = calloc(set->count, sizeof(int));
 	cdsl_ruleset_entry_t** entries_arr =
 	    (cdsl_ruleset_entry_t**)malloc(set->count * sizeof(cdsl_ruleset_entry_t*));
+	if (!states || !entries_arr) {
+		free(states);	   // NOLINT(bugprone-multi-level-implicit-pointer-conversion)
+		free(entries_arr); // NOLINT(bugprone-multi-level-implicit-pointer-conversion)
+		return 0;
+	}
 	int i = 0;
 	for (cdsl_ruleset_entry_t* e = set->entries; e; e = e->next) {
 		entries_arr[i++] = e;
@@ -590,6 +599,12 @@ cdsl_ruleset_topo_sort(cdsl_ruleset_t* set)
 	    (cdsl_ruleset_entry_t**)malloc(set->count * sizeof(cdsl_ruleset_entry_t*));
 	cdsl_ruleset_entry_t** sorted_arr =
 	    (cdsl_ruleset_entry_t**)malloc(set->count * sizeof(cdsl_ruleset_entry_t*));
+	if (!visited || !entries_arr || !sorted_arr) {
+		free(visited);	   // NOLINT(bugprone-multi-level-implicit-pointer-conversion)
+		free(entries_arr); // NOLINT(bugprone-multi-level-implicit-pointer-conversion)
+		free(sorted_arr);  // NOLINT(bugprone-multi-level-implicit-pointer-conversion)
+		return 0;
+	}
 	cdsl_ruleset_entry_t** output_ptr = sorted_arr;
 
 	int i = 0;

@@ -210,6 +210,15 @@ parse_object(json_parser_t* p)
 	}
 	p->pos++; /* consume '}' */
 	cdsl_json_value_t* obj = calloc(1, sizeof(*obj));
+	if (!obj) {
+		cdsl_json_value_t* it = head;
+		while (it) {
+			cdsl_json_value_t* next = it->next;
+			cdsl_json_free(it);
+			it = next;
+		}
+		return NULL;
+	}
 	obj->type = CDSL_JSON_OBJECT;
 	obj->value.object.items = head;
 	obj->value.object.count = count;
@@ -262,6 +271,15 @@ parse_array(json_parser_t* p)
 	}
 	p->pos++; /* consume ']' */
 	cdsl_json_value_t* arr = calloc(1, sizeof(*arr));
+	if (!arr) {
+		cdsl_json_value_t* it = head;
+		while (it) {
+			cdsl_json_value_t* next = it->next;
+			cdsl_json_free(it);
+			it = next;
+		}
+		return NULL;
+	}
 	arr->type = CDSL_JSON_ARRAY;
 	arr->value.array.items = head;
 	arr->value.array.count = count;

@@ -66,6 +66,11 @@ if(CDSL_USE_LIBREOFFICE)
 endif()
 
 # 2. Object library (avoids compiling sources twice for static+shared)
+option(CDSL_UNITY_BUILD "Enable unity (Jumbo) build for faster compilation" OFF)
+if(CDSL_UNITY_BUILD)
+    set_property(GLOBAL PROPERTY UNITY_BUILD ON)
+    set_property(GLOBAL PROPERTY UNITY_BUILD_BATCH_SIZE 4)
+endif()
 find_package(Threads REQUIRED)
 add_library(cdsl_objects OBJECT ${CDSL_SOURCES})
 set_property(TARGET cdsl_objects PROPERTY POSITION_INDEPENDENT_CODE 1)
@@ -97,6 +102,10 @@ else()
     if(CMAKE_COMPILER_IS_GNU)
         target_compile_options(cdsl_objects PRIVATE
             -Wduplicated-cond -Wlogical-op -Wrestrict)
+    endif()
+    if(CMAKE_C_COMPILER_ID MATCHES "Clang")
+        target_compile_options(cdsl_objects PRIVATE
+            -Wcovered-switch-default)
     endif()
 endif()
 

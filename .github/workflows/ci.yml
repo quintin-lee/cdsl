@@ -234,7 +234,7 @@ jobs:
 
       - name: Run cppcheck
         run: |
-          cppcheck --enable=all --error-exitcode=0 --std=c23 \
+          cppcheck --enable=all --error-exitcode=1 --std=c23 \
             -I include -I build \
             --suppress=missingIncludeSystem \
             --suppress=unusedFunction \
