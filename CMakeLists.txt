@@ -203,7 +203,7 @@ foreach(test_src ${TEST_SOURCES})
     cdsl_add_warning_flags(${test_name})
     if(CMAKE_C_COMPILER_ID MATCHES "GNU|Clang")
         target_compile_options(${test_name} PRIVATE
-            -Wno-null-dereference -Wno-sign-compare)
+            -Wno-null-dereference -Wno-sign-compare -Wno-unused-result)
     endif()
     target_link_libraries(${test_name} PRIVATE cdsl_static)
     add_test(NAME ${test_name} COMMAND ${test_name})
