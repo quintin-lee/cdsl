@@ -32,6 +32,7 @@ jobs:
             flex \
             bison \
             libpthread-stubs0-dev \
+            python3-pip \
             ccache
 
       - name: Cache ccache
@@ -49,6 +50,11 @@ jobs:
 
       - name: Test
         run: ctest --test-dir build --output-on-failure -j$(nproc)
+
+      - name: Python smoke test
+        run: |
+          pip install pytest --quiet
+          python -m pytest python/tests/ -v -x
 
       - name: Upload build artifacts
         uses: actions/upload-artifact@v4

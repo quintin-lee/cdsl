@@ -66,6 +66,14 @@ from ctypes import (
 )
 from typing import Any, Callable, Dict, List, Optional, Tuple, Union as TypingUnion
 
+__all__ = [
+    "DSLError", "Schema", "Rule", "Context", "VM", "Ruleset",
+    "MetricResult", "RuleReport", "RulesetReport", "CompileCache",
+    "Type", "Op", "ExprType", "Status", "TraceKind",
+    "parse", "parse_file", "generate_code", "to_dot", "ruleset_to_dot",
+]
+__version__ = "1.1.0"
+
 # ---- Locate the shared library ------------------------------------------------
 
 def _find_lib() -> str:
