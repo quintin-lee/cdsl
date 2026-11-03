@@ -788,14 +788,15 @@ cdsl_bytecode_compile(const cdsl_rule_t* rule, const cdsl_schema_t* schema, cdsl
 
 /* ---- bytecode VM executor ---- */
 
-cdsl_value_t
-cdsl_bytecode_execute(cdsl_vm_t* vm, const cdsl_bytecode_t* bc, cdsl_context_t* ctx)
+int
+bc_run_instructions(cdsl_vm_t* vm,
+		    const cdsl_bytecode_t* bc,
+		    cdsl_context_t* ctx,
+		    bc_metric_handler_t metric_handler,
+		    void* user_data,
+		    cdsl_value_t* out_result)
 {
 	cdsl_value_t result = {.type = CDSL_TYPE_VOID, .data = {.int_val = 0}};
-	if (!vm || !bc || !bc->code) {
-		return result;
-	}
-
 	double t0 = cdsl_get_time_us_internal();
 	cdsl_value_t stack[CDSL_BYTECODE_MAX_STACK];
 	int sp = 0;
@@ -1122,10 +1123,41 @@ cdsl_bytecode_execute(cdsl_vm_t* vm, const cdsl_bytecode_t* bc, cdsl_context_t* 
 		case BC_METRIC_START:
 		case BC_SET_SCORE:
 		case BC_FAIL_METRIC:
-		case BC_RULE_END:
-			/* These are handled by cdsl_bytecode_execute_rule */
+		case BC_RULE_END: {
+			/* Stack ops performed by the core loop; handler only
+			   receives notifications + constants. */
+			const cdsl_value_t* metric_val = NULL;
+			cdsl_value_t popped = {.type = CDSL_TYPE_VOID};
+			if (ip->op == BC_SET_SCORE) {
+				popped = POP();
+				metric_val = &popped;
+			}
+			if (metric_handler) {
+				bc_metric_event_t ev;
+				switch (ip->op) {
+				case BC_METRIC_START:
+					ev = BC_EV_METRIC_START;
+					break;
+				case BC_SET_SCORE:
+					ev = BC_EV_SET_SCORE;
+					break;
+				case BC_FAIL_METRIC:
+					ev = BC_EV_FAIL_METRIC;
+					break;
+				case BC_RULE_END:
+					ev = BC_EV_RULE_END;
+					break;
+				default:
+					ev = BC_EV_METRIC_START;
+					break;
+				}
+				if (!metric_handler(ev, bc, ip, metric_val, user_data)) {
+					goto done;
+				}
+			}
 			ip++;
 			break;
+		}
 
 		case BC_RET:
 			result = POP();
@@ -1134,9 +1166,31 @@ cdsl_bytecode_execute(cdsl_vm_t* vm, const cdsl_bytecode_t* bc, cdsl_context_t* 
 	}
 
 done:
+	if (out_result) {
+		*out_result = result;
+	}
 #undef PUSH
 #undef POP
 #undef PEEK
+	return 1;
+}
+
+/**
+ * @brief Execute compiled bytecode against a context (public API).
+ *
+ * @param vm VM instance (for function/action dispatch)
+ * @param bc Compiled bytecode chunk
+ * @param ctx Execution context for variable lookups
+ * @return Evaluated value; string pointers are borrowed from context/bytecode
+ */
+cdsl_value_t
+cdsl_bytecode_execute(cdsl_vm_t* vm, const cdsl_bytecode_t* bc, cdsl_context_t* ctx)
+{
+	cdsl_value_t result = {.type = CDSL_TYPE_VOID, .data = {.int_val = 0}};
+	if (!vm || !bc || !bc->code) {
+		return result;
+	}
+	bc_run_instructions(vm, bc, ctx, NULL, NULL, &result);
 	return result;
 }
 
