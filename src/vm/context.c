@@ -652,43 +652,4 @@ cdsl_vm_get_instruction_limit(const cdsl_vm_t* vm)
 	return vm ? vm->instruction_limit : 0;
 }
 
-void
-cdsl_vm_register_action(cdsl_vm_t* vm, const char* action_name, cdsl_action_cb_t cb)
-{
-	if (!vm || !action_name || !cb) {
-		return;
-	}
-	cdsl_action_cb_entry_t* e = calloc(1, sizeof(*e));
-	if (!e) {
-		return;
-	}
-	e->action_name = strdup(action_name);
-	if (!e->action_name) {
-		free(e);
-		return;
-	}
-	e->cb = cb;
-	e->next = vm->callbacks;
-	vm->callbacks = e;
-}
-
-void
-cdsl_vm_register_function(cdsl_vm_t* vm, const char* func_name, cdsl_func_cb_t cb)
-{
-	if (!vm || !func_name || !cb) {
-		return;
-	}
-	cdsl_func_entry_t* e = calloc(1, sizeof(*e));
-	if (!e) {
-		return;
-	}
-	e->func_name = strdup(func_name);
-	if (!e->func_name) {
-		free(e);
-		return;
-	}
-	e->cb = cb;
-	e->next = vm->functions;
-	vm->functions = e;
-}
 /** @} */

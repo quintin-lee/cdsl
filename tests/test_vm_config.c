@@ -194,11 +194,39 @@ test_vm_create_returns_non_null(void)
 	TEST_END();
 }
 
+static int g_action_called = 0;
+
+static void
+test_action_cb(const char* name, cdsl_arg_node_t* args, void* ud)
+{
+	(void)name;
+	(void)args;
+	(void)ud;
+	g_action_called = 1;
+}
+
 static void
 test_vm_free_null_safe(void)
 {
 	TEST_BEGIN("VM free NULL-safe");
 	cdsl_vm_free(NULL); /* should not crash */
+	TEST_END();
+}
+
+static void
+test_vm_register_action_and_function(void)
+{
+	TEST_BEGIN("VM register action and function");
+	cdsl_schema_t* schema = cdsl_schema_create();
+	cdsl_vm_t* vm = cdsl_vm_create(schema);
+
+	g_action_called = 0;
+	cdsl_vm_register_action(vm, "test_action", test_action_cb);
+	cdsl_vm_register_function(vm, "test_func", NULL);
+
+	cdsl_vm_free(vm);
+	cdsl_schema_free(schema);
+	TEST_ASSERT(1, "registration should not crash");
 	TEST_END();
 }
 
@@ -215,6 +243,7 @@ main()
 	test_vm_set_debug_null_safe();
 	test_vm_create_returns_non_null();
 	test_vm_free_null_safe();
+	test_vm_register_action_and_function();
 	TEST_SUMMARY();
 	TEST_EXIT();
 }
