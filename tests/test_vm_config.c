@@ -194,6 +194,14 @@ test_vm_create_returns_non_null(void)
 	TEST_END();
 }
 
+static void
+test_vm_free_null_safe(void)
+{
+	TEST_BEGIN("VM free NULL-safe");
+	cdsl_vm_free(NULL); /* should not crash */
+	TEST_END();
+}
+
 int
 main()
 {
@@ -206,6 +214,7 @@ main()
 	test_vm_execute_with_null_vm();
 	test_vm_set_debug_null_safe();
 	test_vm_create_returns_non_null();
+	test_vm_free_null_safe();
 	TEST_SUMMARY();
 	TEST_EXIT();
 }

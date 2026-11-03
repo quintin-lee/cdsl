@@ -653,29 +653,6 @@ cdsl_vm_get_instruction_limit(const cdsl_vm_t* vm)
 }
 
 void
-cdsl_vm_free(cdsl_vm_t* vm)
-{
-	if (!vm) {
-		return;
-	}
-	cdsl_action_cb_entry_t* cb = vm->callbacks;
-	while (cb) {
-		cdsl_action_cb_entry_t* next = cb->next;
-		free(cb->action_name);
-		free(cb);
-		cb = next;
-	}
-	cdsl_func_entry_t* fn = vm->functions;
-	while (fn) {
-		cdsl_func_entry_t* next = fn->next;
-		free(fn->func_name);
-		free(fn);
-		fn = next;
-	}
-	free(vm);
-}
-
-void
 cdsl_vm_register_action(cdsl_vm_t* vm, const char* action_name, cdsl_action_cb_t cb)
 {
 	if (!vm || !action_name || !cb) {

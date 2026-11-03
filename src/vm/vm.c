@@ -28,4 +28,27 @@ cdsl_vm_create(const cdsl_schema_t* schema)
 	return vm;
 }
 
+void
+cdsl_vm_free(cdsl_vm_t* vm)
+{
+	if (!vm) {
+		return;
+	}
+	cdsl_action_cb_entry_t* cb = vm->callbacks;
+	while (cb) {
+		cdsl_action_cb_entry_t* next = cb->next;
+		free(cb->action_name);
+		free(cb);
+		cb = next;
+	}
+	cdsl_func_entry_t* fn = vm->functions;
+	while (fn) {
+		cdsl_func_entry_t* next = fn->next;
+		free(fn->func_name);
+		free(fn);
+		fn = next;
+	}
+	free(vm);
+}
+
 /** @} */
