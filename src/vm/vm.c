@@ -148,4 +148,46 @@ cdsl_vm_reset_stats(cdsl_vm_t* vm)
 	}
 }
 
+void
+cdsl_vm_set_timeout(cdsl_vm_t* vm, int64_t timeout_us)
+{
+	if (vm) {
+		vm->timeout_us = timeout_us;
+	}
+}
+
+int64_t
+cdsl_vm_get_timeout(const cdsl_vm_t* vm)
+{
+	return vm ? vm->timeout_us : 0;
+}
+
+void
+cdsl_vm_set_memory_limit(cdsl_vm_t* vm, int64_t limit_bytes)
+{
+	if (vm) {
+		vm->memory_limit = limit_bytes;
+	}
+}
+
+int64_t
+cdsl_vm_get_memory_limit(const cdsl_vm_t* vm)
+{
+	return vm ? vm->memory_limit : 0;
+}
+
+void
+cdsl_vm_set_instruction_limit(cdsl_vm_t* vm, int64_t limit)
+{
+	if (vm) {
+		vm->instruction_limit = limit;
+	}
+}
+
+int64_t
+cdsl_vm_get_instruction_limit(const cdsl_vm_t* vm)
+{
+	return vm ? vm->instruction_limit : 0;
+}
+
 /** @} */

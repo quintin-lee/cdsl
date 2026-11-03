@@ -281,6 +281,33 @@ test_vm_stats_reset(void)
 	TEST_END();
 }
 
+static void
+test_vm_quotas(void)
+{
+	TEST_BEGIN("VM sandbox quotas");
+	cdsl_schema_t* schema = cdsl_schema_create();
+	cdsl_vm_t* vm = cdsl_vm_create(schema);
+
+	cdsl_vm_set_timeout(vm, 1000000);
+	TEST_ASSERT_INT(cdsl_vm_get_timeout(vm), 1000000, "timeout should be 1000000");
+
+	cdsl_vm_set_memory_limit(vm, 65536);
+	TEST_ASSERT_INT(cdsl_vm_get_memory_limit(vm), 65536, "memory limit should be 65536");
+
+	cdsl_vm_set_instruction_limit(vm, 1000);
+	TEST_ASSERT_INT(
+	    cdsl_vm_get_instruction_limit(vm), 1000, "instruction limit should be 1000");
+
+	/* NULL-safe getters */
+	TEST_ASSERT_INT(cdsl_vm_get_timeout(NULL), 0, "get_timeout(NULL) == 0");
+	TEST_ASSERT_INT(cdsl_vm_get_memory_limit(NULL), 0, "get_memory_limit(NULL) == 0");
+	TEST_ASSERT_INT(cdsl_vm_get_instruction_limit(NULL), 0, "get_instruction_limit(NULL) == 0");
+
+	cdsl_vm_free(vm);
+	cdsl_schema_free(schema);
+	TEST_END();
+}
+
 int
 main()
 {
@@ -297,6 +324,7 @@ main()
 	test_vm_register_action_and_function();
 	test_vm_debug_and_depth();
 	test_vm_stats_reset();
+	test_vm_quotas();
 	TEST_SUMMARY();
 	TEST_EXIT();
 }
