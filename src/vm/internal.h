@@ -81,5 +81,45 @@ int cdsl_vm_track_alloc(cdsl_vm_t* vm, size_t bytes);
 void cdsl_vm_track_free(cdsl_vm_t* vm, size_t bytes);
 int cdsl_vm_check_abort(cdsl_vm_t* vm, double start_time_us);
 
+/**
+ * @brief Metric instruction handler callback.
+ *
+ * Invoked by bc_run_instructions() when a metric-related opcode is
+ * encountered. The handler owns report/metric state.
+ *
+ * @param op        The metric opcode (BC_METRIC_START/SET_SCORE/FAIL_METRIC/RULE_END)
+ * @param bc        Bytecode chunk (for reading constant-pool operands)
+ * @param ip        Current instruction pointer (handler may advance it)
+ * @param user_data Opaque pointer to handler state (e.g. cdsl_rule_report_t*)
+ * @return 1 if handled, 0 if unhandled (caller falls through to ip++)
+ */
+typedef int (*bc_metric_handler_t)(bc_op_t op,
+				   const cdsl_bytecode_t* bc,
+				   const bc_inst_t** ip,
+				   void* user_data);
+
+/**
+ * @brief Core instruction execution loop shared by both executors.
+ *
+ * Runs the bytecode instruction loop (stack machine) with sandbox
+ * checks (instruction limit, timeout/abort). Ordinary opcodes are
+ * executed inline. Metric opcodes are dispatched to @p metric_handler
+ * if non-NULL; otherwise they are skipped (ip++).
+ *
+ * @param vm            VM instance (for limits, abort check, function dispatch)
+ * @param bc            Bytecode chunk to execute
+ * @param ctx           Execution context (for variable lookups)
+ * @param metric_handler Optional handler for metric opcodes (may be NULL)
+ * @param user_data     Opaque pointer forwarded to metric_handler
+ * @param out_result    Output evaluated value (only meaningful when metric_handler is NULL)
+ * @return 1 on normal completion, 0 on abort/error
+ */
+int bc_run_instructions(cdsl_vm_t* vm,
+			const cdsl_bytecode_t* bc,
+			cdsl_context_t* ctx,
+			bc_metric_handler_t metric_handler,
+			void* user_data,
+			cdsl_value_t* out_result);
+
 #endif
 /** @} */
