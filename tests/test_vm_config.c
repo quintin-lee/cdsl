@@ -230,6 +230,29 @@ test_vm_register_action_and_function(void)
 	TEST_END();
 }
 
+static void
+test_vm_debug_and_depth(void)
+{
+	TEST_BEGIN("VM debug and max_expr_depth");
+	cdsl_schema_t* schema = cdsl_schema_create();
+	cdsl_vm_t* vm = cdsl_vm_create(schema);
+
+	cdsl_vm_set_debug(vm, 1);
+	TEST_ASSERT_INT(cdsl_vm_get_max_expr_depth(vm),
+			CDSL_MAX_EXPR_DEPTH,
+			"default max expr depth should be CDSL_MAX_EXPR_DEPTH");
+
+	cdsl_vm_set_max_expr_depth(vm, 32);
+	TEST_ASSERT_INT(cdsl_vm_get_max_expr_depth(vm), 32, "max expr depth should be 32");
+
+	cdsl_vm_set_max_expr_depth(vm, 0); /* invalid, should be ignored */
+	TEST_ASSERT_INT(cdsl_vm_get_max_expr_depth(vm), 32, "depth 0 should be ignored");
+
+	cdsl_vm_free(vm);
+	cdsl_schema_free(schema);
+	TEST_END();
+}
+
 int
 main()
 {
@@ -244,6 +267,7 @@ main()
 	test_vm_create_returns_non_null();
 	test_vm_free_null_safe();
 	test_vm_register_action_and_function();
+	test_vm_debug_and_depth();
 	TEST_SUMMARY();
 	TEST_EXIT();
 }

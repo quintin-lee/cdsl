@@ -91,4 +91,26 @@ cdsl_vm_register_function(cdsl_vm_t* vm, const char* func_name, cdsl_func_cb_t c
 	vm->functions = e;
 }
 
+void
+cdsl_vm_set_debug(cdsl_vm_t* vm, int enabled)
+{
+	if (vm) {
+		vm->debug_enabled = enabled;
+	}
+}
+
+int
+cdsl_vm_get_max_expr_depth(const cdsl_vm_t* vm)
+{
+	return vm ? vm->max_expr_depth : CDSL_MAX_EXPR_DEPTH;
+}
+
+void
+cdsl_vm_set_max_expr_depth(cdsl_vm_t* vm, int depth)
+{
+	if (vm && depth > 0) {
+		vm->max_expr_depth = depth;
+	}
+}
+
 /** @} */

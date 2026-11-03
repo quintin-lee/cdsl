@@ -544,28 +544,6 @@ cdsl_context_load_json(cdsl_context_t* ctx, const char* json_str)
 	return 1;
 }
 
-void
-cdsl_vm_set_debug(cdsl_vm_t* vm, int enabled)
-{
-	if (vm) {
-		vm->debug_enabled = enabled;
-	}
-}
-
-int
-cdsl_vm_get_max_expr_depth(const cdsl_vm_t* vm)
-{
-	return vm ? vm->max_expr_depth : CDSL_MAX_EXPR_DEPTH;
-}
-
-void
-cdsl_vm_set_max_expr_depth(cdsl_vm_t* vm, int depth)
-{
-	if (vm && depth > 0) {
-		vm->max_expr_depth = depth;
-	}
-}
-
 cdsl_stats_t*
 cdsl_vm_get_stats(const cdsl_vm_t* vm)
 {
