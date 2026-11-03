@@ -75,7 +75,7 @@ cdsl_value_free(cdsl_value_t* val)
 	if (!val) {
 		return;
 	}
-	if (val->type == CDSL_TYPE_STRING && val->data.string_val) {
+	if (val->type == CDSL_TYPE_STRING && val->data.string_val && val->owned_string) {
 		free(val->data.string_val);
 		val->data.string_val = NULL;
 	} else if (val->type == CDSL_TYPE_ARRAY && val->data.array_val) {
@@ -288,6 +288,7 @@ cdsl_context_set_string(cdsl_context_t* ctx, const char* name, const char* val)
 		cdsl_value_free(&e->value);
 		e->value.type = CDSL_TYPE_STRING;
 		e->value.data.string_val = strdup(val);
+		e->value.owned_string = 1;
 	} else {
 		cdsl_context_entry_t* ne = calloc(1, sizeof(*ne));
 		if (!ne) {
@@ -300,6 +301,7 @@ cdsl_context_set_string(cdsl_context_t* ctx, const char* name, const char* val)
 		}
 		ne->value.type = CDSL_TYPE_STRING;
 		ne->value.data.string_val = strdup(val);
+		ne->value.owned_string = 1;
 		if (!ne->value.data.string_val) {
 			free(ne->name);
 			free(ne);

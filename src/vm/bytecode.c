@@ -866,6 +866,7 @@ bc_run_instructions(cdsl_vm_t* vm,
 			result.type = CDSL_TYPE_STRING;
 			result.data.string_val =
 			    bc->constants[ip->operand.const_idx].data.string_val;
+			result.owned_string = 0;
 			PUSH(result);
 			ip++;
 			break;
@@ -902,7 +903,12 @@ bc_run_instructions(cdsl_vm_t* vm,
 			cdsl_context_entry_t* e = cdsl_context_get_entry_internal(
 			    ctx, bc->constants[ip->operand.const_idx].data.string_val);
 			if (e) {
-				PUSH(e->value);
+				cdsl_value_t v = e->value;
+				if (v.type == CDSL_TYPE_STRING && v.data.string_val) {
+					v.data.string_val = strdup(v.data.string_val);
+					v.owned_string = 1;
+				}
+				PUSH(v);
 			} else {
 				result.type = CDSL_TYPE_VOID;
 				result.data.int_val = 0;
@@ -978,6 +984,10 @@ bc_run_instructions(cdsl_vm_t* vm,
 						       : (ip->op == BC_GT) ? (c > 0)
 						       : (ip->op == BC_LE) ? (c <= 0)
 									   : (c >= 0);
+				/* a/b may be heap strings returned by built-ins (uppercase/trim);
+				   cdsl_value_free only releases owned_string=1 pointers. */
+				cdsl_value_free(&a);
+				cdsl_value_free(&b);
 				PUSH(result);
 				ip++;
 				break;

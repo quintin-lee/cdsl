@@ -345,7 +345,12 @@ cdsl_eval_expr_internal(
 					break;
 				}
 			}
-			return e->value;
+			cdsl_value_t v = e->value;
+			if (v.type == CDSL_TYPE_STRING && v.data.string_val) {
+				v.data.string_val = strdup(v.data.string_val);
+				v.owned_string = 1;
+			}
+			return v;
 		}
 		if (debug) {
 			fprintf(stderr, "[TRACE]   lookup: %s = NOT FOUND\n", expr->data.id_val);
@@ -442,6 +447,11 @@ cdsl_eval_expr_internal(
 			int cmp = strcmp(l.data.string_val ? l.data.string_val : "",
 					 r.data.string_val ? r.data.string_val : "");
 			result.data.bool_val = (op == CDSL_OP_EQ) ? (cmp == 0) : (cmp != 0);
+			/* l/r may be heap strings returned by built-ins (uppercase/trim);
+			   cdsl_value_free only releases owned_string=1 pointers, so
+			   borrowed AST/context strings are safe. */
+			cdsl_value_free(&l);
+			cdsl_value_free(&r);
 			break;
 		}
 

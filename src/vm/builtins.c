@@ -267,16 +267,17 @@ builtin_uppercase(const char* name, cdsl_arg_node_t* args, cdsl_context_t* ctx, 
 	if (v.type != CDSL_TYPE_STRING || !v.data.string_val) {
 		return res;
 	}
-	static THREAD_LOCAL char buf[4096];
 	size_t len = strlen(v.data.string_val);
-	if (len >= sizeof(buf)) {
+	char* out = malloc(len + 1);
+	if (!out) {
 		return res;
 	}
 	for (size_t i = 0; i < len; i++) {
-		buf[i] = (char)toupper((unsigned char)v.data.string_val[i]);
+		out[i] = (char)toupper((unsigned char)v.data.string_val[i]);
 	}
-	buf[len] = '\0';
-	res.data.string_val = buf;
+	out[len] = '\0';
+	res.data.string_val = out;
+	res.owned_string = 1;
 	return res;
 }
 
@@ -295,16 +296,17 @@ builtin_lowercase(const char* name, cdsl_arg_node_t* args, cdsl_context_t* ctx, 
 	if (v.type != CDSL_TYPE_STRING || !v.data.string_val) {
 		return res;
 	}
-	static THREAD_LOCAL char buf[4096];
 	size_t len = strlen(v.data.string_val);
-	if (len >= sizeof(buf)) {
+	char* out = malloc(len + 1);
+	if (!out) {
 		return res;
 	}
 	for (size_t i = 0; i < len; i++) {
-		buf[i] = (char)tolower((unsigned char)v.data.string_val[i]);
+		out[i] = (char)tolower((unsigned char)v.data.string_val[i]);
 	}
-	buf[len] = '\0';
-	res.data.string_val = buf;
+	out[len] = '\0';
+	res.data.string_val = out;
+	res.owned_string = 1;
 	return res;
 }
 
@@ -328,22 +330,22 @@ builtin_trim(const char* name, cdsl_arg_node_t* args, cdsl_context_t* ctx, cdsl_
 		s++;
 	}
 	if (*s == '\0') {
-		static THREAD_LOCAL char empty[1];
-		empty[0] = '\0';
-		res.data.string_val = empty;
+		res.data.string_val = strdup("");
+		res.owned_string = 1;
 		return res;
 	}
 	size_t len = strlen(s);
 	while (len > 0 && isspace((unsigned char)s[len - 1])) {
 		len--;
 	}
-	static THREAD_LOCAL char buf[4096];
-	if (len >= sizeof(buf)) {
+	char* out = malloc(len + 1);
+	if (!out) {
 		return res;
 	}
-	memcpy(buf, s, len);
-	buf[len] = '\0';
-	res.data.string_val = buf;
+	memcpy(out, s, len);
+	out[len] = '\0';
+	res.data.string_val = out;
+	res.owned_string = 1;
 	return res;
 }
 

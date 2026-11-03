@@ -36,6 +36,7 @@ typedef struct cdsl_value {
 		int64_t long_val;
 		cdsl_array_t* array_val;
 	} data;
+	int owned_string; /**< 1 if data.string_val is heap-owned and must be freed by cdsl_value_free; 0 if borrowed from AST/context/bytecode */
 } cdsl_value_t;
 
 /**

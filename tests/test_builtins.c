@@ -16,6 +16,69 @@
 void test_builtin_array(void);
 
 /**
+ * @brief Regression test: string-returning built-ins (uppercase/lowercase/trim)
+ *        must not clobber a previously-returned string. Before the fix they
+ *        returned a shared static THREAD_LOCAL buffer, so the second call
+ *        overwrote the first result. Now each call returns an independent
+ *        heap allocation marked owned_string=1, freed by cdsl_value_free.
+ */
+void
+test_builtin_string_isolation(void)
+{
+	TEST_BEGIN("built-in string isolation (no buffer clobber)");
+	cdsl_schema_t* schema = cdsl_schema_create();
+	cdsl_vm_t* vm = cdsl_vm_create(schema);
+	cdsl_context_t* ctx = cdsl_context_create(schema);
+
+	/* Fetch the registered uppercase() callback. */
+	cdsl_func_cb_t up = NULL;
+	for (cdsl_func_entry_t* f = vm->functions; f; f = f->next) {
+		if (strcmp(f->func_name, "uppercase") == 0) {
+			up = f->cb;
+			break;
+		}
+	}
+	TEST_ASSERT_NOT_NULL(up, "uppercase builtin registered");
+	if (!up) {
+		cdsl_context_free(ctx);
+		cdsl_vm_free(vm);
+		cdsl_schema_free(schema);
+		TEST_END();
+		return;
+	}
+
+	/* First call: uppercase("abc") -> "ABC" (heap-allocated, owned) */
+	cdsl_expr_node_t* s1 = cdsl_create_expr_string(strdup("abc"));
+	cdsl_arg_node_t* a1 = cdsl_create_arg(s1);
+	cdsl_value_t r1 = up("uppercase", a1, ctx, vm);
+	TEST_ASSERT(r1.type == CDSL_TYPE_STRING && strcmp(r1.data.string_val, "ABC") == 0,
+		    "first uppercase == 'ABC'");
+	char* first_ptr = r1.data.string_val; /* owned heap buffer */
+
+	/* Second call: uppercase("xyz") -> "XYZ" (independent heap buffer) */
+	cdsl_expr_node_t* s2 = cdsl_create_expr_string(strdup("xyz"));
+	cdsl_arg_node_t* a2 = cdsl_create_arg(s2);
+	cdsl_value_t r2 = up("uppercase", a2, ctx, vm);
+	TEST_ASSERT(r2.type == CDSL_TYPE_STRING && strcmp(r2.data.string_val, "XYZ") == 0,
+		    "second uppercase == 'XYZ'");
+
+	/* The first result must still read "ABC" (independent allocation). */
+	TEST_ASSERT(strcmp(first_ptr, "ABC") == 0, "first result not clobbered by second call");
+	TEST_ASSERT(first_ptr != r2.data.string_val, "each call returns a distinct buffer");
+
+	free(first_ptr);
+	free(r2.data.string_val);
+	/* Release the argument/expr nodes created for the two calls. */
+	cdsl_free_arg(a1);
+	cdsl_free_arg(a2);
+
+	cdsl_context_free(ctx);
+	cdsl_vm_free(vm);
+	cdsl_schema_free(schema);
+	TEST_END();
+}
+
+/**
  * @brief Test the strlen built-in function.
  */
 void
@@ -267,6 +330,7 @@ main(void)
 	test_builtin_math_utils();
 	test_builtin_misc();
 	test_builtin_array();
+	test_builtin_string_isolation();
 
 	TEST_SUMMARY();
 	TEST_EXIT();
