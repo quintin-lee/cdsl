@@ -244,6 +244,135 @@ test_bytecode_date_arith(void)
 	TEST_END();
 }
 
+/*
+	 * Simple WHEN/THEN rule semantics (matching execute_simple_rule):
+	 *   WHEN true  -> THEN fires -> status FAILED
+	 *   WHEN false -> no action  -> status PASSED
+	 * These regression tests use deliberately-true conditions and therefore
+	 * expect FAILED, plus one deliberately-false condition expecting PASSED.
+	 */
+
+void
+test_bytecode_rule_full_types(void)
+{
+	TEST_BEGIN("bytecode rule executor full type support");
+	cdsl_schema_t* schema = cdsl_schema_create();
+	cdsl_schema_register_var(schema, "x", CDSL_TYPE_FLOAT);
+	cdsl_schema_register_var(schema, "name", CDSL_TYPE_STRING);
+	cdsl_schema_register_var(schema, "d", CDSL_TYPE_DATE);
+	cdsl_schema_register_action(schema, "block", CDSL_TYPE_VOID, 1, CDSL_TYPE_STRING);
+	cdsl_vm_t* vm = cdsl_vm_create(schema);
+	cdsl_vm_register_action(vm, "block", test_cb);
+	cdsl_context_t* ctx = cdsl_context_create(schema);
+	cdsl_context_set_float(ctx, "x", 3.5);
+	cdsl_context_set_string(ctx, "name", "hello");
+	cdsl_context_set_date(ctx, "d", (time_t)1704067200); /* 2024-01-01 */
+
+	/* Float comparison: x=3.5 > 3.0 is TRUE -> simple rule FAILED */
+	cdsl_rule_t* r1 = cdsl_parse_string("RULE r { WHEN x > 3.0 THEN block(\"ok\") }", NULL);
+	TEST_ASSERT_NOT_NULL(r1, "float rule parsed");
+	cdsl_bytecode_t bc1 = {0};
+	TEST_ASSERT_INT(cdsl_bytecode_compile(r1, schema, &bc1), 1, "float bytecode compiled");
+	cdsl_rule_report_t* rep1 = cdsl_bytecode_execute_rule(vm, &bc1, ctx);
+	TEST_ASSERT_NOT_NULL(rep1, "float rule report not NULL");
+	TEST_ASSERT_INT(rep1->metric_count, 1, "simple rule has 1 synthetic metric");
+	TEST_ASSERT_INT(rep1->status,
+			CDSL_STATUS_FAILED,
+			"x>3.0 true -> THEN fires -> FAILED via rule executor");
+	cdsl_report_free(rep1);
+	cdsl_bytecode_free(&bc1);
+	cdsl_free_rule(r1);
+
+	/* String comparison: name=="hello" is TRUE -> FAILED */
+	cdsl_rule_t* r2 =
+	    cdsl_parse_string("RULE r { WHEN name == \"hello\" THEN block(\"ok\") }", NULL);
+	TEST_ASSERT_NOT_NULL(r2, "string rule parsed");
+	cdsl_bytecode_t bc2 = {0};
+	cdsl_bytecode_compile(r2, schema, &bc2);
+	cdsl_rule_report_t* rep2 = cdsl_bytecode_execute_rule(vm, &bc2, ctx);
+	TEST_ASSERT_NOT_NULL(rep2, "string rule report not NULL");
+	TEST_ASSERT_INT(
+	    rep2->status, CDSL_STATUS_FAILED, "name==hello true -> FAILED via rule executor");
+	cdsl_report_free(rep2);
+	cdsl_bytecode_free(&bc2);
+	cdsl_free_rule(r2);
+
+	/* Date comparison: d >= 2024-01-01 is TRUE -> FAILED */
+	cdsl_rule_t* r3 =
+	    cdsl_parse_string("RULE r { WHEN d >= @2024-01-01 THEN block(\"ok\") }", NULL);
+	TEST_ASSERT_NOT_NULL(r3, "date rule parsed");
+	cdsl_bytecode_t bc3 = {0};
+	cdsl_bytecode_compile(r3, schema, &bc3);
+	cdsl_rule_report_t* rep3 = cdsl_bytecode_execute_rule(vm, &bc3, ctx);
+	TEST_ASSERT_NOT_NULL(rep3, "date rule report not NULL");
+	TEST_ASSERT_INT(
+	    rep3->status, CDSL_STATUS_FAILED, "d>=2024-01-01 true -> FAILED via rule executor");
+	cdsl_report_free(rep3);
+	cdsl_bytecode_free(&bc3);
+	cdsl_free_rule(r3);
+
+	/* Negative float control: x > 99.0 is FALSE -> PASSED */
+	cdsl_rule_t* r4 = cdsl_parse_string("RULE r { WHEN x > 99.0 THEN block(\"ok\") }", NULL);
+	TEST_ASSERT_NOT_NULL(r4, "negative float rule parsed");
+	cdsl_bytecode_t bc4 = {0};
+	cdsl_bytecode_compile(r4, schema, &bc4);
+	cdsl_rule_report_t* rep4 = cdsl_bytecode_execute_rule(vm, &bc4, ctx);
+	TEST_ASSERT_NOT_NULL(rep4, "negative float rule report not NULL");
+	TEST_ASSERT_INT(
+	    rep4->status, CDSL_STATUS_PASSED, "x>99.0 false -> PASSED via rule executor");
+	cdsl_report_free(rep4);
+	cdsl_bytecode_free(&bc4);
+	cdsl_free_rule(r4);
+
+	cdsl_context_free(ctx);
+	cdsl_vm_free(vm);
+	cdsl_schema_free(schema);
+	TEST_END();
+}
+
+void
+test_bytecode_rule_metric(void)
+{
+	TEST_BEGIN("bytecode metric rule execution");
+	cdsl_schema_t* schema = cdsl_schema_create();
+	cdsl_schema_register_var(schema, "score", CDSL_TYPE_INT);
+	cdsl_schema_register_action(schema, "score", CDSL_TYPE_VOID, 1, CDSL_TYPE_INT);
+	cdsl_schema_register_action(
+	    schema, "fail_metric", CDSL_TYPE_VOID, 2, CDSL_TYPE_INT, CDSL_TYPE_STRING);
+	cdsl_vm_t* vm = cdsl_vm_create(schema);
+	cdsl_context_t* ctx = cdsl_context_create(schema);
+	cdsl_context_set_int(ctx, "score", 85);
+
+	cdsl_rule_t* rule =
+	    cdsl_parse_string("RULE r { "
+			      "    META { pass_threshold = \"80\" partial_threshold = \"50\" } "
+			      "    METRIC m { "
+			      "        META { weight = \"100\" } "
+			      "        CASE score >= 80 THEN score(100) "
+			      "        DEFAULT score(0) "
+			      "    } "
+			      "}",
+			      NULL);
+	TEST_ASSERT_NOT_NULL(rule, "metric rule parsed");
+
+	cdsl_bytecode_t bc = {0};
+	TEST_ASSERT_INT(cdsl_bytecode_compile(rule, schema, &bc), 1, "metric bytecode compiled");
+
+	cdsl_rule_report_t* report = cdsl_bytecode_execute_rule(vm, &bc, ctx);
+	TEST_ASSERT_NOT_NULL(report, "metric report not NULL");
+	TEST_ASSERT_INT(report->status, CDSL_STATUS_PASSED, "score 85 >= 80 -> PASSED");
+	TEST_ASSERT_INT(report->metric_count, 1, "one metric");
+	TEST_ASSERT_INT(report->metrics[0].score_obtained, 100, "score obtained 100");
+
+	cdsl_report_free(report);
+	cdsl_bytecode_free(&bc);
+	cdsl_free_rule(rule);
+	cdsl_context_free(ctx);
+	cdsl_vm_free(vm);
+	cdsl_schema_free(schema);
+	TEST_END();
+}
+
 int
 main(void)
 {
@@ -257,6 +386,8 @@ main(void)
 	test_bytecode_builtin();
 	test_bytecode_vars();
 	test_bytecode_date_arith();
+	test_bytecode_rule_full_types();
+	test_bytecode_rule_metric();
 
 	TEST_SUMMARY();
 	TEST_EXIT();

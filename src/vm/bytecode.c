@@ -231,6 +231,19 @@ bc_emit_jmp_true_placeholder(cdsl_bytecode_t* bc)
 	return bc->count - 1;
 }
 
+static int
+bc_emit_jmp_uncond_placeholder(cdsl_bytecode_t* bc)
+{
+	if (!bc_ensure_cap(bc)) {
+		return -1;
+	}
+	bc_inst_t* inst = &bc->code[bc->count++];
+	memset(inst, 0, sizeof(*inst));
+	inst->op = BC_JMP;
+	inst->operand.jump_offset = -1;
+	return bc->count - 1;
+}
+
 static void
 bc_patch_jmp(cdsl_bytecode_t* bc, int inst_idx, int target)
 {
@@ -731,7 +744,8 @@ cdsl_bytecode_compile(const cdsl_rule_t* rule, const cdsl_schema_t* schema, cdsl
 						}
 					}
 
-					metric_end_jmps[njmps++] = bc_emit_jmp_placeholder(bc);
+					metric_end_jmps[njmps++] =
+					    bc_emit_jmp_uncond_placeholder(bc);
 					bc_patch_jmp(bc, next_case_jmp, bc->count);
 					bc_emit(bc, BC_POP); /* not matched, discard condition */
 				}
@@ -1199,6 +1213,36 @@ typedef struct {
 } bc_rule_state_t;
 
 /**
+ * @brief Build a simple-rule report from the final WHEN condition value.
+ * @internal
+ */
+static void
+bc_finalize_simple_rule_report(cdsl_rule_report_t* report, int when_true)
+{
+	report->metric_count = 1;
+	report->metrics = calloc(1, sizeof(cdsl_metric_result_t));
+	if (!report->metrics) {
+		return;
+	}
+	cdsl_metric_result_t* m = &report->metrics[0];
+	m->metric_name = strdup("condition");
+	m->description = strdup("WHEN condition");
+	m->max_weight = 100;
+	m->score_obtained = when_true ? 0 : 100;
+	m->is_passed = when_true ? 0 : 1;
+	report->total_max_score = 100;
+	report->total_obtained_score = when_true ? 0 : 100;
+	report->status = when_true ? CDSL_STATUS_FAILED : CDSL_STATUS_PASSED;
+	char buf[256];
+	snprintf(buf,
+		 sizeof(buf),
+		 "%s (score: %d/100)",
+		 when_true ? "FAILED" : "PASSED",
+		 report->total_obtained_score);
+	report->decision_summary = strdup(buf);
+}
+
+/**
  * @brief Metric handler for cdsl_bytecode_execute_rule.
  */
 static int
@@ -1267,10 +1311,23 @@ cdsl_bytecode_execute_rule(cdsl_vm_t* vm, const cdsl_bytecode_t* bc, cdsl_contex
 
 	bc_rule_state_t state;
 	state.report = report;
-	(void)bc_run_instructions(vm, bc, ctx, bc_rule_metric_handler, &state, NULL);
+	cdsl_value_t out_result = {.type = CDSL_TYPE_VOID};
+	bc_run_instructions(vm, bc, ctx, bc_rule_metric_handler, &state, &out_result);
+
+	/* For simple (WHEN/THEN) rules, no metric instruction is emitted and
+	   the final BC_RET value is the WHEN condition result. Build a report
+	   from it when no metric was recorded. */
+	if (report->metric_count == 0 && out_result.type == CDSL_TYPE_BOOL) {
+		int when_true = out_result.data.bool_val;
+		bc_finalize_simple_rule_report(report, when_true);
+	} else if (report->metric_count == 0) {
+		/* No metric and no boolean WHEN result (should not happen for
+		   well-formed rules); mark as ERROR. */
+		report->status = CDSL_STATUS_ERROR;
+	}
 
 	/* Finalize report status */
-	if (report->status != CDSL_STATUS_ERROR) {
+	if (report->metric_count > 0 && report->status != CDSL_STATUS_ERROR) {
 		int total_max = 0, total_obtained = 0;
 		for (int i = 0; i < report->metric_count; i++) {
 			total_max += 100; /* Default weight */
