@@ -17,6 +17,7 @@
 #include "cdsl/schema.h"
 #include "cdsl/context.h"
 #include "cdsl/ast.h"
+#include "cdsl/util/threads.h"
 #include <time.h>
 
 struct cdsl_vm;
@@ -133,6 +134,7 @@ typedef struct cdsl_vm {
 	/* ---- Tracing ---- */
 	cdsl_trace_cb_t trace_cb; /**< Optional trace callback (NULL=disabled) */
 	void* trace_ud;		  /**< User data pointer for trace callback */
+	cdsl_rwlock_t rwlock;	  /**< Protects callbacks/functions lists and stats aggregation */
 } cdsl_vm_t;
 
 /* ---- Lifecycle ---- */
