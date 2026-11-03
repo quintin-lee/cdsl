@@ -45,7 +45,8 @@ void cdsl_trigger_action_internal(cdsl_vm_t* vm, cdsl_action_node_t* action);
 /**
  * @brief Get a high-resolution timestamp in microseconds.
  *
- * Uses CLOCK_MONOTONIC for elapsed time measurements.
+ * Uses CLOCK_MONOTONIC for elapsed time measurements that are
+ * immune to system clock adjustments.
  *
  * @return Current monotonic time in microseconds
  */
@@ -82,21 +83,46 @@ void cdsl_vm_track_free(cdsl_vm_t* vm, size_t bytes);
 int cdsl_vm_check_abort(cdsl_vm_t* vm, double start_time_us);
 
 /**
- * @brief Metric instruction handler callback.
- *
- * Invoked by bc_run_instructions() when a metric-related opcode is
- * encountered. The handler owns report/metric state.
- *
- * @param op        The metric opcode (BC_METRIC_START/SET_SCORE/FAIL_METRIC/RULE_END)
- * @param bc        Bytecode chunk (for reading constant-pool operands)
- * @param ip        Current instruction pointer (handler may advance it)
- * @param user_data Opaque pointer to handler state (e.g. cdsl_rule_report_t*)
- * @return 1 if handled, 0 if unhandled (caller falls through to ip++)
+ * @brief Metric boundary event enum.
+ * @internal
  */
-typedef int (*bc_metric_handler_t)(bc_op_t op,
+typedef enum {
+	BC_EV_METRIC_START, /**< BC_METRIC_START instruction reached */
+	BC_EV_SET_SCORE,    /**< BC_SET_SCORE instruction reached (value popped) */
+	BC_EV_FAIL_METRIC,  /**< BC_FAIL_METRIC instruction reached */
+	BC_EV_RULE_END	    /**< BC_RULE_END instruction reached */
+} bc_metric_event_t;
+
+/**
+ * @brief Metric boundary event handler callback.
+ *
+ * Invoked by bc_run_instructions() at metric instruction boundaries.
+ * The core loop performs stack operations (BC_SET_SCORE pops the score
+ * value, BC_POP discards the condition). The handler receives event
+ * notifications + constant-pool operands so it can update report state
+ * (grow metrics array, set score, set violation reason, finalize).
+ *
+ * @param event      Metric boundary event enum
+ * @param bc         Bytecode chunk (for constant-pool operand access)
+ * @param inst       Current instruction (for reading operand.const_idx)
+ * @param value      For BC_EV_SET_SCORE: the popped score value; for other
+ *                   events: unused (set to VOID).
+ * @param user_data  Opaque pointer to metric context (bc_metric_ctx_t*)
+ * @return 1 to continue, 0 to abort the instruction loop
+ */
+typedef int (*bc_metric_handler_t)(bc_metric_event_t event,
 				   const cdsl_bytecode_t* bc,
-				   const bc_inst_t** ip,
+				   const bc_inst_t* inst,
+				   const cdsl_value_t* value,
 				   void* user_data);
+
+/**
+ * @brief Metric execution context owned by the caller (cdsl_bytecode_execute_rule).
+ * @internal
+ */
+typedef struct bc_metric_ctx {
+	cdsl_rule_report_t* report; /**< Report being built */
+} bc_metric_ctx_t;
 
 /**
  * @brief Core instruction execution loop shared by both executors.
