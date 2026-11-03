@@ -1194,6 +1194,65 @@ cdsl_bytecode_execute(cdsl_vm_t* vm, const cdsl_bytecode_t* bc, cdsl_context_t* 
 	return result;
 }
 
+typedef struct {
+	cdsl_rule_report_t* report;
+} bc_rule_state_t;
+
+/**
+ * @brief Metric handler for cdsl_bytecode_execute_rule.
+ */
+static int
+bc_rule_metric_handler(bc_metric_event_t event,
+		       const cdsl_bytecode_t* bc,
+		       const bc_inst_t* inst,
+		       const cdsl_value_t* value,
+		       void* user_data)
+{
+	bc_rule_state_t* st = (bc_rule_state_t*)user_data;
+	cdsl_rule_report_t* report = st->report;
+	switch (event) {
+	case BC_EV_METRIC_START: {
+		const char* name = bc->constants[inst->operand.const_idx].data.string_val;
+		int new_count = report->metric_count + 1;
+		cdsl_metric_result_t* new_metrics =
+		    realloc(report->metrics, sizeof(cdsl_metric_result_t) * new_count);
+		if (!new_metrics) {
+			return 0; /* OOM -> abort */
+		}
+		report->metrics = new_metrics;
+		memset(&report->metrics[report->metric_count], 0, sizeof(cdsl_metric_result_t));
+		report->metrics[report->metric_count].metric_name = strdup(name);
+		report->metrics[report->metric_count].description = strdup("");
+		report->metric_count = new_count;
+		return 1;
+	}
+	case BC_EV_SET_SCORE: {
+		if (report->metric_count == 0 || !value) {
+			return 1;
+		}
+		cdsl_metric_result_t* mr = &report->metrics[report->metric_count - 1];
+		mr->score_obtained = (value->type == CDSL_TYPE_INT) ? value->data.int_val : 0;
+		mr->is_passed = (mr->score_obtained > 0);
+		return 1;
+	}
+	case BC_EV_FAIL_METRIC: {
+		if (report->metric_count == 0) {
+			return 1;
+		}
+		cdsl_metric_result_t* mr = &report->metrics[report->metric_count - 1];
+		const char* reason = bc->constants[inst->operand.const_idx].data.string_val;
+		mr->violation_reason = strdup(reason);
+		mr->score_obtained = 0;
+		mr->is_passed = 0;
+		return 1;
+	}
+	case BC_EV_RULE_END:
+		return 0; /* abort instruction loop */
+	default:
+		return 1;
+	}
+}
+
 cdsl_rule_report_t*
 cdsl_bytecode_execute_rule(cdsl_vm_t* vm, const cdsl_bytecode_t* bc, cdsl_context_t* ctx)
 {
@@ -1206,180 +1265,11 @@ cdsl_bytecode_execute_rule(cdsl_vm_t* vm, const cdsl_bytecode_t* bc, cdsl_contex
 		return NULL;
 	}
 
-	double t0 = cdsl_get_time_us_internal();
-	cdsl_value_t stack[CDSL_BYTECODE_MAX_STACK];
-	int sp = 0;
+	bc_rule_state_t state;
+	state.report = report;
+	(void)bc_run_instructions(vm, bc, ctx, bc_rule_metric_handler, &state, NULL);
 
-#define PUSH(v)                                                                                    \
-	do {                                                                                       \
-		if (sp < CDSL_BYTECODE_MAX_STACK) {                                                \
-			stack[sp++] = (v);                                                         \
-		}                                                                                  \
-	} while (0)
-#define POP() (sp > 0 ? stack[--sp] : (cdsl_value_t){.type = CDSL_TYPE_VOID})
-#define PEEK() (sp > 0 ? stack[sp - 1] : (cdsl_value_t){.type = CDSL_TYPE_VOID})
-
-	const bc_inst_t* ip = bc->code;
-	const bc_inst_t* end = bc->code + bc->count;
-	int loop_cnt = 0;
-
-	cdsl_metric_result_t* current_mr = NULL;
-
-	while (ip < end) {
-		if (vm->instruction_limit > 0) {
-			int64_t count = CDSL_ATOMIC_FETCH_ADD(&vm->instruction_count, 1) + 1;
-			if (count > vm->instruction_limit) {
-				report->status = CDSL_STATUS_ERROR;
-				goto done;
-			}
-		}
-		if ((++loop_cnt & 0x3FF) == 0 && cdsl_vm_check_abort(vm, t0)) {
-			report->status = CDSL_STATUS_ERROR;
-			goto done;
-		}
-
-		bc_op_t op = ip->op;
-		switch (op) {
-		case BC_METRIC_START: {
-			const char* name = bc->constants[ip->operand.const_idx].data.string_val;
-			int new_count = report->metric_count + 1;
-			cdsl_metric_result_t* new_metrics =
-			    realloc(report->metrics, sizeof(cdsl_metric_result_t) * new_count);
-			if (!new_metrics) {
-				report->status = CDSL_STATUS_ERROR;
-				goto done;
-			}
-			report->metrics = new_metrics;
-			current_mr = &report->metrics[report->metric_count];
-			memset(current_mr, 0, sizeof(*current_mr));
-			current_mr->metric_name = strdup(name);
-			current_mr->description = strdup("");
-			report->metric_count = new_count;
-			ip++;
-			break;
-		}
-		case BC_SET_SCORE: {
-			cdsl_value_t sv = POP();
-			if (current_mr) {
-				current_mr->score_obtained =
-				    (sv.type == CDSL_TYPE_INT) ? sv.data.int_val : 0;
-				current_mr->is_passed = (current_mr->score_obtained > 0);
-			}
-			ip++;
-			break;
-		}
-		case BC_FAIL_METRIC: {
-			const char* reason = bc->constants[ip->operand.const_idx].data.string_val;
-			if (current_mr) {
-				current_mr->violation_reason = strdup(reason);
-				current_mr->score_obtained = 0;
-				current_mr->is_passed = 0;
-			}
-			ip++;
-			break;
-		}
-		case BC_RULE_END:
-		case BC_RET:
-			goto done;
-
-		default: {
-			/* Standard instructions: reuse cdsl_bytecode_execute logic or call it? */
-			/* For simplicity, we implement them here too or use a shared macro/function */
-			/* In this version, we'll just handle them here. */
-			if (op == BC_PUSH_INT) {
-				cdsl_value_t v = {.type = CDSL_TYPE_INT,
-						  .data = {.int_val = ip->operand.int_val}};
-				PUSH(v);
-				ip++;
-			} else if (op == BC_PUSH_FLOAT) {
-				cdsl_value_t v = {.type = CDSL_TYPE_FLOAT,
-						  .data = {.float_val = ip->operand.float_val}};
-				PUSH(v);
-				ip++;
-			} else if (op == BC_PUSH_BOOL) {
-				cdsl_value_t v = {.type = CDSL_TYPE_BOOL,
-						  .data = {.bool_val = ip->operand.bool_val}};
-				PUSH(v);
-				ip++;
-			} else if (op == BC_PUSH_STRING) {
-				cdsl_value_t v = {
-				    .type = CDSL_TYPE_STRING,
-				    .data = {
-					.string_val =
-					    bc->constants[ip->operand.const_idx].data.string_val}};
-				PUSH(v);
-				ip++;
-			} else if (op == BC_PUSH_VAR) {
-				cdsl_context_entry_t* e = cdsl_context_get_entry_internal(
-				    ctx, bc->constants[ip->operand.const_idx].data.string_val);
-				if (e) {
-					PUSH(e->value);
-				} else {
-					PUSH(((cdsl_value_t){.type = CDSL_TYPE_VOID}));
-				}
-				ip++;
-			} else if (op == BC_JMP_IF_FALSE) {
-				cdsl_value_t v = PEEK();
-				if (!v.data.bool_val) {
-					ip += ip->operand.jump_offset;
-				} else {
-					POP();
-					ip++;
-				}
-			} else if (op == BC_JMP) {
-				ip += ip->operand.jump_offset;
-			} else if (op == BC_POP) {
-				POP();
-				ip++;
-			} else if (op == BC_ADD || op == BC_SUB || op == BC_MUL || op == BC_DIV) {
-				/* Simplified arithmetic for brevity in this step */
-				cdsl_value_t b = POP();
-				cdsl_value_t a = POP();
-				cdsl_value_t r = {.type = CDSL_TYPE_INT};
-				if (op == BC_ADD) {
-					r.data.int_val = a.data.int_val + b.data.int_val;
-				} else if (op == BC_SUB) {
-					r.data.int_val = a.data.int_val - b.data.int_val;
-				} else if (op == BC_MUL) {
-					r.data.int_val = a.data.int_val * b.data.int_val;
-				} else if (op == BC_DIV) {
-					r.data.int_val = (b.data.int_val != 0)
-							     ? a.data.int_val / b.data.int_val
-							     : 0;
-				}
-				PUSH(r);
-				ip++;
-			} else if (op == BC_EQ || op == BC_NE || op == BC_LT || op == BC_GT ||
-				   op == BC_LE || op == BC_GE) {
-				cdsl_value_t b = POP();
-				cdsl_value_t a = POP();
-				cdsl_value_t r = {.type = CDSL_TYPE_BOOL};
-				int av = a.data.int_val, bv = b.data.int_val;
-				if (op == BC_EQ) {
-					r.data.bool_val = (av == bv);
-				} else if (op == BC_NE) {
-					r.data.bool_val = (av != bv);
-				} else if (op == BC_LT) {
-					r.data.bool_val = (av < bv);
-				} else if (op == BC_GT) {
-					r.data.bool_val = (av > bv);
-				} else if (op == BC_LE) {
-					r.data.bool_val = (av <= bv);
-				} else if (op == BC_GE) {
-					r.data.bool_val = (av >= bv);
-				}
-				PUSH(r);
-				ip++;
-			} else {
-				ip++; /* Unknown or unhandled here */
-			}
-			break;
-		}
-		}
-	}
-
-done:
-	/* Finalize report status (simplified version for bytecode executor) */
+	/* Finalize report status */
 	if (report->status != CDSL_STATUS_ERROR) {
 		int total_max = 0, total_obtained = 0;
 		for (int i = 0; i < report->metric_count; i++) {
@@ -1396,10 +1286,6 @@ done:
 			report->status = CDSL_STATUS_FAILED;
 		}
 	}
-
-#undef PUSH
-#undef POP
-#undef PEEK
 	return report;
 }
 
