@@ -544,13 +544,4 @@ cdsl_context_load_json(cdsl_context_t* ctx, const char* json_str)
 	return 1;
 }
 
-void
-cdsl_vm_set_trace_callback(cdsl_vm_t* vm, cdsl_trace_cb_t cb, void* user_data)
-{
-	if (vm) {
-		vm->trace_cb = cb;
-		vm->trace_ud = user_data;
-	}
-}
-
 /** @} */

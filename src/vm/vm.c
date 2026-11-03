@@ -190,4 +190,13 @@ cdsl_vm_get_instruction_limit(const cdsl_vm_t* vm)
 	return vm ? vm->instruction_limit : 0;
 }
 
+void
+cdsl_vm_set_trace_callback(cdsl_vm_t* vm, cdsl_trace_cb_t cb, void* user_data)
+{
+	if (vm) {
+		vm->trace_cb = cb;
+		vm->trace_ud = user_data;
+	}
+}
+
 /** @} */

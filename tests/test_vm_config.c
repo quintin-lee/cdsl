@@ -308,6 +308,14 @@ test_vm_quotas(void)
 	TEST_END();
 }
 
+static void
+test_vm_trace_null_safe(void)
+{
+	TEST_BEGIN("VM trace callback NULL-safe");
+	cdsl_vm_set_trace_callback(NULL, NULL, NULL); /* should not crash */
+	TEST_END();
+}
+
 int
 main()
 {
@@ -325,6 +333,7 @@ main()
 	test_vm_debug_and_depth();
 	test_vm_stats_reset();
 	test_vm_quotas();
+	test_vm_trace_null_safe();
 	TEST_SUMMARY();
 	TEST_EXIT();
 }
