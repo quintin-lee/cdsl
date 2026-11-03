@@ -253,6 +253,34 @@ test_vm_debug_and_depth(void)
 	TEST_END();
 }
 
+static void
+test_vm_stats_reset(void)
+{
+	TEST_BEGIN("VM stats get and reset");
+	cdsl_schema_t* schema = cdsl_schema_create();
+	cdsl_vm_t* vm = cdsl_vm_create(schema);
+
+	cdsl_stats_t* s = cdsl_vm_get_stats(vm);
+	TEST_ASSERT_NOT_NULL(s, "get_stats should return non-NULL");
+	TEST_ASSERT_INT(s->total_executions, 0, "executions should start at 0");
+	free(s);
+
+	cdsl_vm_reset_stats(vm);
+
+	s = cdsl_vm_get_stats(vm);
+	TEST_ASSERT_NOT_NULL(s, "get_stats after reset should return non-NULL");
+	TEST_ASSERT_INT(s->total_executions, 0, "executions should be 0 after reset");
+	free(s);
+
+	/* NULL-safe */
+	TEST_ASSERT_NULL(cdsl_vm_get_stats(NULL), "get_stats(NULL) should return NULL");
+	cdsl_vm_reset_stats(NULL); /* should not crash */
+
+	cdsl_vm_free(vm);
+	cdsl_schema_free(schema);
+	TEST_END();
+}
+
 int
 main()
 {
@@ -268,6 +296,7 @@ main()
 	test_vm_free_null_safe();
 	test_vm_register_action_and_function();
 	test_vm_debug_and_depth();
+	test_vm_stats_reset();
 	TEST_SUMMARY();
 	TEST_EXIT();
 }

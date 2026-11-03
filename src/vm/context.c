@@ -544,41 +544,6 @@ cdsl_context_load_json(cdsl_context_t* ctx, const char* json_str)
 	return 1;
 }
 
-cdsl_stats_t*
-cdsl_vm_get_stats(const cdsl_vm_t* vm)
-{
-	if (!vm) {
-		return NULL;
-	}
-	cdsl_stats_t* s = malloc(sizeof(cdsl_stats_t));
-	if (!s) {
-		return NULL;
-	}
-	s->total_executions = CDSL_ATOMIC_LOAD(&vm->stats.total_executions);
-	s->total_rules_executed = CDSL_ATOMIC_LOAD(&vm->stats.total_rules_executed);
-	s->total_metrics_evaluated = CDSL_ATOMIC_LOAD(&vm->stats.total_metrics_evaluated);
-	s->total_actions_triggered = CDSL_ATOMIC_LOAD(&vm->stats.total_actions_triggered);
-	s->total_time_us = vm->stats.total_time_us;
-	s->avg_time_us = vm->stats.avg_time_us;
-	if (s->total_executions > 0) {
-		s->avg_time_us = s->total_time_us / (double)s->total_executions;
-	}
-	return s;
-}
-
-void
-cdsl_vm_reset_stats(cdsl_vm_t* vm)
-{
-	if (vm) {
-		CDSL_ATOMIC_STORE(&vm->stats.total_executions, 0);
-		CDSL_ATOMIC_STORE(&vm->stats.total_rules_executed, 0);
-		CDSL_ATOMIC_STORE(&vm->stats.total_metrics_evaluated, 0);
-		CDSL_ATOMIC_STORE(&vm->stats.total_actions_triggered, 0);
-		vm->stats.total_time_us = 0;
-		vm->stats.avg_time_us = 0;
-	}
-}
-
 void
 cdsl_vm_set_trace_callback(cdsl_vm_t* vm, cdsl_trace_cb_t cb, void* user_data)
 {
