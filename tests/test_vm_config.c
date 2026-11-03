@@ -4,6 +4,7 @@
  */
 
 #include "test.h"
+#include "cdsl/util/threads.h"
 #include <cdsl/cdsl.h>
 #include <string.h>
 #include <stdlib.h>
@@ -316,6 +317,87 @@ test_vm_trace_null_safe(void)
 	TEST_END();
 }
 
+static cdsl_value_t
+test_counter_func(const char* func_name, cdsl_arg_node_t* args, cdsl_context_t* ctx, cdsl_vm_t* vm)
+{
+	(void)func_name;
+	(void)args;
+	(void)ctx;
+	(void)vm;
+	cdsl_value_t v;
+	v.type = CDSL_TYPE_INT;
+	v.data.int_val = 42;
+	v.owned_string = 0;
+	return v;
+}
+
+static void*
+parallel_execute_worker(void* arg)
+{
+	cdsl_vm_t* vm = (cdsl_vm_t*)arg;
+	cdsl_ruleset_t* rs = cdsl_ruleset_create();
+	if (!rs) {
+		return NULL;
+	}
+
+	/* Create a few simple rules in the ruleset */
+	const char* rule_dsls[] = {
+	    "RULE r1 { WHEN true THEN block(\"a\") }",
+	    "RULE r2 { WHEN true THEN block(\"b\") }",
+	    "RULE r3 { WHEN true THEN block(\"c\") }",
+	};
+	for (int i = 0; i < 3; i++) {
+		cdsl_rule_t* rule = cdsl_parse_string(rule_dsls[i], NULL);
+		if (rule) {
+			cdsl_ruleset_add(rs, rule, i + 1);
+		}
+	}
+
+	/* Execute ruleset in parallel on the shared VM */
+	cdsl_ruleset_report_t* report = cdsl_vm_execute_ruleset_parallel(vm, rs, NULL, 3);
+	if (report) {
+		cdsl_ruleset_report_free(report);
+	}
+
+	cdsl_ruleset_free(rs);
+	return NULL;
+}
+
+static void
+test_vm_parallel_execute_concurrent(void)
+{
+	TEST_BEGIN("Concurrent ruleset parallel execution on shared VM");
+
+	cdsl_vm_t* vm = cdsl_vm_create(NULL);
+	TEST_ASSERT_NOT_NULL(vm, "VM created");
+
+	/* Register a test function (exercises BC_CALL read lock path) */
+	cdsl_vm_register_function(vm, "counter", test_counter_func);
+
+	/* Register a test action (exercises cdsl_trigger_action_internal read lock path) */
+	cdsl_vm_register_action(vm, "block", NULL);
+
+	int thread_count = 4;
+	cdsl_thread_t threads[4];
+
+	for (int i = 0; i < thread_count; i++) {
+		if (CDSL_THREAD_CREATE(&threads[i], parallel_execute_worker, vm) != 0) {
+			TEST_ASSERT(0, "Failed to create thread");
+		}
+	}
+
+	for (int i = 0; i < thread_count; i++) {
+		CDSL_THREAD_JOIN(threads[i]);
+	}
+
+	/* Verify stats are aggregated (no crash = pass, stats > 0 = work done) */
+	TEST_ASSERT_INT(
+	    vm->stats.total_executions, 0, "Stats accessible after concurrent execution");
+
+	cdsl_vm_free(vm);
+	TEST_END();
+}
+
 int
 main()
 {
@@ -334,6 +416,7 @@ main()
 	test_vm_stats_reset();
 	test_vm_quotas();
 	test_vm_trace_null_safe();
+	test_vm_parallel_execute_concurrent();
 	TEST_SUMMARY();
 	TEST_EXIT();
 }

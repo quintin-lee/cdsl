@@ -622,6 +622,7 @@ cdsl_eval_expr_internal(
 		if (!vm) {
 			break;
 		}
+		CDSL_RWLOCK_RDLOCK(&vm->rwlock);
 		for (cdsl_func_entry_t* fn = vm->functions; fn; fn = fn->next) {
 			if (strcmp(fn->func_name, expr->data.call.func_name) == 0) {
 				if (debug) {
@@ -653,9 +654,11 @@ cdsl_eval_expr_internal(
 						break;
 					}
 				}
+				CDSL_RWLOCK_UNLOCK_RD(&vm->rwlock);
 				break;
 			}
 		}
+		CDSL_RWLOCK_UNLOCK_RD(&vm->rwlock);
 		break;
 	}
 	}
@@ -668,12 +671,15 @@ cdsl_trigger_action_internal(cdsl_vm_t* vm, cdsl_action_node_t* action)
 	if (!vm || !action) {
 		return;
 	}
+	CDSL_RWLOCK_RDLOCK(&vm->rwlock);
 	for (cdsl_action_cb_entry_t* cb = vm->callbacks; cb; cb = cb->next) {
 		if (strcmp(cb->action_name, action->action_name) == 0) {
 			cb->cb(action->action_name, action->args, vm->user_data);
+			CDSL_RWLOCK_UNLOCK_RD(&vm->rwlock);
 			return;
 		}
 	}
+	CDSL_RWLOCK_UNLOCK_RD(&vm->rwlock);
 }
 
 static char*

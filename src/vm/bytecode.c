@@ -1092,9 +1092,11 @@ bc_run_instructions(cdsl_vm_t* vm,
 			arg_list = (nargs > 0) ? &arg_nodes[0] : NULL;
 
 			result.type = CDSL_TYPE_VOID;
+			CDSL_RWLOCK_RDLOCK(&vm->rwlock);
 			for (cdsl_func_entry_t* fn = vm->functions; fn; fn = fn->next) {
 				if (strcmp(fn->func_name, fn_name) == 0) {
 					result = fn->cb(fn_name, arg_list, ctx, vm);
+					CDSL_RWLOCK_UNLOCK_RD(&vm->rwlock);
 					break;
 				}
 			}
@@ -1105,6 +1107,7 @@ bc_run_instructions(cdsl_vm_t* vm,
 			free(arg_nodes);
 			PUSH(result);
 			ip++;
+			CDSL_RWLOCK_UNLOCK_RD(&vm->rwlock);
 			break;
 		}
 

@@ -240,6 +240,7 @@ cdsl_vm_execute_ruleset_parallel(cdsl_vm_t* vm,
 			args[idx].result = NULL;
 			continue;
 		}
+		CDSL_RWLOCK_INIT(&args[idx].vm->rwlock);
 		args[idx].vm->schema = vm->schema;
 		args[idx].vm->max_expr_depth = vm->max_expr_depth;
 		args[idx].vm->callbacks = vm->callbacks;
@@ -252,6 +253,7 @@ cdsl_vm_execute_ruleset_parallel(cdsl_vm_t* vm,
 			/* callbacks and functions are shared; set to NULL before free */
 			args[idx].vm->callbacks = NULL;
 			args[idx].vm->functions = NULL;
+			CDSL_RWLOCK_DESTROY(&args[idx].vm->rwlock);
 			free(args[idx].vm);
 			args[idx].vm = NULL;
 		}
@@ -283,16 +285,19 @@ cdsl_vm_execute_ruleset_parallel(cdsl_vm_t* vm,
 		}
 		/* Update main VM stats from worker VM */
 		if (args[i].vm) {
+			CDSL_RWLOCK_WRLOCK(&vm->rwlock);
 			vm->stats.total_executions += args[i].vm->stats.total_executions;
 			vm->stats.total_rules_executed += args[i].vm->stats.total_rules_executed;
 			vm->stats.total_metrics_evaluated +=
 			    args[i].vm->stats.total_metrics_evaluated;
 			vm->stats.total_time_us += args[i].vm->stats.total_time_us;
+			CDSL_RWLOCK_UNLOCK_WR(&vm->rwlock);
 
 			/* Worker VM shares callbacks/functions with parent;
 			   detach before freeing to avoid double-free. */
 			args[i].vm->callbacks = NULL;
 			args[i].vm->functions = NULL;
+			CDSL_RWLOCK_DESTROY(&args[i].vm->rwlock);
 			free(args[i].vm);
 		}
 	}
