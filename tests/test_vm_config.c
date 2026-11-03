@@ -182,6 +182,18 @@ test_vm_set_debug_null_safe(void)
 	TEST_END();
 }
 
+static void
+test_vm_create_returns_non_null(void)
+{
+	TEST_BEGIN("VM create returns non-NULL");
+	cdsl_schema_t* schema = cdsl_schema_create();
+	cdsl_vm_t* vm = cdsl_vm_create(schema);
+	TEST_ASSERT_NOT_NULL(vm, "cdsl_vm_create should return non-NULL");
+	cdsl_vm_free(vm);
+	cdsl_schema_free(schema);
+	TEST_END();
+}
+
 int
 main()
 {
@@ -193,6 +205,7 @@ main()
 	test_vm_stats();
 	test_vm_execute_with_null_vm();
 	test_vm_set_debug_null_safe();
+	test_vm_create_returns_non_null();
 	TEST_SUMMARY();
 	TEST_EXIT();
 }

@@ -544,20 +544,6 @@ cdsl_context_load_json(cdsl_context_t* ctx, const char* json_str)
 	return 1;
 }
 
-cdsl_vm_t*
-cdsl_vm_create(const cdsl_schema_t* schema)
-{
-	cdsl_vm_t* vm = calloc(1, sizeof(*vm));
-	if (!vm) {
-		return NULL;
-	}
-	vm->schema = schema;
-	vm->debug_enabled = 0;
-	vm->max_expr_depth = CDSL_MAX_EXPR_DEPTH;
-	cdsl_vm_register_builtins(vm);
-	return vm;
-}
-
 void
 cdsl_vm_set_debug(cdsl_vm_t* vm, int enabled)
 {
