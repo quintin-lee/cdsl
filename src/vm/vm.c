@@ -24,6 +24,7 @@ cdsl_vm_create(const cdsl_schema_t* schema)
 	vm->schema = schema;
 	vm->debug_enabled = 0;
 	vm->max_expr_depth = CDSL_MAX_EXPR_DEPTH;
+	vm->last_error = NULL;
 	if (CDSL_RWLOCK_INIT(&vm->rwlock) != 0) {
 		free(vm);
 		return NULL;
@@ -52,6 +53,7 @@ cdsl_vm_free(cdsl_vm_t* vm)
 		free(fn);
 		fn = next;
 	}
+	cdsl_error_free(vm->last_error);
 	CDSL_RWLOCK_DESTROY(&vm->rwlock);
 	free(vm);
 }
