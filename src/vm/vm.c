@@ -212,4 +212,115 @@ cdsl_vm_set_trace_callback(cdsl_vm_t* vm, cdsl_trace_cb_t cb, void* user_data)
 	}
 }
 
+/* ---- Context Handle ---- */
+
+cdsl_ctx_t*
+cdsl_ctx_create(const cdsl_schema_t* schema)
+{
+	cdsl_ctx_t* c = calloc(1, sizeof(*c));
+	if (!c) {
+		return NULL;
+	}
+	int owned_schema = 0;
+	cdsl_schema_t* owned_schema_ptr = NULL;
+	if (!schema) {
+		schema = cdsl_schema_create();
+		if (!schema) {
+			free(c);
+			return NULL;
+		}
+		owned_schema = 1;
+		owned_schema_ptr = (cdsl_schema_t*)schema;
+	}
+	c->schema = schema;
+	c->vm = cdsl_vm_create(schema);
+	if (!c->vm) {
+		if (owned_schema) {
+			cdsl_schema_free(owned_schema_ptr);
+		}
+		free(c);
+		return NULL;
+	}
+	c->ctx = cdsl_context_create(schema);
+	if (!c->ctx) {
+		cdsl_vm_free(c->vm);
+		if (owned_schema) {
+			cdsl_schema_free(owned_schema_ptr);
+		}
+		free(c);
+		return NULL;
+	}
+	return c;
+}
+
+void
+cdsl_ctx_free(cdsl_ctx_t* c)
+{
+	if (!c) {
+		return;
+	}
+	if (c->ctx) {
+		cdsl_context_free(c->ctx);
+	}
+	if (c->vm) {
+		cdsl_vm_free(c->vm);
+	}
+	if (c->schema) {
+		cdsl_schema_free((cdsl_schema_t*)c->schema);
+	}
+	free(c);
+}
+
+cdsl_vm_t*
+cdsl_ctx_vm(cdsl_ctx_t* c)
+{
+	return c ? c->vm : NULL;
+}
+
+const cdsl_schema_t*
+cdsl_ctx_schema(cdsl_ctx_t* c)
+{
+	return c ? c->schema : NULL;
+}
+
+cdsl_context_t*
+cdsl_ctx_context(cdsl_ctx_t* c)
+{
+	return c ? c->ctx : NULL;
+}
+
+void
+cdsl_ctx_register_action(cdsl_ctx_t* c, const char* name, cdsl_action_cb_t cb)
+{
+	if (c && c->vm) {
+		cdsl_vm_register_action(c->vm, name, cb);
+	}
+}
+
+void
+cdsl_ctx_register_function(cdsl_ctx_t* c, const char* name, cdsl_func_cb_t cb)
+{
+	if (c && c->vm) {
+		cdsl_vm_register_function(c->vm, name, cb);
+	}
+}
+
+cdsl_rule_report_t*
+cdsl_ctx_execute(cdsl_ctx_t* c, const cdsl_rule_t* rule)
+{
+	if (!c || !c->vm || !c->ctx || !rule) {
+		return NULL;
+	}
+	return cdsl_vm_execute(c->vm, rule, c->ctx);
+}
+
+cdsl_ruleset_report_t*
+cdsl_ctx_execute_ruleset(cdsl_ctx_t* c, cdsl_ruleset_t* set, int thread_count)
+{
+	if (!c || !c->vm || !c->ctx || !set) {
+		return NULL;
+	}
+	return cdsl_vm_execute_ruleset_parallel(c->vm, set, c->ctx, thread_count);
+}
+
 /** @} */

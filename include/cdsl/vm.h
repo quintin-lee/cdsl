@@ -153,9 +153,9 @@ typedef struct cdsl_vm {
  */
 
 typedef struct cdsl_ctx {
-	cdsl_vm_t* vm;	       /**< VM instance */
-	cdsl_schema_t* schema; /**< Schema for type resolution */
-	cdsl_context_t* ctx;   /**< Execution context */
+	cdsl_vm_t* vm;		     /**< VM instance */
+	const cdsl_schema_t* schema; /**< Schema for type resolution */
+	cdsl_context_t* ctx;	     /**< Execution context */
 } cdsl_ctx_t;
 
 /**
@@ -188,7 +188,7 @@ cdsl_vm_t* cdsl_ctx_vm(cdsl_ctx_t* ctx);
  * @param ctx  Context handle
  * @return     Schema pointer, or NULL if ctx is NULL
  */
-cdsl_schema_t* cdsl_ctx_schema(cdsl_ctx_t* ctx);
+const cdsl_schema_t* cdsl_ctx_schema(cdsl_ctx_t* ctx);
 
 /**
  * @brief Access the underlying execution context.
