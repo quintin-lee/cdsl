@@ -37,7 +37,7 @@
 /* Column tracking: maintained manually because Flex's built-in yycolumn
    is unreliable in reentrant mode. */
 #undef yycolumn
-_Thread_local int yycolumn = 0;
+THREAD_LOCAL int yycolumn = 0;
 
 #define YY_USER_ACTION yycolumn += yyleng;
 %}

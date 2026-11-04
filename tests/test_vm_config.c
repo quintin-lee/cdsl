@@ -340,11 +340,13 @@ parallel_execute_worker(void* arg)
 		return NULL;
 	}
 
-	/* Create a few simple rules in the ruleset */
+	/* Create a few simple rules in the ruleset.
+	 * The first rule calls the registered "counter" function to exercise
+	 * the BC_CALL read-lock path where func_found == 1 (match found). */
 	const char* rule_dsls[] = {
-	    "RULE r1 { WHEN true THEN block(\"a\") }",
+	    "RULE r1 { WHEN counter() == 42 THEN block(\"a\") }",
 	    "RULE r2 { WHEN true THEN block(\"b\") }",
-	    "RULE r3 { WHEN true THEN block(\"c\") }",
+	    "RULE r3 { WHEN counter() == 42 THEN block(\"c\") }",
 	};
 	for (int i = 0; i < 3; i++) {
 		cdsl_rule_t* rule = cdsl_parse_string(rule_dsls[i], NULL);

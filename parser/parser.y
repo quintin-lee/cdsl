@@ -267,6 +267,8 @@ argument_list_nonempty:
  */
 void yyerror(yyscan_t scanner, cdsl_rule_t** rule_ptr, int* error_count, struct cdsl_error_list* error_list, const char *s) {
 	(void)rule_ptr;
+	(void)error_count;
+	(void)error_list;
 	int line = yyget_lineno(scanner);
 	int col = yyget_column(scanner);
 	/* Sanity-check: scanner state can be unreliable during Bison error
@@ -275,22 +277,25 @@ void yyerror(yyscan_t scanner, cdsl_rule_t** rule_ptr, int* error_count, struct 
 	if (col < 0) col = 0;
 	char* hint = NULL;
 
-	/* Generate actionable hints based on Bison's error message */
+	/* Generate actionable hints based on Bison's error message.
+	   Note: Bison error message format varies across versions, so hints
+	   are best-effort and may not appear with all Bison versions. */
 	if (s) {
-		if (strstr(s, "syntax error, unexpected THEN") != NULL) {
+		if (strstr(s, "THEN") != NULL && strstr(s, "unexpected") != NULL) {
 			hint = strdup("Expected 'THEN' after WHEN condition");
-		} else if (strstr(s, "syntax error, unexpected '}'") != NULL ||
-			   strstr(s, "syntax error, unexpected RBRACE") != NULL) {
+		} else if ((strstr(s, "RBRACE") != NULL || strstr(s, "}") != NULL) &&
+			   strstr(s, "unexpected") != NULL) {
 			hint = strdup("Unexpected '}'; check for missing action or extra brace");
-		} else if (strstr(s, "syntax error, unexpected IDENTIFIER") != NULL) {
+		} else if (strstr(s, "IDENTIFIER") != NULL &&
+			   strstr(s, "unexpected") != NULL) {
 			hint = strdup("Unexpected identifier; check for typo or missing operator");
-		} else if (strstr(s, "syntax error, unexpected RULE") != NULL ||
-			   strstr(s, "syntax error, unexpected TEMPLATE") != NULL) {
+		} else if ((strstr(s, "RULE") != NULL || strstr(s, "TEMPLATE") != NULL) &&
+			   strstr(s, "unexpected") != NULL) {
 			hint = strdup("Unexpected rule start; check for missing closing brace on previous rule");
-		} else if (strstr(s, "syntax error, expecting") != NULL) {
+		} else if (strstr(s, "expecting") != NULL) {
 			if (strstr(s, "THEN") != NULL) {
 				hint = strdup("Expected 'THEN' after condition expression");
-			} else if (strstr(s, "'}'") != NULL) {
+			} else if (strstr(s, "}") != NULL || strstr(s, "RBRACE") != NULL) {
 				hint = strdup("Expected an action or expression before '}'");
 			}
 		}
