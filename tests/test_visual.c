@@ -193,6 +193,186 @@ test_visualization_performance()
 	TEST_VISUAL_END();
 }
 
+// Test 6: Visualize rule with array expression
+static void
+test_visualize_array_expression(void)
+{
+	TEST_VISUAL_BEGIN("Visualize rule with array expression");
+
+	cdsl_schema_t* schema = cdsl_schema_create();
+	cdsl_schema_register_var(schema, "items", CDSL_TYPE_ARRAY);
+
+	cdsl_rule_t* rule =
+	    cdsl_parse_string("RULE check_items { WHEN count(items) == 3 THEN log(\"ok\") }", NULL);
+	TEST_ASSERT_NOT_NULL(rule, "Rule should parse");
+
+	char* dot = cdsl_rule_to_dot(rule);
+	TEST_ASSERT_NOT_NULL(dot, "Dot output should not be NULL");
+	TEST_ASSERT(strstr(dot, "digraph") != NULL, "Should contain digraph");
+
+	free(dot);
+	cdsl_free_rule(rule);
+	cdsl_schema_free(schema);
+	TEST_VISUAL_END();
+}
+
+// Test 7: Visualize rule with unary expression
+static void
+test_visualize_unary_expression(void)
+{
+	TEST_VISUAL_BEGIN("Visualize rule with unary expression");
+
+	cdsl_schema_t* schema = cdsl_schema_create();
+	cdsl_schema_register_var(schema, "active", CDSL_TYPE_BOOL);
+
+	cdsl_rule_t* rule =
+	    cdsl_parse_string("RULE check_active { WHEN !active THEN log(\"inactive\") }", NULL);
+	TEST_ASSERT_NOT_NULL(rule, "Rule should parse");
+
+	char* dot = cdsl_rule_to_dot(rule);
+	TEST_ASSERT_NOT_NULL(dot, "Dot output should not be NULL");
+	TEST_ASSERT(strstr(dot, "NOT") != NULL, "Should contain NOT operator");
+
+	free(dot);
+	cdsl_free_rule(rule);
+	cdsl_schema_free(schema);
+	TEST_VISUAL_END();
+}
+
+// Test 8: Visualize rule with function call expression
+static void
+test_visualize_call_expression(void)
+{
+	TEST_VISUAL_BEGIN("Visualize rule with function call expression");
+
+	cdsl_schema_t* schema = cdsl_schema_create();
+	cdsl_schema_register_var(schema, "name", CDSL_TYPE_STRING);
+
+	cdsl_rule_t* rule =
+	    cdsl_parse_string("RULE check_name { WHEN strlen(name) > 5 THEN log(\"long\") }", NULL);
+	TEST_ASSERT_NOT_NULL(rule, "Rule should parse");
+
+	char* dot = cdsl_rule_to_dot(rule);
+	TEST_ASSERT_NOT_NULL(dot, "Dot output should not be NULL");
+	TEST_ASSERT(strstr(dot, "strlen") != NULL, "Should contain strlen call");
+
+	free(dot);
+	cdsl_free_rule(rule);
+	cdsl_schema_free(schema);
+	TEST_VISUAL_END();
+}
+
+// Test 9: Visualize metric rule
+static void
+test_visualize_metric_rule(void)
+{
+	TEST_VISUAL_BEGIN("Visualize metric rule");
+
+	cdsl_schema_t* schema = cdsl_schema_create();
+	cdsl_schema_register_var(schema, "score", CDSL_TYPE_INT);
+	cdsl_schema_register_action(schema, "alert", CDSL_TYPE_VOID, 1, CDSL_TYPE_STRING);
+
+	cdsl_rule_t* rule =
+	    cdsl_parse_string("RULE score_check { METRIC m1 { META { weight = \"100\" } CASE score "
+			      "> 90 THEN alert(\"high\") DEFAULT alert(\"normal\") } }",
+			      NULL);
+	TEST_ASSERT_NOT_NULL(rule, "Rule should parse");
+
+	char* dot = cdsl_rule_to_dot(rule);
+	TEST_ASSERT_NOT_NULL(dot, "Dot output should not be NULL");
+	TEST_ASSERT(strstr(dot, "metric") != NULL, "Should contain metric node");
+	TEST_ASSERT(strstr(dot, "CASE") != NULL, "Should contain CASE node");
+	TEST_ASSERT(strstr(dot, "DEFAULT") != NULL, "Should contain DEFAULT node");
+
+	free(dot);
+	cdsl_free_rule(rule);
+	cdsl_schema_free(schema);
+	TEST_VISUAL_END();
+}
+
+// Test 10: Rule to dot file
+static void
+test_visualize_rule_to_dot_file(void)
+{
+	TEST_VISUAL_BEGIN("Visualize rule to dot file");
+
+	cdsl_schema_t* schema = cdsl_schema_create();
+	cdsl_schema_register_var(schema, "x", CDSL_TYPE_INT);
+
+	cdsl_rule_t* rule =
+	    cdsl_parse_string("RULE file_test { WHEN x > 0 THEN log(\"ok\") }", NULL);
+	TEST_ASSERT_NOT_NULL(rule, "Rule should parse");
+
+	const char* filepath = "/tmp/test_rule.dot";
+	int result = cdsl_rule_to_dot_file(rule, filepath);
+	TEST_ASSERT_INT(result, 1, "Rule to dot file should return 1");
+
+	// Verify file was created
+	FILE* f = fopen(filepath, "r");
+	TEST_ASSERT_NOT_NULL(f, "Dot file should exist");
+	if (f) {
+		char buf[256];
+		size_t n = fread(buf, 1, sizeof(buf) - 1, f);
+		buf[n] = '\0';
+		fclose(f);
+		TEST_ASSERT(strstr(buf, "digraph") != NULL, "File should contain digraph");
+		remove(filepath);
+	}
+
+	cdsl_free_rule(rule);
+	cdsl_schema_free(schema);
+	TEST_VISUAL_END();
+}
+
+// Test 11: Ruleset to dot file
+static void
+test_visualize_ruleset_to_dot_file(void)
+{
+	TEST_VISUAL_BEGIN("Visualize ruleset to dot file");
+
+	cdsl_schema_t* schema = cdsl_schema_create();
+	cdsl_schema_register_var(schema, "x", CDSL_TYPE_INT);
+
+	cdsl_rule_t* rule =
+	    cdsl_parse_string("RULE file_test { WHEN x > 0 THEN log(\"ok\") }", NULL);
+	TEST_ASSERT_NOT_NULL(rule, "Rule should parse");
+
+	cdsl_ruleset_t* ruleset = cdsl_ruleset_create();
+	cdsl_ruleset_add(ruleset, rule, 1);
+
+	const char* filepath = "/tmp/test_ruleset.dot";
+	int result = cdsl_ruleset_to_dot_file(ruleset, filepath);
+	TEST_ASSERT_INT(result, 1, "Ruleset to dot file should return 1");
+
+	// Verify file was created
+	FILE* f = fopen(filepath, "r");
+	TEST_ASSERT_NOT_NULL(f, "Dot file should exist");
+	if (f) {
+		char buf[256];
+		size_t n = fread(buf, 1, sizeof(buf) - 1, f);
+		buf[n] = '\0';
+		fclose(f);
+		TEST_ASSERT(strstr(buf, "digraph") != NULL, "File should contain digraph");
+		remove(filepath);
+	}
+
+	cdsl_ruleset_free(ruleset);
+	cdsl_schema_free(schema);
+	TEST_VISUAL_END();
+}
+
+// Test 13: NULL rule visualization
+static void
+test_visualize_null_rule(void)
+{
+	TEST_VISUAL_BEGIN("Visualize NULL rule");
+
+	char* dot = cdsl_rule_to_dot(NULL);
+	TEST_ASSERT_NULL(dot, "NULL rule should return NULL");
+
+	TEST_VISUAL_END();
+}
+
 int
 main()
 {
@@ -204,6 +384,14 @@ main()
 	test_empty_ruleset_visualization();
 	test_visualization_error_handling();
 	test_visualization_performance();
+	test_visualize_array_expression();
+	test_visualize_unary_expression();
+	test_visualize_call_expression();
+	test_visualize_metric_rule();
+
+	test_visualize_rule_to_dot_file();
+	test_visualize_ruleset_to_dot_file();
+	test_visualize_null_rule();
 
 	TEST_SUMMARY();
 	TEST_EXIT();
