@@ -23,28 +23,34 @@ copy_expr(const cdsl_expr_node_t* expr)
 	}
 	switch (expr->type) {
 	case CDSL_EXPR_INT:
-		return cdsl_create_expr_int(expr->data.int_val);
+		return cdsl_create_expr_int(expr->data.int_val, expr->line, expr->column);
 	case CDSL_EXPR_FLOAT:
-		return cdsl_create_expr_float(expr->data.float_val);
+		return cdsl_create_expr_float(expr->data.float_val, expr->line, expr->column);
 	case CDSL_EXPR_BOOL:
-		return cdsl_create_expr_bool(expr->data.bool_val);
+		return cdsl_create_expr_bool(expr->data.bool_val, expr->line, expr->column);
 	case CDSL_EXPR_ID:
-		return cdsl_create_expr_id(strdup(expr->data.id_val));
+		return cdsl_create_expr_id(strdup(expr->data.id_val), expr->line, expr->column);
 	case CDSL_EXPR_STRING:
-		return cdsl_create_expr_string(strdup(expr->data.string_val));
+		return cdsl_create_expr_string(
+		    strdup(expr->data.string_val), expr->line, expr->column);
 	case CDSL_EXPR_UNARY:
 		return cdsl_create_expr_unary(expr->data.unary.op,
-					      copy_expr(expr->data.unary.expr));
+					      copy_expr(expr->data.unary.expr),
+					      expr->line,
+					      expr->column);
 	case CDSL_EXPR_BINARY:
 		return cdsl_create_expr_binary(expr->data.binary.op,
 					       copy_expr(expr->data.binary.left),
-					       copy_expr(expr->data.binary.right));
+					       copy_expr(expr->data.binary.right),
+					       expr->line,
+					       expr->column);
 	case CDSL_EXPR_CALL: {
 		cdsl_arg_node_t* args = NULL;
 		for (cdsl_arg_node_t* a = expr->data.call.args; a; a = a->next) {
 			args = cdsl_append_arg(args, copy_expr(a->expr));
 		}
-		return cdsl_create_expr_call(strdup(expr->data.call.func_name), args);
+		return cdsl_create_expr_call(
+		    strdup(expr->data.call.func_name), args, expr->line, expr->column);
 	}
 	default:
 		return NULL;
@@ -61,7 +67,7 @@ copy_action(const cdsl_action_node_t* action)
 	for (cdsl_arg_node_t* a = action->args; a; a = a->next) {
 		args = cdsl_append_arg(args, copy_expr(a->expr));
 	}
-	return cdsl_create_action(strdup(action->action_name), args);
+	return cdsl_create_action(strdup(action->action_name), args, action->line, action->column);
 }
 
 cdsl_metric_node_t*

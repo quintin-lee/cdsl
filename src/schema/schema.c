@@ -157,12 +157,13 @@ resolve_expr_type(cdsl_expr_node_t* expr,
 		return CDSL_TYPE_VOID;
 	}
 
-#define REPORT_ERR(kind, msg, hint)                                                                \
+#define REPORT_ERR(kind, msg, hint, line, column)                                                  \
 	do {                                                                                       \
 		if (err && errsz > 0)                                                              \
 			snprintf(err, errsz, "%s", msg);                                           \
 		if (error_list)                                                                    \
-			cdsl_error_list_add(error_list, cdsl_error_create(kind, 0, 0, msg, hint)); \
+			cdsl_error_list_add(error_list,                                            \
+					    cdsl_error_create(kind, line, column, msg, hint));     \
 	} while (0)
 
 	switch (expr->type) {
@@ -181,7 +182,11 @@ resolve_expr_type(cdsl_expr_node_t* expr,
 		if (!v) {
 			char msg[256];
 			snprintf(msg, sizeof(msg), "Unknown variable '%s'", expr->data.id_val);
-			REPORT_ERR(CDSL_ERR_SEMANTIC, msg, "Check schema registration");
+			REPORT_ERR(CDSL_ERR_SEMANTIC,
+				   msg,
+				   "Check schema registration",
+				   expr->line,
+				   expr->column);
 			return CDSL_TYPE_VOID;
 		}
 		return v->type;
@@ -194,8 +199,11 @@ resolve_expr_type(cdsl_expr_node_t* expr,
 		}
 		if (expr->data.unary.op == CDSL_OP_NOT) {
 			if (t != CDSL_TYPE_BOOL) {
-				REPORT_ERR(
-				    CDSL_ERR_TYPE, "NOT operator requires boolean operand", NULL);
+				REPORT_ERR(CDSL_ERR_TYPE,
+					   "NOT operator requires boolean operand",
+					   NULL,
+					   expr->line,
+					   expr->column);
 				return CDSL_TYPE_VOID;
 			}
 			return CDSL_TYPE_BOOL;
@@ -204,7 +212,9 @@ resolve_expr_type(cdsl_expr_node_t* expr,
 			if (t != CDSL_TYPE_INT && t != CDSL_TYPE_FLOAT && t != CDSL_TYPE_LONG) {
 				REPORT_ERR(CDSL_ERR_TYPE,
 					   "Negation operator requires numeric operand",
-					   NULL);
+					   NULL,
+					   expr->line,
+					   expr->column);
 				return CDSL_TYPE_VOID;
 			}
 			return t;
@@ -228,7 +238,9 @@ resolve_expr_type(cdsl_expr_node_t* expr,
 			if (lt != CDSL_TYPE_BOOL || rt != CDSL_TYPE_BOOL) {
 				REPORT_ERR(CDSL_ERR_TYPE,
 					   "Logical operators require boolean operands",
-					   NULL);
+					   NULL,
+					   expr->line,
+					   expr->column);
 				return CDSL_TYPE_VOID;
 			}
 			return CDSL_TYPE_BOOL;
@@ -248,7 +260,9 @@ resolve_expr_type(cdsl_expr_node_t* expr,
 				}
 				REPORT_ERR(CDSL_ERR_TYPE,
 					   "DATE arithmetic requires INT/LONG or DATE operand",
-					   NULL);
+					   NULL,
+					   expr->line,
+					   expr->column);
 				return CDSL_TYPE_VOID;
 			}
 			if (rt == CDSL_TYPE_DATE && op == CDSL_OP_ADD &&
@@ -261,7 +275,9 @@ resolve_expr_type(cdsl_expr_node_t* expr,
 				if (lt == CDSL_TYPE_DATE || rt == CDSL_TYPE_DATE) {
 					REPORT_ERR(CDSL_ERR_TYPE,
 						   "DATE does not support multiplication/division",
-						   NULL);
+						   NULL,
+						   expr->line,
+						   expr->column);
 					return CDSL_TYPE_VOID;
 				}
 			}
@@ -271,7 +287,9 @@ resolve_expr_type(cdsl_expr_node_t* expr,
 			     rt != CDSL_TYPE_LONG)) {
 				REPORT_ERR(CDSL_ERR_TYPE,
 					   "Arithmetic operators require numeric operands",
-					   NULL);
+					   NULL,
+					   expr->line,
+					   expr->column);
 				return CDSL_TYPE_VOID;
 			}
 			return (lt == CDSL_TYPE_FLOAT || rt == CDSL_TYPE_FLOAT) ? CDSL_TYPE_FLOAT
@@ -286,15 +304,20 @@ resolve_expr_type(cdsl_expr_node_t* expr,
 		    !(lt == CDSL_TYPE_LONG && rt == CDSL_TYPE_INT) &&
 		    !(lt == CDSL_TYPE_FLOAT && rt == CDSL_TYPE_LONG) &&
 		    !(lt == CDSL_TYPE_LONG && rt == CDSL_TYPE_FLOAT)) {
-			REPORT_ERR(
-			    CDSL_ERR_TYPE, "Type mismatch: cannot compare different types", NULL);
+			REPORT_ERR(CDSL_ERR_TYPE,
+				   "Type mismatch: cannot compare different types",
+				   NULL,
+				   expr->line,
+				   expr->column);
 			return CDSL_TYPE_VOID;
 		}
 
 		if (lt == CDSL_TYPE_STRING && op != CDSL_OP_EQ && op != CDSL_OP_NE) {
 			REPORT_ERR(CDSL_ERR_TYPE,
 				   "String only supports equality comparisons (==, !=)",
-				   NULL);
+				   NULL,
+				   expr->line,
+				   expr->column);
 			return CDSL_TYPE_VOID;
 		}
 
@@ -306,7 +329,11 @@ resolve_expr_type(cdsl_expr_node_t* expr,
 			char msg[256];
 			snprintf(
 			    msg, sizeof(msg), "Unknown function '%s'", expr->data.call.func_name);
-			REPORT_ERR(CDSL_ERR_SEMANTIC, msg, "Register function in schema");
+			REPORT_ERR(CDSL_ERR_SEMANTIC,
+				   msg,
+				   "Register function in schema",
+				   expr->line,
+				   expr->column);
 			return CDSL_TYPE_VOID;
 		}
 		int nargs = count_args(expr->data.call.args);
@@ -318,7 +345,7 @@ resolve_expr_type(cdsl_expr_node_t* expr,
 				 expr->data.call.func_name,
 				 a->arg_count,
 				 nargs);
-			REPORT_ERR(CDSL_ERR_TYPE, msg, NULL);
+			REPORT_ERR(CDSL_ERR_TYPE, msg, NULL, expr->line, expr->column);
 			return CDSL_TYPE_VOID;
 		}
 		cdsl_arg_node_t* arg = expr->data.call.args;
@@ -336,7 +363,7 @@ resolve_expr_type(cdsl_expr_node_t* expr,
 					 "Arg %d type mismatch for function '%s'",
 					 i + 1,
 					 expr->data.call.func_name);
-				REPORT_ERR(CDSL_ERR_TYPE, msg, NULL);
+				REPORT_ERR(CDSL_ERR_TYPE, msg, NULL, expr->line, expr->column);
 				return CDSL_TYPE_VOID;
 			}
 			arg = arg->next;
@@ -361,12 +388,13 @@ verify_action(cdsl_action_node_t* action,
 		return true;
 	}
 
-#define REPORT_ERR(kind, msg, hint)                                                                \
+#define REPORT_ERR(kind, msg, hint, line, column)                                                  \
 	do {                                                                                       \
 		if (err && errsz > 0)                                                              \
 			snprintf(err, errsz, "%s: %s", context, msg);                              \
 		if (error_list)                                                                    \
-			cdsl_error_list_add(error_list, cdsl_error_create(kind, 0, 0, msg, hint)); \
+			cdsl_error_list_add(error_list,                                            \
+					    cdsl_error_create(kind, line, column, msg, hint));     \
 	} while (0)
 
 	cdsl_action_schema_t* a = find_action(schema, action->action_name);
@@ -376,14 +404,14 @@ verify_action(cdsl_action_node_t* action,
 			 sizeof(hint),
 			 "Register action '%s' via cdsl_schema_register_action()",
 			 action->action_name);
-		REPORT_ERR(CDSL_ERR_SEMANTIC, "Unknown action", hint);
+		REPORT_ERR(CDSL_ERR_SEMANTIC, "Unknown action", hint, action->line, action->column);
 		return false;
 	}
 	int nargs = count_args(action->args);
 	if (nargs != a->arg_count) {
 		char msg[256];
 		snprintf(msg, sizeof(msg), "Action expects %d args, got %d", a->arg_count, nargs);
-		REPORT_ERR(CDSL_ERR_TYPE, msg, NULL);
+		REPORT_ERR(CDSL_ERR_TYPE, msg, NULL, action->line, action->column);
 		return false;
 	}
 	cdsl_arg_node_t* arg = action->args;
@@ -396,7 +424,7 @@ verify_action(cdsl_action_node_t* action,
 		    !(a->arg_types[i] == CDSL_TYPE_FLOAT && t == CDSL_TYPE_INT)) {
 			char msg[256];
 			snprintf(msg, sizeof(msg), "Arg %d type mismatch", i + 1);
-			REPORT_ERR(CDSL_ERR_TYPE, msg, NULL);
+			REPORT_ERR(CDSL_ERR_TYPE, msg, NULL, action->line, action->column);
 			return false;
 		}
 		arg = arg->next;
@@ -446,8 +474,9 @@ cdsl_verify_rule_detailed(const cdsl_rule_t* rule, const cdsl_schema_t* schema)
 					cdsl_error_list_add(
 					    errors,
 					    cdsl_error_create(CDSL_ERR_TYPE,
-							      0,
-							      0,
+							      c->condition ? c->condition->line : 0,
+							      c->condition ? c->condition->column
+									   : 0,
 							      "Invalid case condition type",
 							      m->name));
 				}

@@ -45,10 +45,12 @@ ast_alloc(size_t size)
 }
 
 cdsl_expr_node_t*
-cdsl_create_expr_id(char* id)
+cdsl_create_expr_id(char* id, int line, int column)
 {
 	cdsl_expr_node_t* n = ast_alloc(sizeof(*n));
 	n->type = CDSL_EXPR_ID;
+	n->line = line;
+	n->column = column;
 	if (current_ast_arena) {
 		n->data.id_val = cdsl_arena_strdup(current_ast_arena, id);
 		free(id);
@@ -59,37 +61,45 @@ cdsl_create_expr_id(char* id)
 }
 
 cdsl_expr_node_t*
-cdsl_create_expr_int(int val)
+cdsl_create_expr_int(int val, int line, int column)
 {
 	cdsl_expr_node_t* n = ast_alloc(sizeof(*n));
 	n->type = CDSL_EXPR_INT;
+	n->line = line;
+	n->column = column;
 	n->data.int_val = val;
 	return n;
 }
 
 cdsl_expr_node_t*
-cdsl_create_expr_float(double val)
+cdsl_create_expr_float(double val, int line, int column)
 {
 	cdsl_expr_node_t* n = ast_alloc(sizeof(*n));
 	n->type = CDSL_EXPR_FLOAT;
+	n->line = line;
+	n->column = column;
 	n->data.float_val = val;
 	return n;
 }
 
 cdsl_expr_node_t*
-cdsl_create_expr_bool(int val)
+cdsl_create_expr_bool(int val, int line, int column)
 {
 	cdsl_expr_node_t* n = ast_alloc(sizeof(*n));
 	n->type = CDSL_EXPR_BOOL;
+	n->line = line;
+	n->column = column;
 	n->data.bool_val = val;
 	return n;
 }
 
 cdsl_expr_node_t*
-cdsl_create_expr_string(char* val)
+cdsl_create_expr_string(char* val, int line, int column)
 {
 	cdsl_expr_node_t* n = ast_alloc(sizeof(*n));
 	n->type = CDSL_EXPR_STRING;
+	n->line = line;
+	n->column = column;
 	if (current_ast_arena) {
 		n->data.string_val = cdsl_arena_strdup(current_ast_arena, val);
 		free(val);
@@ -100,37 +110,46 @@ cdsl_create_expr_string(char* val)
 }
 
 cdsl_expr_node_t*
-cdsl_create_expr_date(time_t val)
+cdsl_create_expr_date(time_t val, int line, int column)
 {
 	cdsl_expr_node_t* n = ast_alloc(sizeof(*n));
 	n->type = CDSL_EXPR_DATE;
+	n->line = line;
+	n->column = column;
 	n->data.date_val = val;
 	return n;
 }
 
 cdsl_expr_node_t*
-cdsl_create_expr_long(int64_t val)
+cdsl_create_expr_long(int64_t val, int line, int column)
 {
 	cdsl_expr_node_t* n = ast_alloc(sizeof(*n));
 	n->type = CDSL_EXPR_LONG;
+	n->line = line;
+	n->column = column;
 	n->data.long_val = val;
 	return n;
 }
 
 cdsl_expr_node_t*
-cdsl_create_expr_array(cdsl_arg_node_t* elements)
+cdsl_create_expr_array(cdsl_arg_node_t* elements, int line, int column)
 {
 	cdsl_expr_node_t* n = ast_alloc(sizeof(*n));
 	n->type = CDSL_EXPR_ARRAY;
+	n->line = line;
+	n->column = column;
 	n->data.array.elements = elements;
 	return n;
 }
 
 cdsl_expr_node_t*
-cdsl_create_expr_binary(cdsl_op_t op, cdsl_expr_node_t* left, cdsl_expr_node_t* right)
+cdsl_create_expr_binary(
+    cdsl_op_t op, cdsl_expr_node_t* left, cdsl_expr_node_t* right, int line, int column)
 {
 	cdsl_expr_node_t* n = ast_alloc(sizeof(*n));
 	n->type = CDSL_EXPR_BINARY;
+	n->line = line;
+	n->column = column;
 	n->data.binary.op = op;
 	n->data.binary.left = left;
 	n->data.binary.right = right;
@@ -138,20 +157,24 @@ cdsl_create_expr_binary(cdsl_op_t op, cdsl_expr_node_t* left, cdsl_expr_node_t* 
 }
 
 cdsl_expr_node_t*
-cdsl_create_expr_unary(cdsl_op_t op, cdsl_expr_node_t* expr)
+cdsl_create_expr_unary(cdsl_op_t op, cdsl_expr_node_t* expr, int line, int column)
 {
 	cdsl_expr_node_t* n = ast_alloc(sizeof(*n));
 	n->type = CDSL_EXPR_UNARY;
+	n->line = line;
+	n->column = column;
 	n->data.unary.op = op;
 	n->data.unary.expr = expr;
 	return n;
 }
 
 cdsl_expr_node_t*
-cdsl_create_expr_call(char* func_name, cdsl_arg_node_t* args)
+cdsl_create_expr_call(char* func_name, cdsl_arg_node_t* args, int line, int column)
 {
 	cdsl_expr_node_t* n = ast_alloc(sizeof(*n));
 	n->type = CDSL_EXPR_CALL;
+	n->line = line;
+	n->column = column;
 	if (current_ast_arena) {
 		n->data.call.func_name = cdsl_arena_strdup(current_ast_arena, func_name);
 		free(func_name);
@@ -163,10 +186,12 @@ cdsl_create_expr_call(char* func_name, cdsl_arg_node_t* args)
 }
 
 cdsl_expr_node_t*
-cdsl_create_expr_error(void)
+cdsl_create_expr_error(int line, int column)
 {
 	cdsl_expr_node_t* n = ast_alloc(sizeof(*n));
 	n->type = CDSL_EXPR_ERROR;
+	n->line = line;
+	n->column = column;
 	/* Zero-initialize the union so no dangling pointers */
 	memset(&n->data, 0, sizeof(n->data));
 	return n;
@@ -196,7 +221,7 @@ cdsl_append_arg(cdsl_arg_node_t* list, cdsl_expr_node_t* expr)
 }
 
 cdsl_action_node_t*
-cdsl_create_action(char* name, cdsl_arg_node_t* args)
+cdsl_create_action(char* name, cdsl_arg_node_t* args, int line, int column)
 {
 	cdsl_action_node_t* a = ast_alloc(sizeof(*a));
 	if (current_ast_arena) {
@@ -206,6 +231,8 @@ cdsl_create_action(char* name, cdsl_arg_node_t* args)
 		a->action_name = name;
 	}
 	a->args = args;
+	a->line = line;
+	a->column = column;
 	return a;
 }
 
@@ -299,7 +326,9 @@ cdsl_rule_t*
 cdsl_create_simple_rule(char* name,
 			cdsl_meta_item_t* meta,
 			cdsl_expr_node_t* when,
-			cdsl_action_node_t* then)
+			cdsl_action_node_t* then,
+			int line,
+			int column)
 {
 	cdsl_rule_t* r = ast_alloc(sizeof(*r));
 	if (current_ast_arena) {
@@ -312,11 +341,14 @@ cdsl_create_simple_rule(char* name,
 	r->when_expr = when;
 	r->then_action = then;
 	r->arena = current_ast_arena;
+	r->line = line;
+	r->column = column;
 	return r;
 }
 
 cdsl_rule_t*
-cdsl_create_metric_rule(char* name, cdsl_meta_item_t* meta, cdsl_metric_node_t* metrics)
+cdsl_create_metric_rule(
+    char* name, cdsl_meta_item_t* meta, cdsl_metric_node_t* metrics, int line, int column)
 {
 	cdsl_rule_t* r = ast_alloc(sizeof(*r));
 	if (current_ast_arena) {
@@ -328,6 +360,8 @@ cdsl_create_metric_rule(char* name, cdsl_meta_item_t* meta, cdsl_metric_node_t* 
 	r->meta_list = meta;
 	r->metrics = metrics;
 	r->arena = current_ast_arena;
+	r->line = line;
+	r->column = column;
 	return r;
 }
 
@@ -335,7 +369,9 @@ cdsl_rule_t*
 cdsl_create_extends_rule(char* name,
 			 char* template_name,
 			 cdsl_meta_item_t* meta,
-			 cdsl_metric_node_t* metrics)
+			 cdsl_metric_node_t* metrics,
+			 int line,
+			 int column)
 {
 	cdsl_rule_t* tpl = cdsl_template_get(template_name);
 	if (!tpl) {
@@ -348,7 +384,8 @@ cdsl_create_extends_rule(char* name,
 		}
 		return NULL;
 	}
-	cdsl_rule_t* rule = cdsl_create_metric_rule(name, meta, copy_metric_list(tpl->metrics));
+	cdsl_rule_t* rule =
+	    cdsl_create_metric_rule(name, meta, copy_metric_list(tpl->metrics), line, column);
 	if (rule && metrics) {
 		rule->metrics = cdsl_append_metric(rule->metrics, metrics);
 	}

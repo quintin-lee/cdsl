@@ -48,7 +48,7 @@ test_builtin_string_isolation(void)
 	}
 
 	/* First call: uppercase("abc") -> "ABC" (heap-allocated, owned) */
-	cdsl_expr_node_t* s1 = cdsl_create_expr_string(strdup("abc"));
+	cdsl_expr_node_t* s1 = cdsl_create_expr_string(strdup("abc"), 0, 0);
 	cdsl_arg_node_t* a1 = cdsl_create_arg(s1);
 	cdsl_value_t r1 = up("uppercase", a1, ctx, vm);
 	TEST_ASSERT(r1.type == CDSL_TYPE_STRING && strcmp(r1.data.string_val, "ABC") == 0,
@@ -56,7 +56,7 @@ test_builtin_string_isolation(void)
 	char* first_ptr = r1.data.string_val; /* owned heap buffer */
 
 	/* Second call: uppercase("xyz") -> "XYZ" (independent heap buffer) */
-	cdsl_expr_node_t* s2 = cdsl_create_expr_string(strdup("xyz"));
+	cdsl_expr_node_t* s2 = cdsl_create_expr_string(strdup("xyz"), 0, 0);
 	cdsl_arg_node_t* a2 = cdsl_create_arg(s2);
 	cdsl_value_t r2 = up("uppercase", a2, ctx, vm);
 	TEST_ASSERT(r2.type == CDSL_TYPE_STRING && strcmp(r2.data.string_val, "XYZ") == 0,

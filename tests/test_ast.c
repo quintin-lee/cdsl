@@ -18,7 +18,7 @@ void
 test_ast_create_expr(void)
 {
 	TEST_BEGIN("create int expression");
-	cdsl_expr_node_t* e = cdsl_create_expr_int(42);
+	cdsl_expr_node_t* e = cdsl_create_expr_int(42, 0, 0);
 	TEST_ASSERT_NOT_NULL(e, "expr not null");
 	TEST_ASSERT_INT(e->type, CDSL_EXPR_INT, "expr type is INT");
 	TEST_ASSERT_INT(e->data.int_val, 42, "expr value is 42");
@@ -33,7 +33,7 @@ void
 test_ast_create_string(void)
 {
 	TEST_BEGIN("create string expression");
-	cdsl_expr_node_t* e = cdsl_create_expr_string(strdup("hello"));
+	cdsl_expr_node_t* e = cdsl_create_expr_string(strdup("hello"), 0, 0);
 	TEST_ASSERT_NOT_NULL(e, "expr not null");
 	TEST_ASSERT_STR(e->data.string_val, "hello", "string value");
 	cdsl_free_expr(e);
@@ -47,9 +47,9 @@ void
 test_ast_create_binary(void)
 {
 	TEST_BEGIN("create binary expression");
-	cdsl_expr_node_t* l = cdsl_create_expr_int(10);
-	cdsl_expr_node_t* r = cdsl_create_expr_int(20);
-	cdsl_expr_node_t* b = cdsl_create_expr_binary(CDSL_OP_GT, l, r);
+	cdsl_expr_node_t* l = cdsl_create_expr_int(10, 0, 0);
+	cdsl_expr_node_t* r = cdsl_create_expr_int(20, 0, 0);
+	cdsl_expr_node_t* b = cdsl_create_expr_binary(CDSL_OP_GT, l, r, 0, 0);
 	TEST_ASSERT_NOT_NULL(b, "binary not null");
 	TEST_ASSERT_INT(b->type, CDSL_EXPR_BINARY, "type is BINARY");
 	TEST_ASSERT_INT(b->data.binary.op, CDSL_OP_GT, "op is GT");
@@ -64,9 +64,9 @@ void
 test_ast_create_action(void)
 {
 	TEST_BEGIN("create action with args");
-	cdsl_expr_node_t* e = cdsl_create_expr_string(strdup("reason"));
+	cdsl_expr_node_t* e = cdsl_create_expr_string(strdup("reason"), 0, 0);
 	cdsl_arg_node_t* arg = cdsl_create_arg(e);
-	cdsl_action_node_t* a = cdsl_create_action(strdup("reject"), arg);
+	cdsl_action_node_t* a = cdsl_create_action(strdup("reject"), arg, 0, 0);
 	TEST_ASSERT_NOT_NULL(a, "action not null");
 	TEST_ASSERT_STR(a->action_name, "reject", "action name");
 	TEST_ASSERT_NOT_NULL(a->args, "args not null");
@@ -100,9 +100,9 @@ test_ast_create_rule(void)
 {
 	TEST_BEGIN("create simple rule");
 	cdsl_meta_item_t* meta = cdsl_create_meta_item(strdup("description"), strdup("test rule"));
-	cdsl_expr_node_t* when = cdsl_create_expr_bool(1);
-	cdsl_action_node_t* then = cdsl_create_action(strdup("block"), NULL);
-	cdsl_rule_t* rule = cdsl_create_simple_rule(strdup("test_rule"), meta, when, then);
+	cdsl_expr_node_t* when = cdsl_create_expr_bool(1, 0, 0);
+	cdsl_action_node_t* then = cdsl_create_action(strdup("block"), NULL, 0, 0);
+	cdsl_rule_t* rule = cdsl_create_simple_rule(strdup("test_rule"), meta, when, then, 0, 0);
 	TEST_ASSERT_NOT_NULL(rule, "rule not null");
 	TEST_ASSERT_STR(rule->name, "test_rule", "rule name");
 	TEST_ASSERT_NOT_NULL(rule->when_expr, "when expr");

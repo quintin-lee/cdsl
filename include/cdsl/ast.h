@@ -237,92 +237,116 @@ cdsl_arena_t* cdsl_ast_get_current_arena(void);
  * @param id Variable name (caller yields ownership of @p id string)
  * @return Newly allocated expression node
  */
-cdsl_expr_node_t* cdsl_create_expr_id(char* id);
+cdsl_expr_node_t* cdsl_create_expr_id(char* id, int line, int column);
 
 /**
  * @brief Create an integer literal expression.
  * @param val Integer value
+ * @param line Source line number
+ * @param column Source column number
  * @return Newly allocated expression node
  */
-cdsl_expr_node_t* cdsl_create_expr_int(int val);
+cdsl_expr_node_t* cdsl_create_expr_int(int val, int line, int column);
 
 /**
  * @brief Create a float literal expression.
  * @param val Double-precision floating point value
+ * @param line Source line number
+ * @param column Source column number
  * @return Newly allocated expression node
  */
-cdsl_expr_node_t* cdsl_create_expr_float(double val);
+cdsl_expr_node_t* cdsl_create_expr_float(double val, int line, int column);
 
 /**
  * @brief Create a boolean literal expression.
  * @param val 1 for true, 0 for false
+ * @param line Source line number
+ * @param column Source column number
  * @return Newly allocated expression node
  */
-cdsl_expr_node_t* cdsl_create_expr_bool(int val);
+cdsl_expr_node_t* cdsl_create_expr_bool(int val, int line, int column);
 
 /**
  * @brief Create a string literal expression.
  * @param val String value (caller yields ownership of @p val)
+ * @param line Source line number
+ * @param column Source column number
  * @return Newly allocated expression node
  */
-cdsl_expr_node_t* cdsl_create_expr_string(char* val);
+cdsl_expr_node_t* cdsl_create_expr_string(char* val, int line, int column);
 
 /**
  * @brief Create a date literal expression.
  * @param val Date value
+ * @param line Source line number
+ * @param column Source column number
  * @return Newly allocated expression node
  */
-cdsl_expr_node_t* cdsl_create_expr_date(time_t val);
+cdsl_expr_node_t* cdsl_create_expr_date(time_t val, int line, int column);
 
 /**
  * @brief Create a long integer literal expression (int64_t).
  * @param val Signed 64-bit integer value
+ * @param line Source line number
+ * @param column Source column number
  * @return Newly allocated expression node
  */
-cdsl_expr_node_t* cdsl_create_expr_long(int64_t val);
+cdsl_expr_node_t* cdsl_create_expr_long(int64_t val, int line, int column);
 
 /**
  * @brief Create an array literal expression.
  * @param elements Linked list of array elements (ownership transferred)
+ * @param line Source line number
+ * @param column Source column number
  * @return Newly allocated expression node
  */
-cdsl_expr_node_t* cdsl_create_expr_array(cdsl_arg_node_t* elements);
+cdsl_expr_node_t* cdsl_create_expr_array(cdsl_arg_node_t* elements, int line, int column);
 
 /**
  * @brief Create a binary operation expression (e.g., a + b).
  * @param op Operator type
  * @param left Left operand (ownership transferred)
  * @param right Right operand (ownership transferred)
+ * @param line Source line number
+ * @param column Source column number
  * @return Newly allocated expression node
  */
-cdsl_expr_node_t*
-cdsl_create_expr_binary(cdsl_op_t op, cdsl_expr_node_t* left, cdsl_expr_node_t* right);
+cdsl_expr_node_t* cdsl_create_expr_binary(
+    cdsl_op_t op, cdsl_expr_node_t* left, cdsl_expr_node_t* right, int line, int column);
 
 /**
  * @brief Create a unary operation expression (e.g., !a).
  * @param op Operator type (e.g., CDSL_OP_NOT, CDSL_OP_NEG)
  * @param expr Operand (ownership transferred)
+ * @param line Source line number
+ * @param column Source column number
  * @return Newly allocated expression node
  */
-cdsl_expr_node_t* cdsl_create_expr_unary(cdsl_op_t op, cdsl_expr_node_t* expr);
+cdsl_expr_node_t*
+cdsl_create_expr_unary(cdsl_op_t op, cdsl_expr_node_t* expr, int line, int column);
 
 /**
  * @brief Create a function call expression.
  * @param func_name Name of the function (ownership transferred)
  * @param args Argument list (ownership transferred)
+ * @param line Source line number
+ * @param column Source column number
  * @return Newly allocated expression node
  */
-cdsl_expr_node_t* cdsl_create_expr_call(char* func_name, cdsl_arg_node_t* args);
+cdsl_expr_node_t*
+cdsl_create_expr_call(char* func_name, cdsl_arg_node_t* args, int line, int column);
 
 /**
  * @brief Create an error placeholder expression node.
  *
  * Used during parser error recovery when an expression cannot be parsed.
  * The rest of the pipeline should gracefully handle this node type.
+ * @param line Source line number
+ * @param column Source column number
  * @return Newly allocated error expression node
  */
 CDSL_NODISCARD
-cdsl_expr_node_t* cdsl_create_expr_error(void);
+cdsl_expr_node_t* cdsl_create_expr_error(int line, int column);
 /** @} */
 
 /** @name Argument List Functions */
@@ -351,9 +375,11 @@ cdsl_arg_node_t* cdsl_append_arg(cdsl_arg_node_t* list, cdsl_expr_node_t* expr);
  * @brief Create an action invocation node.
  * @param name Action name (ownership transferred)
  * @param args Argument list (ownership transferred)
+ * @param line Source line number
+ * @param column Source column number
  * @return Newly allocated action node
  */
-cdsl_action_node_t* cdsl_create_action(char* name, cdsl_arg_node_t* args);
+cdsl_action_node_t* cdsl_create_action(char* name, cdsl_arg_node_t* args, int line, int column);
 /** @} */
 
 /** @name Metadata Functions */
@@ -434,22 +460,28 @@ cdsl_metric_node_t* cdsl_append_metric(cdsl_metric_node_t* list, cdsl_metric_nod
  * @param meta Rule metadata (ownership transferred)
  * @param when Condition expression (ownership transferred)
  * @param then Action to execute (ownership transferred)
+ * @param line Source line number
+ * @param column Source column number
  * @return Newly allocated rule
  */
 cdsl_rule_t* cdsl_create_simple_rule(char* name,
 				     cdsl_meta_item_t* meta,
 				     cdsl_expr_node_t* when,
-				     cdsl_action_node_t* then);
+				     cdsl_action_node_t* then,
+				     int line,
+				     int column);
 
 /**
  * @brief Create a multi-metric scoring rule.
  * @param name Rule name (ownership transferred)
  * @param meta Rule metadata (ownership transferred)
  * @param metrics List of metrics (ownership transferred)
+ * @param line Source line number
+ * @param column Source column number
  * @return Newly allocated rule
  */
-cdsl_rule_t*
-cdsl_create_metric_rule(char* name, cdsl_meta_item_t* meta, cdsl_metric_node_t* metrics);
+cdsl_rule_t* cdsl_create_metric_rule(
+    char* name, cdsl_meta_item_t* meta, cdsl_metric_node_t* metrics, int line, int column);
 
 /**
  * @brief Create a rule that extends a template.
@@ -457,12 +489,16 @@ cdsl_create_metric_rule(char* name, cdsl_meta_item_t* meta, cdsl_metric_node_t* 
  * @param template_name Name of the parent template (ownership transferred)
  * @param meta Override metadata (ownership transferred)
  * @param metrics Additional metrics (ownership transferred)
+ * @param line Source line number
+ * @param column Source column number
  * @return Newly allocated rule
  */
 cdsl_rule_t* cdsl_create_extends_rule(char* name,
 				      char* template_name,
 				      cdsl_meta_item_t* meta,
-				      cdsl_metric_node_t* metrics);
+				      cdsl_metric_node_t* metrics,
+				      int line,
+				      int column);
 /** @} */
 
 /**

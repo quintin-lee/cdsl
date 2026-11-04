@@ -35,8 +35,14 @@
 
 /* Forward declaration for the reentrant lexer */
 typedef void* yyscan_t;
-int yylex(void* yylval_param, yyscan_t yyscanner);
-void yyerror(yyscan_t scanner, cdsl_rule_t** rule_ptr, int* error_count, struct cdsl_error_list* error_list, const char *s);
+/* Forward-declare Bison types so we can declare yylex/yyerror in the prologue */
+typedef union YYSTYPE YYSTYPE;
+typedef struct YYLTYPE YYLTYPE;
+/* yyerror: Bison calls it with YYLTYPE* as first arg */
+void yyerror(YYLTYPE* yylloc, yyscan_t scanner, cdsl_rule_t** rule_ptr,
+	     int* error_count, struct cdsl_error_list* error_list, const char *s);
+/* yylex: Bison calls it with (yylval, &yylloc, scanner) */
+int yylex(YYSTYPE* yylval_param, YYLTYPE* yylloc, yyscan_t yyscanner);
 
 /* Helper to get line number from scanner */
 extern int yyget_lineno(yyscan_t yyscanner);
@@ -131,16 +137,16 @@ program:
 
 rule_declaration:
     RULE IDENTIFIER LBRACE meta_block WHEN expression THEN action_statement RBRACE {
-        $$ = cdsl_create_simple_rule($2, $4, $6, $8);
+        $$ = cdsl_create_simple_rule($2, $4, $6, $8, @1.first_line, @1.first_column);
     }
     | RULE IDENTIFIER LBRACE meta_block metric_list RBRACE {
-        $$ = cdsl_create_metric_rule($2, $4, $5);
+        $$ = cdsl_create_metric_rule($2, $4, $5, @1.first_line, @1.first_column);
     }
     | RULE IDENTIFIER EXTENDS IDENTIFIER LBRACE meta_block metric_list RBRACE {
-        $$ = cdsl_create_extends_rule($2, $4, $6, $7);
+        $$ = cdsl_create_extends_rule($2, $4, $6, $7, @1.first_line, @1.first_column);
     }
     | RULE IDENTIFIER EXTENDS IDENTIFIER LBRACE meta_block RBRACE {
-        $$ = cdsl_create_extends_rule($2, $4, $6, NULL);
+        $$ = cdsl_create_extends_rule($2, $4, $6, NULL, @1.first_line, @1.first_column);
     }
     | error {
         /* Free the offending lookahead token's heap-allocated value */
@@ -158,7 +164,7 @@ rule_declaration:
 
 template_declaration:
     TEMPLATE IDENTIFIER LBRACE meta_block metric_list RBRACE {
-        $$ = cdsl_create_metric_rule($2, $4, $5);
+        $$ = cdsl_create_metric_rule($2, $4, $5, @1.first_line, @1.first_column);
         if ($$) {
             cdsl_meta_item_t* m = cdsl_create_meta_item(strdup("__is_template"), strdup("true"));
             $$->meta_list = cdsl_append_meta($$->meta_list, m);
@@ -207,36 +213,36 @@ case_item:
     ;
 
 expression:
-    IDENTIFIER                          { $$ = cdsl_create_expr_id($1); }
-    | INT_LIT                           { $$ = cdsl_create_expr_int($1); }
-    | LONG_LIT                          { $$ = cdsl_create_expr_long($1); }
-    | FLOAT_LIT                         { $$ = cdsl_create_expr_float($1); }
-    | BOOL_LIT                          { $$ = cdsl_create_expr_bool($1); }
-    | STRING_LIT                        { $$ = cdsl_create_expr_string($1); }
-    | DATE_LIT                          { $$ = cdsl_create_expr_date(parse_date_internal($1)); free($1); }
-    | LBRACKET argument_list RBRACKET   { $$ = cdsl_create_expr_array($2); }
-    | IDENTIFIER LPAREN argument_list RPAREN  { $$ = cdsl_create_expr_call($1, $3); }
-    | expression EQ expression          { $$ = cdsl_create_expr_binary(CDSL_OP_EQ, $1, $3); }
-    | expression NE expression          { $$ = cdsl_create_expr_binary(CDSL_OP_NE, $1, $3); }
-    | expression LT expression          { $$ = cdsl_create_expr_binary(CDSL_OP_LT, $1, $3); }
-    | expression GT expression          { $$ = cdsl_create_expr_binary(CDSL_OP_GT, $1, $3); }
-    | expression LE expression          { $$ = cdsl_create_expr_binary(CDSL_OP_LE, $1, $3); }
-    | expression GE expression          { $$ = cdsl_create_expr_binary(CDSL_OP_GE, $1, $3); }
-    | expression AND expression         { $$ = cdsl_create_expr_binary(CDSL_OP_AND, $1, $3); }
-    | expression OR expression          { $$ = cdsl_create_expr_binary(CDSL_OP_OR, $1, $3); }
-    | expression PLUS expression        { $$ = cdsl_create_expr_binary(CDSL_OP_ADD, $1, $3); }
-    | expression MINUS expression       { $$ = cdsl_create_expr_binary(CDSL_OP_SUB, $1, $3); }
-    | expression STAR expression        { $$ = cdsl_create_expr_binary(CDSL_OP_MUL, $1, $3); }
-    | expression SLASH expression       { $$ = cdsl_create_expr_binary(CDSL_OP_DIV, $1, $3); }
-    | NOT expression                    { $$ = cdsl_create_expr_unary(CDSL_OP_NOT, $2); }
-    | MINUS expression %prec UMINUS     { $$ = cdsl_create_expr_unary(CDSL_OP_NEG, $2); }
+    IDENTIFIER                          { $$ = cdsl_create_expr_id($1, @1.first_line, @1.first_column); }
+    | INT_LIT                           { $$ = cdsl_create_expr_int($1, @1.first_line, @1.first_column); }
+    | LONG_LIT                          { $$ = cdsl_create_expr_long($1, @1.first_line, @1.first_column); }
+    | FLOAT_LIT                         { $$ = cdsl_create_expr_float($1, @1.first_line, @1.first_column); }
+    | BOOL_LIT                          { $$ = cdsl_create_expr_bool($1, @1.first_line, @1.first_column); }
+    | STRING_LIT                        { $$ = cdsl_create_expr_string($1, @1.first_line, @1.first_column); }
+    | DATE_LIT                          { $$ = cdsl_create_expr_date(parse_date_internal($1), @1.first_line, @1.first_column); free($1); }
+    | LBRACKET argument_list RBRACKET   { $$ = cdsl_create_expr_array($2, @1.first_line, @1.first_column); }
+    | IDENTIFIER LPAREN argument_list RPAREN  { $$ = cdsl_create_expr_call($1, $3, @1.first_line, @1.first_column); }
+    | expression EQ expression          { $$ = cdsl_create_expr_binary(CDSL_OP_EQ, $1, $3, @1.first_line, @1.first_column); }
+    | expression NE expression          { $$ = cdsl_create_expr_binary(CDSL_OP_NE, $1, $3, @1.first_line, @1.first_column); }
+    | expression LT expression          { $$ = cdsl_create_expr_binary(CDSL_OP_LT, $1, $3, @1.first_line, @1.first_column); }
+    | expression GT expression          { $$ = cdsl_create_expr_binary(CDSL_OP_GT, $1, $3, @1.first_line, @1.first_column); }
+    | expression LE expression          { $$ = cdsl_create_expr_binary(CDSL_OP_LE, $1, $3, @1.first_line, @1.first_column); }
+    | expression GE expression          { $$ = cdsl_create_expr_binary(CDSL_OP_GE, $1, $3, @1.first_line, @1.first_column); }
+    | expression AND expression         { $$ = cdsl_create_expr_binary(CDSL_OP_AND, $1, $3, @1.first_line, @1.first_column); }
+    | expression OR expression          { $$ = cdsl_create_expr_binary(CDSL_OP_OR, $1, $3, @1.first_line, @1.first_column); }
+    | expression PLUS expression        { $$ = cdsl_create_expr_binary(CDSL_OP_ADD, $1, $3, @1.first_line, @1.first_column); }
+    | expression MINUS expression       { $$ = cdsl_create_expr_binary(CDSL_OP_SUB, $1, $3, @1.first_line, @1.first_column); }
+    | expression STAR expression        { $$ = cdsl_create_expr_binary(CDSL_OP_MUL, $1, $3, @1.first_line, @1.first_column); }
+    | expression SLASH expression       { $$ = cdsl_create_expr_binary(CDSL_OP_DIV, $1, $3, @1.first_line, @1.first_column); }
+    | NOT expression                    { $$ = cdsl_create_expr_unary(CDSL_OP_NOT, $2, @2.first_line, @2.first_column); }
+    | MINUS expression %prec UMINUS     { $$ = cdsl_create_expr_unary(CDSL_OP_NEG, $2, @2.first_line, @2.first_column); }
     | LPAREN expression RPAREN               { $$ = $2; }
-    | error                                  { $$ = cdsl_create_expr_error(); }
+    | error                                  { $$ = cdsl_create_expr_error(@1.first_line, @1.first_column); }
     ;
 
 action_statement:
     IDENTIFIER LPAREN argument_list RPAREN {
-        $$ = cdsl_create_action($1, $3);
+        $$ = cdsl_create_action($1, $3, @1.first_line, @1.first_column);
     }
     | error                                  { $$ = NULL; }
     ;
@@ -259,18 +265,21 @@ argument_list_nonempty:
  * Creates a structured cdsl_error_t and adds it to the error list
  * (if non-NULL). Also increments the error count for legacy callers.
  *
+ * @param yylloc Bison location (line/column of the error token)
  * @param scanner Reentrant scanner handle
  * @param rule_ptr Output rule pointer (unused in error recovery)
  * @param error_count Error counter to increment
  * @param error_list Structured error list (may be NULL)
  * @param s Error message from Bison
  */
-void yyerror(yyscan_t scanner, cdsl_rule_t** rule_ptr, int* error_count, struct cdsl_error_list* error_list, const char *s) {
+void yyerror(YYLTYPE* yylloc, yyscan_t scanner, cdsl_rule_t** rule_ptr,
+	     int* error_count, struct cdsl_error_list* error_list, const char *s) {
+	(void)scanner;
 	(void)rule_ptr;
 	(void)error_count;
 	(void)error_list;
-	int line = yyget_lineno(scanner);
-	int col = yyget_column(scanner);
+	int line = yylloc ? yylloc->first_line : 0;
+	int col = yylloc ? yylloc->first_column : 0;
 	/* Sanity-check: scanner state can be unreliable during Bison error
 	   recovery; clamp implausible values to 0. */
 	if (line < 0) line = 0;

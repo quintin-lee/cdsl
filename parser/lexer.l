@@ -26,6 +26,9 @@
 #include <string.h>
 #include <stdlib.h>
 
+/* Forward declaration for yylex (defined via YY_DECL below) */
+int yylex(YYSTYPE * yylval_param, YYLTYPE * yylloc, yyscan_t yyscanner);
+
 #ifdef _WIN32
 #include <io.h>
 #define isatty _isatty
@@ -40,6 +43,10 @@
 THREAD_LOCAL int yycolumn = 0;
 
 #define YY_USER_ACTION yycolumn += yyleng;
+
+/* Override YY_DECL to match bison's 3-arg yylex call (with YYLTYPE* for location) */
+#undef YY_DECL
+#define YY_DECL int yylex(YYSTYPE * yylval_param, YYLTYPE *, yyscan_t yyscanner)
 %}
 
 %option noyywrap
