@@ -80,7 +80,8 @@ typedef enum {
 	CDSL_EXPR_ARRAY,  /**< Array literal ([...]) */
 	CDSL_EXPR_BINARY, /**< Binary operation (e.g. a + b, x == y) */
 	CDSL_EXPR_UNARY,  /**< Unary operation (e.g. !expr) */
-	CDSL_EXPR_CALL	  /**< Function call (e.g. strlen("hello")) */
+	CDSL_EXPR_CALL,	  /**< Function call (e.g. strlen("hello")) */
+	CDSL_EXPR_ERROR	  /**< Error placeholder (recovery from parse error) */
 } cdsl_expr_type_t;
 
 /**
@@ -306,6 +307,16 @@ cdsl_expr_node_t* cdsl_create_expr_unary(cdsl_op_t op, cdsl_expr_node_t* expr);
  * @return Newly allocated expression node
  */
 cdsl_expr_node_t* cdsl_create_expr_call(char* func_name, cdsl_arg_node_t* args);
+
+/**
+ * @brief Create an error placeholder expression node.
+ *
+ * Used during parser error recovery when an expression cannot be parsed.
+ * The rest of the pipeline should gracefully handle this node type.
+ * @return Newly allocated error expression node
+ */
+CDSL_NODISCARD
+cdsl_expr_node_t* cdsl_create_expr_error(void);
 /** @} */
 
 /** @name Argument List Functions */

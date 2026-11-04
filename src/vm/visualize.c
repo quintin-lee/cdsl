@@ -134,6 +134,10 @@ dot_expr(cdsl_strbuf_t* sb, cdsl_expr_node_t* expr, int* id)
 		    my_id,
 		    expr->data.call.func_name);
 		break;
+	case CDSL_EXPR_ERROR:
+		cdsl_strbuf_printf(
+		    sb, "  n%d [label=\"<error>\",shape=box,style=filled,fillcolor=red];\n", my_id);
+		break;
 	}
 }
 

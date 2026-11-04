@@ -77,11 +77,19 @@ cdsl_parse_string(const char* dsl_code, cdsl_error_list_t** errors)
 	struct yy_buffer_state* buf = yy_scan_string(dsl_code, scanner);
 
 	if (yyparse(scanner, &rule, &error_count, error_list) != 0 || error_count > 0) {
-		if (rule) {
-			cdsl_free_rule(rule);
-			rule = NULL;
+		if (errors) {
+			/* Caller wants errors: keep partial rule if any, report errors via list */
+			if (!rule) {
+				cdsl_arena_free(arena);
+			}
 		} else {
-			cdsl_arena_free(arena);
+			/* Caller doesn't want errors: fail fast, discard partial results */
+			if (rule) {
+				cdsl_free_rule(rule);
+				rule = NULL;
+			} else {
+				cdsl_arena_free(arena);
+			}
 		}
 	}
 

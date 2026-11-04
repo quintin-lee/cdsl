@@ -661,6 +661,13 @@ cdsl_eval_expr_internal(
 		CDSL_RWLOCK_UNLOCK_RD(&vm->rwlock);
 		break;
 	}
+	case CDSL_EXPR_ERROR: {
+		result.type = CDSL_TYPE_VOID;
+		if (debug) {
+			fprintf(stderr, "[TRACE]   error expression (parse recovery)\n");
+		}
+		break;
+	}
 	}
 	return result;
 }

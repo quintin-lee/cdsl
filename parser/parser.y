@@ -40,6 +40,8 @@ void yyerror(yyscan_t scanner, cdsl_rule_t** rule_ptr, int* error_count, struct 
 
 /* Helper to get line number from scanner */
 extern int yyget_lineno(yyscan_t yyscanner);
+/* Helper to get column number from scanner */
+extern int yyget_column(yyscan_t yyscanner);
 
 static time_t
 parse_date_internal(const char* s)
@@ -123,8 +125,8 @@ parse_date_internal(const char* s)
 program:
     rule_declaration { *rule_ptr = $1; }
     | template_declaration { *rule_ptr = $1; }
-    | program rule_declaration { *rule_ptr = $2; }
-    | program template_declaration { *rule_ptr = $2; }
+    | program rule_declaration { *rule_ptr = $2 ? $2 : $1; }
+    | program template_declaration { *rule_ptr = $2 ? $2 : $1; }
     ;
 
 rule_declaration:
@@ -141,12 +143,16 @@ rule_declaration:
         $$ = cdsl_create_extends_rule($2, $4, $6, NULL);
     }
     | error {
+        /* Free the offending lookahead token's heap-allocated value */
         if (yychar == IDENTIFIER) {
             free(yylval.id_val);
         } else if (yychar == STRING_LIT || yychar == DATE_LIT) {
             free(yylval.string_val);
         }
-        (*error_count)++; yyerrok; yyclearin; $$ = NULL;
+        (*error_count)++;
+        yyerrok;
+        yyclearin;
+        $$ = NULL;
     }
     ;
 
@@ -174,6 +180,7 @@ meta_item:
     IDENTIFIER ASSIGN STRING_LIT {
         $$ = cdsl_create_meta_item($1, $3);
     }
+    | error                                  { $$ = NULL; }
     ;
 
 metric_list:
@@ -196,6 +203,7 @@ case_item:
     CASE expression THEN action_statement {
         $$ = cdsl_create_case($2, $4);
     }
+    | error                                  { $$ = NULL; }
     ;
 
 expression:
@@ -223,12 +231,14 @@ expression:
     | NOT expression                    { $$ = cdsl_create_expr_unary(CDSL_OP_NOT, $2); }
     | MINUS expression %prec UMINUS     { $$ = cdsl_create_expr_unary(CDSL_OP_NEG, $2); }
     | LPAREN expression RPAREN               { $$ = $2; }
+    | error                                  { $$ = cdsl_create_expr_error(); }
     ;
 
 action_statement:
     IDENTIFIER LPAREN argument_list RPAREN {
         $$ = cdsl_create_action($1, $3);
     }
+    | error                                  { $$ = NULL; }
     ;
 
 argument_list:
@@ -258,9 +268,42 @@ argument_list_nonempty:
 void yyerror(yyscan_t scanner, cdsl_rule_t** rule_ptr, int* error_count, struct cdsl_error_list* error_list, const char *s) {
 	(void)rule_ptr;
 	int line = yyget_lineno(scanner);
+	int col = yyget_column(scanner);
+	/* Sanity-check: scanner state can be unreliable during Bison error
+	   recovery; clamp implausible values to 0. */
+	if (line < 0) line = 0;
+	if (col < 0) col = 0;
+	char* hint = NULL;
+
+	/* Generate actionable hints based on Bison's error message */
+	if (s) {
+		if (strstr(s, "syntax error, unexpected THEN") != NULL) {
+			hint = strdup("Expected 'THEN' after WHEN condition");
+		} else if (strstr(s, "syntax error, unexpected '}'") != NULL ||
+			   strstr(s, "syntax error, unexpected RBRACE") != NULL) {
+			hint = strdup("Unexpected '}'; check for missing action or extra brace");
+		} else if (strstr(s, "syntax error, unexpected IDENTIFIER") != NULL) {
+			hint = strdup("Unexpected identifier; check for typo or missing operator");
+		} else if (strstr(s, "syntax error, unexpected RULE") != NULL ||
+			   strstr(s, "syntax error, unexpected TEMPLATE") != NULL) {
+			hint = strdup("Unexpected rule start; check for missing closing brace on previous rule");
+		} else if (strstr(s, "syntax error, expecting") != NULL) {
+			if (strstr(s, "THEN") != NULL) {
+				hint = strdup("Expected 'THEN' after condition expression");
+			} else if (strstr(s, "'}'") != NULL) {
+				hint = strdup("Expected an action or expression before '}'");
+			}
+		}
+	}
+
 	if (error_list) {
-		cdsl_error_t* err = cdsl_error_create(CDSL_ERR_SYNTAX, line, 0, s, NULL);
+		cdsl_error_t* err = cdsl_error_create(CDSL_ERR_SYNTAX, line, col, s, hint);
 		cdsl_error_list_add(error_list, err);
+		if (hint) {
+			free(hint);
+		}
+	} else if (hint) {
+		free(hint);
 	}
 	(*error_count)++;
 }

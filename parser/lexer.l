@@ -33,6 +33,8 @@
 #else
 #include <unistd.h>
 #endif
+
+/* Column tracking is handled by Flex's built-in yycolumn/yyget_column */
 %}
 
 %option noyywrap
@@ -137,7 +139,7 @@
                             if (yyextra) {
                                 char buf[128];
                                 snprintf(buf, sizeof(buf), "Unknown character: '%s'", yytext);
-                                cdsl_error_t* err = cdsl_error_create(CDSL_ERR_SYNTAX, yylineno, 0, buf, NULL);
+                                cdsl_error_t* err = cdsl_error_create(CDSL_ERR_SYNTAX, 0, 0, buf, NULL);
                                 cdsl_error_list_add(yyextra, err);
                             }
                         }

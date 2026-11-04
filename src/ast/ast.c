@@ -162,6 +162,16 @@ cdsl_create_expr_call(char* func_name, cdsl_arg_node_t* args)
 	return n;
 }
 
+cdsl_expr_node_t*
+cdsl_create_expr_error(void)
+{
+	cdsl_expr_node_t* n = ast_alloc(sizeof(*n));
+	n->type = CDSL_EXPR_ERROR;
+	/* Zero-initialize the union so no dangling pointers */
+	memset(&n->data, 0, sizeof(n->data));
+	return n;
+}
+
 cdsl_arg_node_t*
 cdsl_create_arg(cdsl_expr_node_t* expr)
 {
@@ -385,6 +395,9 @@ cdsl_free_expr(cdsl_expr_node_t* expr)
 	case CDSL_EXPR_CALL:
 		free(expr->data.call.func_name);
 		cdsl_free_arg(expr->data.call.args);
+		break;
+	case CDSL_EXPR_ERROR:
+		/* No owned resources to free */
 		break;
 	default:
 		break;
