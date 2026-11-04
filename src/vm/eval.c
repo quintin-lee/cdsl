@@ -223,6 +223,8 @@ cdsl_eval_expr_internal(
 	if (vm && vm->instruction_limit > 0) {
 		int64_t count = CDSL_ATOMIC_FETCH_ADD(&vm->instruction_count, 1) + 1;
 		if (count > vm->instruction_limit) {
+			cdsl_vm_set_last_error(
+			    vm, CDSL_ERR_RUNTIME, 0, 0, "Instruction quota exceeded", NULL);
 			CDSL_ATOMIC_STORE(&vm->error_state, 1);
 			return result;
 		}
