@@ -833,6 +833,8 @@ bc_run_instructions(cdsl_vm_t* vm,
 		if (vm->instruction_limit > 0) {
 			int64_t count = CDSL_ATOMIC_FETCH_ADD(&vm->instruction_count, 1) + 1;
 			if (count > vm->instruction_limit) {
+				cdsl_vm_set_last_error(
+				    vm, CDSL_ERR_RUNTIME, 0, 0, "Bytecode execution error", NULL);
 				CDSL_ATOMIC_STORE(&vm->error_state, 1);
 				result.type = CDSL_TYPE_VOID;
 				goto done;
