@@ -1040,6 +1040,7 @@ cdsl_report_free(cdsl_rule_report_t* report)
 	free(report->rule_name);
 	free(report->description);
 	free(report->decision_summary);
+	cdsl_error_free(report->error);
 	if (report->metrics) {
 		for (int i = 0; i < report->metric_count; i++) {
 			cdsl_metric_result_t* m = &report->metrics[i];
