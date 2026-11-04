@@ -147,5 +147,26 @@ int bc_run_instructions(cdsl_vm_t* vm,
 			void* user_data,
 			cdsl_value_t* out_result);
 
+/**
+ * @brief Set the VM's last runtime error, replacing any previous one.
+ *
+ * Copies message and hint strings internally.  The VM owns the
+ * resulting cdsl_error_t and frees it on cdsl_vm_free() or when
+ * overwritten by a subsequent call.
+ *
+ * @param vm     VM instance
+ * @param kind   Error kind (SYNTAX, TYPE, SEMANTIC, RUNTIME, WARNING)
+ * @param line   Source line number (0 if unknown)
+ * @param column Source column number (0 if unknown)
+ * @param message Error message (copied internally)
+ * @param hint   Optional hint (copied internally, may be NULL)
+ */
+void cdsl_vm_set_last_error(cdsl_vm_t* vm,
+			    cdsl_error_kind_t kind,
+			    int line,
+			    int column,
+			    const char* message,
+			    const char* hint);
+
 #endif
 /** @} */

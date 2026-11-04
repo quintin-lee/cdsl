@@ -212,6 +212,35 @@ cdsl_vm_set_trace_callback(cdsl_vm_t* vm, cdsl_trace_cb_t cb, void* user_data)
 	}
 }
 
+/**
+ * @brief Set the VM's last runtime error, replacing any previous one.
+ *
+ * Copies message and hint strings internally.  The VM owns the
+ * resulting cdsl_error_t and frees it on cdsl_vm_free() or when
+ * overwritten by a subsequent call.
+ *
+ * @param vm     VM instance
+ * @param kind   Error kind (SYNTAX, TYPE, SEMANTIC, RUNTIME, WARNING)
+ * @param line   Source line number (0 if unknown)
+ * @param column Source column number (0 if unknown)
+ * @param message Error message (copied internally)
+ * @param hint   Optional hint (copied internally, may be NULL)
+ */
+void
+cdsl_vm_set_last_error(cdsl_vm_t* vm,
+		       cdsl_error_kind_t kind,
+		       int line,
+		       int column,
+		       const char* message,
+		       const char* hint)
+{
+	if (!vm) {
+		return;
+	}
+	cdsl_error_free(vm->last_error);
+	vm->last_error = cdsl_error_create(kind, line, column, message, hint);
+}
+
 /* ---- Context Handle ---- */
 
 cdsl_ctx_t*
