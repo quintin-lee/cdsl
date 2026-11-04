@@ -243,6 +243,12 @@ cdsl_vm_set_last_error(cdsl_vm_t* vm,
 	vm->last_error = cdsl_error_create(kind, line, column, message, hint);
 }
 
+const cdsl_error_t*
+cdsl_vm_get_last_error(const cdsl_vm_t* vm)
+{
+	return vm ? vm->last_error : NULL;
+}
+
 /* ---- Context Handle ---- */
 
 cdsl_ctx_t*
