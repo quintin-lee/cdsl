@@ -1005,6 +1005,15 @@ cdsl_vm_execute(cdsl_vm_t* vm, const cdsl_rule_t* rule, cdsl_context_t* ctx)
 		}
 		if (rpt) {
 			rpt->status = CDSL_STATUS_ERROR;
+			if (vm->last_error) {
+				rpt->error = cdsl_error_create(vm->last_error->kind,
+							       vm->last_error->line,
+							       vm->last_error->column,
+							       vm->last_error->message,
+							       vm->last_error->hint);
+				cdsl_error_free(vm->last_error);
+				vm->last_error = NULL;
+			}
 		}
 	}
 	double elapsed = cdsl_get_time_us_internal() - t0;
