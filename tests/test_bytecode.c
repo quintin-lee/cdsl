@@ -373,6 +373,38 @@ test_bytecode_rule_metric(void)
 	TEST_END();
 }
 
+void
+test_bytecode_long_literal(void)
+{
+	TEST_BEGIN("bytecode long literal push");
+
+	cdsl_schema_t* schema = cdsl_schema_create();
+	cdsl_schema_register_var(schema, "x", CDSL_TYPE_LONG);
+	cdsl_schema_register_action(schema, "block", CDSL_TYPE_VOID, 1, CDSL_TYPE_STRING);
+	cdsl_vm_t* vm = cdsl_vm_create(schema);
+	cdsl_context_t* ctx = cdsl_context_create(schema);
+	cdsl_context_set_long(ctx, "x", 9223372036854775807LL);
+
+	/* Long literal comparison - exercises BC_PUSH_LONG */
+	cdsl_rule_t* rule =
+	    cdsl_parse_string("RULE r { WHEN x == 9223372036854775807L THEN block(\"ok\") }", NULL);
+	TEST_ASSERT_NOT_NULL(rule, "long literal rule parsed");
+
+	cdsl_bytecode_t bc = {0};
+	TEST_ASSERT_INT(
+	    cdsl_bytecode_compile(rule, schema, &bc), 1, "long literal bytecode compiled");
+
+	cdsl_value_t result = cdsl_bytecode_execute(vm, &bc, ctx);
+	TEST_ASSERT_INT(result.data.bool_val, 1, "long literal comparison via bytecode");
+
+	cdsl_bytecode_free(&bc);
+	cdsl_free_rule(rule);
+	cdsl_context_free(ctx);
+	cdsl_vm_free(vm);
+	cdsl_schema_free(schema);
+	TEST_END();
+}
+
 int
 main(void)
 {
@@ -388,6 +420,7 @@ main(void)
 	test_bytecode_date_arith();
 	test_bytecode_rule_full_types();
 	test_bytecode_rule_metric();
+	test_bytecode_long_literal();
 
 	TEST_SUMMARY();
 	TEST_EXIT();

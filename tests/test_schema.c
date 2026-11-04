@@ -260,7 +260,135 @@ test_schema_edge_cases()
 	TEST_SCHEMA_END();
 }
 
-// Test 9: Complex rule validation
+// Test 9: NULL schema operations
+static void
+test_schema_null_operations()
+{
+	TEST_SCHEMA_BEGIN("NULL schema operations");
+
+	/* cdsl_schema_free(NULL) should be safe */
+	cdsl_schema_free(NULL);
+	TEST_ASSERT(1, "cdsl_schema_free(NULL) should not crash");
+
+	/* cdsl_schema_register_var_rw with NULL schema should be safe */
+	cdsl_schema_register_var_rw(NULL, "x", CDSL_TYPE_INT, 0);
+	TEST_ASSERT(1, "cdsl_schema_register_var_rw(NULL) should not crash");
+
+	/* cdsl_schema_register_var_rw with NULL name should be safe */
+	cdsl_schema_t* schema = cdsl_schema_create();
+	TEST_ASSERT_NOT_NULL(schema, "Schema should be created");
+	cdsl_schema_register_var_rw(schema, NULL, CDSL_TYPE_INT, 0);
+	TEST_ASSERT(1, "cdsl_schema_register_var_rw with NULL name should not crash");
+	cdsl_schema_free(schema);
+
+	TEST_SCHEMA_END();
+}
+
+// Test 10: Expression type coverage in schema verification
+static void
+test_schema_expression_types()
+{
+	TEST_SCHEMA_BEGIN("Schema expression type coverage");
+
+	cdsl_schema_t* schema = cdsl_schema_create();
+	cdsl_schema_register_var(schema, "x", CDSL_TYPE_INT);
+	cdsl_schema_register_var(schema, "y", CDSL_TYPE_FLOAT);
+	cdsl_schema_register_var(schema, "s", CDSL_TYPE_STRING);
+	cdsl_schema_register_var(schema, "b", CDSL_TYPE_BOOL);
+	cdsl_schema_register_var(schema, "d", CDSL_TYPE_DATE);
+	cdsl_schema_register_action(schema, "block", CDSL_TYPE_VOID, 1, CDSL_TYPE_STRING);
+	cdsl_schema_register_action(schema, "strlen", CDSL_TYPE_INT, 1, CDSL_TYPE_STRING);
+
+	// Test various expression types in WHEN clause
+	const char* tests[] = {
+	    "RULE t1 { WHEN x > 5 THEN block(\"ok\") }",
+	    "RULE t2 { WHEN y > 1.5 THEN block(\"ok\") }",
+	    "RULE t3 { WHEN s == \"hello\" THEN block(\"ok\") }",
+	    "RULE t4 { WHEN b == true THEN block(\"ok\") }",
+	    "RULE t5 { WHEN d == @2026-01-01 THEN block(\"ok\") }",
+	    "RULE t6 { WHEN !b THEN block(\"ok\") }",
+	    "RULE t7 { WHEN -x THEN block(\"ok\") }",
+	    "RULE t8 { WHEN x + 1 > 5 THEN block(\"ok\") }",
+	    "RULE t9 { WHEN strlen(s) > 5 THEN block(\"ok\") }",
+	};
+
+	for (int i = 0; i < 9; i++) {
+		cdsl_rule_t* rule = cdsl_parse_string(tests[i], NULL);
+		TEST_ASSERT_NOT_NULL(rule, "Rule should parse");
+
+		char err[512] = {0};
+		bool valid = cdsl_verify_rule(rule, schema, err, sizeof(err));
+		TEST_ASSERT(valid, "Rule with expression type should pass verification");
+
+		cdsl_free_rule(rule);
+	}
+
+	cdsl_schema_free(schema);
+	TEST_SCHEMA_END();
+}
+
+// Test 11: Comparison operator coverage
+static void
+test_schema_comparison_operators()
+{
+	TEST_SCHEMA_BEGIN("Schema comparison operator coverage");
+
+	cdsl_schema_t* schema = cdsl_schema_create();
+	cdsl_schema_register_var(schema, "x", CDSL_TYPE_INT);
+	cdsl_schema_register_action(schema, "block", CDSL_TYPE_VOID, 1, CDSL_TYPE_STRING);
+
+	// Test all comparison operators
+	const char* tests[] = {
+	    "RULE t_eq { WHEN x == 5 THEN block(\"ok\") }",
+	    "RULE t_ne { WHEN x != 5 THEN block(\"ok\") }",
+	    "RULE t_lt { WHEN x < 5 THEN block(\"ok\") }",
+	    "RULE t_gt { WHEN x > 5 THEN block(\"ok\") }",
+	    "RULE t_le { WHEN x <= 5 THEN block(\"ok\") }",
+	    "RULE t_ge { WHEN x >= 5 THEN block(\"ok\") }",
+	};
+
+	for (int i = 0; i < 6; i++) {
+		cdsl_rule_t* rule = cdsl_parse_string(tests[i], NULL);
+		TEST_ASSERT_NOT_NULL(rule, "Rule should parse");
+
+		char err[512] = {0};
+		bool valid = cdsl_verify_rule(rule, schema, err, sizeof(err));
+		TEST_ASSERT(valid, "Comparison operator rule should pass verification");
+
+		cdsl_free_rule(rule);
+	}
+
+	cdsl_schema_free(schema);
+	TEST_SCHEMA_END();
+}
+
+// Test 12: Duplicate CASE detection
+static void
+test_schema_duplicate_case()
+{
+	TEST_SCHEMA_BEGIN("Duplicate CASE detection");
+
+	cdsl_schema_t* schema = cdsl_schema_create();
+	cdsl_schema_register_var(schema, "x", CDSL_TYPE_INT);
+	cdsl_schema_register_action(schema, "score", CDSL_TYPE_VOID, 1, CDSL_TYPE_INT);
+
+	// Rule with duplicate CASE (same condition and value)
+	const char* dsl =
+	    "RULE dup_case { META { w = \"100\" } "
+	    "METRIC m { CASE x > 5 THEN score(10) CASE x > 5 THEN score(20) DEFAULT score(0) } }";
+	cdsl_rule_t* rule = cdsl_parse_string(dsl, NULL);
+	TEST_ASSERT_NOT_NULL(rule, "Rule with duplicate CASE should parse");
+
+	cdsl_error_list_t* warnings = cdsl_analyze_rule(rule, schema);
+	TEST_ASSERT_NOT_NULL(warnings, "Should produce warnings for duplicate CASE");
+
+	cdsl_error_list_free(warnings);
+	cdsl_free_rule(rule);
+	cdsl_schema_free(schema);
+	TEST_SCHEMA_END();
+}
+
+// Test 13: Complex rule validation
 static void
 test_complex_rule_validation()
 {
@@ -365,6 +493,10 @@ main()
 	test_type_compatibility();
 	test_string_comparison_validation();
 	test_schema_edge_cases();
+	test_schema_null_operations();
+	test_schema_expression_types();
+	test_schema_comparison_operators();
+	test_schema_duplicate_case();
 	test_complex_rule_validation();
 	test_schema_performance();
 
