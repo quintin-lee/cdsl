@@ -132,6 +132,7 @@ typedef struct cdsl_vm {
 	cdsl_atomic_int64_t alloc_bytes;       /**< Current allocation counter */
 	cdsl_atomic_int64_t instruction_count; /**< Instructions executed */
 	cdsl_atomic_int_t error_state;	       /**< Non-zero if execution was aborted */
+	cdsl_error_t* last_error;	       /**< Last runtime error details (owned by VM) */
 
 	/* ---- Tracing ---- */
 	cdsl_trace_cb_t trace_cb; /**< Optional trace callback (NULL=disabled) */
@@ -473,6 +474,18 @@ int64_t cdsl_vm_get_instruction_limit(const cdsl_vm_t* vm);
  * @param user_data Opaque pointer passed to each callback invocation
  */
 void cdsl_vm_set_trace_callback(cdsl_vm_t* vm, cdsl_trace_cb_t cb, void* user_data);
+
+/**
+ * @brief Get the last runtime error from the VM.
+ *
+ * Returns borrowed pointer to error details from the most recent
+ * cdsl_vm_execute() call that encountered a runtime error.  Do not free.
+ *
+ * @param vm  VM instance
+ * @return    Last runtime error, or NULL if no error occurred
+ */
+CDSL_NODISCARD
+const cdsl_error_t* cdsl_vm_get_last_error(const cdsl_vm_t* vm);
 
 #endif
 /** @} */
