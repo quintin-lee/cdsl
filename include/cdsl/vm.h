@@ -17,6 +17,8 @@
 #include "cdsl/schema.h"
 #include "cdsl/context.h"
 #include "cdsl/ast.h"
+#include "cdsl/report.h"
+#include "cdsl/ruleset.h"
 #include "cdsl/util/threads.h"
 #include <time.h>
 
@@ -242,6 +244,44 @@ cdsl_context_t* cdsl_ctx_context(cdsl_ctx_t* ctx);
 	    const char*: cdsl_context_get_string,                                                  \
 	    time_t: cdsl_context_get_date,                                                         \
 	    int64_t: cdsl_context_get_long)(ctx->ctx, name, default_val)
+
+/* ---- Handle-Level Convenience Functions ---- */
+
+/**
+ * @brief Register an action callback via context handle.
+ * @param ctx          Context handle
+ * @param action_name  Action name to match (duplicated internally)
+ * @param cb           Callback function
+ */
+void cdsl_ctx_register_action(cdsl_ctx_t* ctx, const char* name, cdsl_action_cb_t cb);
+
+/**
+ * @brief Register a custom function via context handle.
+ * @param ctx        Context handle
+ * @param func_name  Function name in DSL expressions (duplicated internally)
+ * @param cb         Callback implementation
+ */
+void cdsl_ctx_register_function(cdsl_ctx_t* ctx, const char* name, cdsl_func_cb_t cb);
+
+/**
+ * @brief Execute a single rule via context handle.
+ * @param ctx  Context handle
+ * @param rule Rule to execute (parsed from cdsl_parse_string)
+ * @return     Rule report (caller frees with cdsl_report_free), or NULL on error
+ */
+CDSL_NODISCARD
+cdsl_rule_report_t* cdsl_ctx_execute(cdsl_ctx_t* ctx, const cdsl_rule_t* rule);
+
+/**
+ * @brief Execute a ruleset in parallel via context handle.
+ * @param ctx          Context handle
+ * @param set          Ruleset to execute
+ * @param thread_count Number of worker threads
+ * @return             Ruleset report (caller frees), or NULL on error
+ */
+CDSL_NODISCARD
+cdsl_ruleset_report_t*
+cdsl_ctx_execute_ruleset(cdsl_ctx_t* ctx, cdsl_ruleset_t* set, int thread_count);
 
 /* ---- Lifecycle ---- */
 
