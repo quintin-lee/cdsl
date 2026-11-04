@@ -122,6 +122,8 @@ typedef struct cdsl_expr_node {
 			struct cdsl_arg_node* args; /**< Argument list */
 		} call;				    /**< Function call data (CDSL_EXPR_CALL) */
 	} data;
+	int line;   /**< Source line number (0 if unknown) */
+	int column; /**< Source column number (0 if unknown) */
 } cdsl_expr_node_t;
 
 /**
@@ -142,6 +144,8 @@ typedef struct cdsl_arg_node {
 typedef struct cdsl_action_node {
 	char* action_name;     /**< Name of the action to invoke */
 	cdsl_arg_node_t* args; /**< Linked list of arguments */
+	int line;	       /**< Source line number (0 if unknown) */
+	int column;	       /**< Source column number (0 if unknown) */
 } cdsl_action_node_t;
 
 /**
@@ -205,6 +209,8 @@ typedef struct cdsl_rule {
 	cdsl_action_node_t* then_action; /**< THEN action (simple rules only) */
 	cdsl_metric_node_t* metrics;	 /**< METRIC list (metric rules only, NULL for simple) */
 	cdsl_arena_t* arena;		 /**< Arena for AST memory management (if any) */
+	int line;			 /**< Source line number (0 if unknown) */
+	int column;			 /**< Source column number (0 if unknown) */
 } cdsl_rule_t;
 
 /** @name AST Context Management */
