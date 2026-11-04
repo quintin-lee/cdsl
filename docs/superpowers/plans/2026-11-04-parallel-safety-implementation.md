@@ -411,9 +411,27 @@ git commit -m "✨ feat(vm): parallel safety complete, all tests and clang-tidy 
 
 **Scope check:** Plan covers only subproject D (parallel safety). Subproject C (builtins buffer) already completed. Subprojects E, F remain separate.
 
+## Lock Usage Constraints (Important)
+
+### rwlock is non-reentrant
+
+`cdsl_rwlock_t` is based on `pthread_rwlock_t` (POSIX) or `SRWLOCK` (Windows) and is **not recursive**. A thread that already holds a read lock must not attempt to acquire the same lock again (read or write), or it will self-deadlock.
+
+### Callbacks must not re-enter VM execution
+
+`cdsl_trigger_action_internal` and `CDSL_EXPR_CALL` / `BC_CALL` invoke user-provided callbacks (`cb->cb` / `fn->cb`) **while holding `vm->rwlock` read lock**. Therefore:
+
+> **Action callbacks (`cdsl_action_cb_t`) and function callbacks (`cdsl_func_cb_t`) MUST NOT call `cdsl_vm_execute()`, `cdsl_vm_execute_ruleset_parallel()`, or any function that traverses `vm->callbacks` / `vm->functions`.**
+
+Violating this rule causes self-deadlock (read lock already held by the same thread). If a callback needs to trigger new rule execution, it should enqueue a request and let another thread (or the main thread after the callback returns and releases the lock) process it.
+
+### Minimize lock hold time
+
+Keep all lock critical sections as small as possible (linked-list traversal only, stats aggregation only). Do not perform I/O, complex computation, or external API calls while holding `vm->rwlock`.
+
 ---
 
-Plan complete and saved to `docs/superpowers/plans/2026-11-04-parallel-safety-implementation.md`. Two execution options:
+**Plan complete and saved to `docs/superpowers/plans/2026-11-04-parallel-safety-implementation.md`.** Two execution options:
 
 **1. Subagent-Driven (recommended)** - I dispatch a fresh subagent per task, review between tasks, fast iteration
 

@@ -34,7 +34,12 @@
 #include <unistd.h>
 #endif
 
-/* Column tracking is handled by Flex's built-in yycolumn/yyget_column */
+/* Column tracking: maintained manually because Flex's built-in yycolumn
+   is unreliable in reentrant mode. */
+#undef yycolumn
+_Thread_local int yycolumn = 0;
+
+#define YY_USER_ACTION yycolumn += yyleng;
 %}
 
 %option noyywrap
@@ -134,12 +139,14 @@
 "="                      { return ASSIGN; }
 ","                      { return COMMA; }
 
-[ \t\n\r]+              ;
+[ \t\n\r]+              { if (strchr(yytext, '\n')) yycolumn = 0; }
 .                       {
                             if (yyextra) {
                                 char buf[128];
                                 snprintf(buf, sizeof(buf), "Unknown character: '%s'", yytext);
-                                cdsl_error_t* err = cdsl_error_create(CDSL_ERR_SYNTAX, 0, 0, buf, NULL);
+                                int safe_line = yylineno;
+                                if (safe_line < 0) safe_line = 0;
+                                cdsl_error_t* err = cdsl_error_create(CDSL_ERR_SYNTAX, safe_line, yycolumn, buf, NULL);
                                 cdsl_error_list_add(yyextra, err);
                             }
                         }

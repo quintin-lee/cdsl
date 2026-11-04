@@ -178,4 +178,39 @@ test_vm_parallel_concurrent_safe(void)
 
 ---
 
+## 8. 使用限制与注意事项
+
+### 8.1 读写锁不可重入（非递归）
+
+`cdsl_rwlock_t` 基于 `pthread_rwlock_t`（Unix）或 `SRWLOCK`（Windows），**不可重入**。这意味着：
+
+- 同一线程若已持有读锁，再次尝试获取读锁会导致**自锁死（self-deadlock）**。
+- 同一线程若已持有写锁，再次尝试获取任何锁（读或写）都会导致自锁死。
+
+**遵循规则**：在持有 `vm->rwlock` 期间，不得调用任何可能再次尝试获取 `vm->rwlock` 的函数。
+
+### 8.2 回调函数不得重入 VM 执行
+
+`cdsl_trigger_action_internal` 和 `BC_CALL` / `CDSL_EXPR_CALL` 在持有 `vm->rwlock` **读锁**期间调用用户注册的回调函数（`cb->cb` 或 `fn->cb`）。因此：
+
+> **严禁在动作回调（`cdsl_action_cb_t`）或函数回调（`cdsl_func_cb_t`）内部调用 `cdsl_vm_execute()`、`cdsl_vm_execute_ruleset_parallel()`、或任何会再次遍历 `vm->callbacks` / `vm->functions` 的函数。**
+
+违反此规则会导致：
+- **自锁死**：回调内部再次尝试获取读锁，由于 pthread_rwlock 不可重入，线程会永久阻塞。
+- 如果回调内部尝试获取写锁（如 `cdsl_vm_register_action`），会因为读锁已由当前线程持有而导致写锁获取失败，进而可能引发未定义行为。
+
+**推荐做法**：若回调需要触发新的规则执行，应将执行请求放入队列，在当前回调返回且锁释放后，由另一线程或主线程处理。
+
+### 8.3 锁持有时长最小化
+
+所有读锁/写锁的持有范围已限制在最小必要代码块内（链表遍历、stats 聚合）。不要在锁保护的代码块中执行耗时操作（如 I/O、复杂计算、调用外部 API），否则会显著降低并发性能。
+
+### 8.4 每个线程独立 VM 实例的约定
+
+`cdsl_vm_execute` 本身不加锁，遵循"每个线程独立 VM 实例"的使用约定。若多线程需并发执行规则，应：
+- 为每个线程创建独立的 `cdsl_vm_t`，或
+- 使用 `cdsl_vm_execute_ruleset_parallel`（其内部已处理并发安全）。
+
+---
+
 **本设计文档将写入 `docs/superpowers/specs/2026-11-04-parallel-safety-design.md`。** 请审阅，如有修改请告诉我；如无修改，我将提交 git 并进入实施计划阶段。
