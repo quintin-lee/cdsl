@@ -49,6 +49,7 @@ typedef struct cdsl_rule_report {
 	int total_obtained_score;
 	cdsl_rule_status_t status;
 	char* decision_summary;
+	cdsl_error_t* error; /**< Runtime error details, or NULL if no error (owned by report) */
 } cdsl_rule_report_t;
 
 struct cdsl_vm;
