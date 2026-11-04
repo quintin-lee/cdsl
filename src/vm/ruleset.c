@@ -180,6 +180,7 @@ cdsl_vm_execute_ruleset(cdsl_vm_t* vm, cdsl_ruleset_t* set, cdsl_context_t* ctx)
 
 typedef struct {
 	cdsl_vm_t* vm;
+	cdsl_vm_t* parent_vm;
 	cdsl_rule_t* rule;
 	cdsl_context_t* ctx;
 	cdsl_rule_report_t* result;
@@ -189,7 +190,12 @@ static void*
 parallel_worker(void* arg)
 {
 	parallel_worker_arg_t* a = (parallel_worker_arg_t*)arg;
+	/* Hold parent VM read lock for the duration of execution so that
+	   concurrent cdsl_vm_register_action/function on the parent cannot
+	   mutate the shared callbacks/functions lists while workers read them. */
+	CDSL_RWLOCK_RDLOCK(&a->parent_vm->rwlock);
 	a->result = cdsl_vm_execute(a->vm, a->rule, a->ctx);
+	CDSL_RWLOCK_UNLOCK_RD(&a->parent_vm->rwlock);
 	return NULL;
 }
 
@@ -241,6 +247,7 @@ cdsl_vm_execute_ruleset_parallel(cdsl_vm_t* vm,
 			continue;
 		}
 		CDSL_RWLOCK_INIT(&args[idx].vm->rwlock);
+		args[idx].parent_vm = vm;
 		args[idx].vm->schema = vm->schema;
 		args[idx].vm->max_expr_depth = vm->max_expr_depth;
 		args[idx].vm->callbacks = vm->callbacks;

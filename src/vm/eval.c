@@ -622,9 +622,11 @@ cdsl_eval_expr_internal(
 		if (!vm) {
 			break;
 		}
+		int func_found = 0;
 		CDSL_RWLOCK_RDLOCK(&vm->rwlock);
 		for (cdsl_func_entry_t* fn = vm->functions; fn; fn = fn->next) {
 			if (strcmp(fn->func_name, expr->data.call.func_name) == 0) {
+				func_found = 1;
 				if (debug) {
 					fprintf(stderr,
 						"[TRACE]   calling function: %s()\n",
@@ -654,11 +656,12 @@ cdsl_eval_expr_internal(
 						break;
 					}
 				}
-				CDSL_RWLOCK_UNLOCK_RD(&vm->rwlock);
 				break;
 			}
 		}
-		CDSL_RWLOCK_UNLOCK_RD(&vm->rwlock);
+		if (func_found) {
+			CDSL_RWLOCK_UNLOCK_RD(&vm->rwlock);
+		}
 		break;
 	}
 	case CDSL_EXPR_ERROR: {
