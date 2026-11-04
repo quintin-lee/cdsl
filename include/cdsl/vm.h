@@ -137,6 +137,66 @@ typedef struct cdsl_vm {
 	cdsl_rwlock_t rwlock;	  /**< Protects callbacks/functions lists and stats aggregation */
 } cdsl_vm_t;
 
+/* ---- Context Handle ---- */
+
+/**
+ * @brief Context handle bundling VM, schema, and execution context.
+ *
+ * Simplifies the common case where a user needs all three objects
+ * together.  The handle owns its vm, schema, and context and frees
+ * them all on cdsl_ctx_free().
+ *
+ * @defgroup cdsl_ctx Context Handle
+ * @{
+ */
+
+typedef struct cdsl_ctx {
+	cdsl_vm_t* vm;	       /**< VM instance */
+	cdsl_schema_t* schema; /**< Schema for type resolution */
+	cdsl_context_t* ctx;   /**< Execution context */
+} cdsl_ctx_t;
+
+/**
+ * @brief Create a context handle with vm + schema + context bound together.
+ *
+ * If @p schema is NULL, a new default schema is created and owned by the
+ * handle.  All three objects are freed together by cdsl_ctx_free().
+ *
+ * @param schema  Schema to bind (may be NULL, creates default)
+ * @return        New context handle, or NULL on allocation failure
+ */
+CDSL_NODISCARD
+cdsl_ctx_t* cdsl_ctx_create(const cdsl_schema_t* schema);
+
+/**
+ * @brief Free a context handle and all owned objects (vm, schema, context).
+ * @param ctx  Context handle to free (NULL-safe)
+ */
+void cdsl_ctx_free(cdsl_ctx_t* ctx);
+
+/**
+ * @brief Access the underlying VM (for advanced use).
+ * @param ctx  Context handle
+ * @return     VM pointer, or NULL if ctx is NULL
+ */
+cdsl_vm_t* cdsl_ctx_vm(cdsl_ctx_t* ctx);
+
+/**
+ * @brief Access the underlying schema.
+ * @param ctx  Context handle
+ * @return     Schema pointer, or NULL if ctx is NULL
+ */
+cdsl_schema_t* cdsl_ctx_schema(cdsl_ctx_t* ctx);
+
+/**
+ * @brief Access the underlying execution context.
+ * @param ctx  Context handle
+ * @return     Context pointer, or NULL if ctx is NULL
+ */
+cdsl_context_t* cdsl_ctx_context(cdsl_ctx_t* ctx);
+
+/** @} */
+
 /* ---- Lifecycle ---- */
 
 /**
