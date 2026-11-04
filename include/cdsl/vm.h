@@ -197,6 +197,52 @@ cdsl_context_t* cdsl_ctx_context(cdsl_ctx_t* ctx);
 
 /** @} */
 
+/* ---- Automatic Type Inference Macros (C23 _Generic) ---- */
+
+/**
+ * @brief Set a context variable with automatic type deduction.
+ *
+ * Uses C23 _Generic to dispatch to the correct cdsl_context_set_* function
+ * based on the type of @p value.  Supports: int, double, float, _Bool,
+ * char*, const char*, time_t, int64_t.
+ *
+ * @param ctx   Context handle
+ * @param name  Variable name
+ * @param value Value to set (type deduced by _Generic)
+ */
+#define cdsl_set(ctx, name, value)                                                                 \
+	_Generic((value),                                                                          \
+	    int: cdsl_context_set_int,                                                             \
+	    double: cdsl_context_set_float,                                                        \
+	    float: cdsl_context_set_float,                                                         \
+	    _Bool: cdsl_context_set_bool,                                                          \
+	    char*: cdsl_context_set_string,                                                        \
+	    const char*: cdsl_context_set_string,                                                  \
+	    time_t: cdsl_context_set_date,                                                         \
+	    int64_t: cdsl_context_set_long)(ctx->ctx, name, value)
+
+/**
+ * @brief Get a context variable with automatic type deduction.
+ *
+ * Uses C23 _Generic to dispatch to the correct cdsl_context_get_* function
+ * based on the type of @p default_val.  Supports same types as cdsl_set.
+ *
+ * @param ctx         Context handle
+ * @param name        Variable name
+ * @param default_val Fallback value (type deduced by _Generic)
+ * @return            Stored value or default
+ */
+#define cdsl_get(ctx, name, default_val)                                                           \
+	_Generic((default_val),                                                                    \
+	    int: cdsl_context_get_int,                                                             \
+	    double: cdsl_context_get_float,                                                        \
+	    float: cdsl_context_get_float,                                                         \
+	    _Bool: cdsl_context_get_bool,                                                          \
+	    char*: cdsl_context_get_string,                                                        \
+	    const char*: cdsl_context_get_string,                                                  \
+	    time_t: cdsl_context_get_date,                                                         \
+	    int64_t: cdsl_context_get_long)(ctx->ctx, name, default_val)
+
 /* ---- Lifecycle ---- */
 
 /**
