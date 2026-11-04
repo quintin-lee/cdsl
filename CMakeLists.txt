@@ -406,3 +406,26 @@ if(CDSL_BUILD_FUZZ)
     target_link_options(cdsl_fuzz_parse PRIVATE -fsanitize=fuzzer,address)
     message(STATUS "Fuzz target cdsl_fuzz_parse enabled (Clang + libFuzzer)")
 endif()
+
+# 15. Code coverage reporting target
+option(CDSL_BUILD_COVERAGE_REPORT "Enable coverage report target (requires lcov + gcov)" OFF)
+if(CDSL_BUILD_COVERAGE_REPORT)
+    find_program(LCOV lcov)
+    find_program(GCOV gcov)
+    if(LCOV AND GCOV)
+        add_custom_target(cdsl_coverage
+            COMMAND ${CMAKE_COMMAND} --build . --config Debug -j${CMAKE_BUILD_PARALLEL_LEVEL}
+            COMMAND ${CMAKE_COMMAND} --test build --output-on-failure --timeout 60
+            COMMAND ${LCOV} --capture --directory . --output-file coverage.info --no-external
+            COMMAND ${LCOV} --remove coverage.info '/usr/*' '*/build/*' '*/tests/*' --output-file coverage.filtered.info
+            COMMAND ${LCOV} --list coverage.filtered.info
+            COMMAND ${GCOV} ${CMAKE_SOURCE_DIR}/src/*.c ${CMAKE_SOURCE_DIR}/src/**/*.c 2>/dev/null || true
+            WORKING_DIRECTORY ${CMAKE_BINARY_DIR}
+            COMMENT "Generating code coverage report (lcov + gcov)"
+            VERBATIM
+        )
+        message(STATUS "Coverage report target 'cdsl_coverage' enabled")
+    else()
+        message(STATUS "lcov or gcov not found - 'cdsl_coverage' target will not be available")
+    endif()
+endif()

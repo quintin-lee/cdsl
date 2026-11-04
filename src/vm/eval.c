@@ -684,7 +684,9 @@ cdsl_trigger_action_internal(cdsl_vm_t* vm, cdsl_action_node_t* action)
 	CDSL_RWLOCK_RDLOCK(&vm->rwlock);
 	for (cdsl_action_cb_entry_t* cb = vm->callbacks; cb; cb = cb->next) {
 		if (strcmp(cb->action_name, action->action_name) == 0) {
-			cb->cb(action->action_name, action->args, vm->user_data);
+			if (cb->cb) {
+				cb->cb(action->action_name, action->args, vm->user_data);
+			}
 			CDSL_RWLOCK_UNLOCK_RD(&vm->rwlock);
 			return;
 		}
