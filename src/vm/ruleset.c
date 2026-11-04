@@ -179,23 +179,49 @@ cdsl_vm_execute_ruleset(cdsl_vm_t* vm, cdsl_ruleset_t* set, cdsl_context_t* ctx)
 }
 
 typedef struct {
-	cdsl_vm_t* vm;
-	cdsl_vm_t* parent_vm;
-	cdsl_rule_t* rule;
+	cdsl_action_cb_entry_t* callbacks_snapshot; /* Snapshot of parent's callbacks */
+	cdsl_func_entry_t* functions_snapshot;	    /* Snapshot of parent's functions */
+	cdsl_ruleset_t* set;
 	cdsl_context_t* ctx;
-	cdsl_rule_report_t* result;
+	cdsl_atomic_int_t* next_idx;
+	cdsl_rule_report_t** rule_reports;
+	int total_rules;
 } parallel_worker_arg_t;
 
 static void*
 parallel_worker(void* arg)
 {
 	parallel_worker_arg_t* a = (parallel_worker_arg_t*)arg;
-	/* Hold parent VM read lock for the duration of execution so that
-	   concurrent cdsl_vm_register_action/function on the parent cannot
-	   mutate the shared callbacks/functions lists while workers read them. */
-	CDSL_RWLOCK_RDLOCK(&a->parent_vm->rwlock);
-	a->result = cdsl_vm_execute(a->vm, a->rule, a->ctx);
-	CDSL_RWLOCK_UNLOCK_RD(&a->parent_vm->rwlock);
+
+	/* Create worker VM with snapshot callbacks/functions (no parent lock needed) */
+	cdsl_vm_t* wvm = calloc(1, sizeof(*wvm));
+	if (!wvm) {
+		return NULL;
+	}
+	CDSL_RWLOCK_INIT(&wvm->rwlock);
+	wvm->schema = NULL;
+	wvm->max_expr_depth = 64;
+	wvm->callbacks = a->callbacks_snapshot;
+	wvm->functions = a->functions_snapshot;
+
+	while (1) {
+		int idx = CDSL_ATOMIC_FETCH_ADD(a->next_idx, 1);
+		if (idx >= a->total_rules) {
+			break;
+		}
+		/* Find the idx-th rule entry */
+		cdsl_ruleset_entry_t* e = a->set->entries;
+		for (int i = 0; i < idx && e; i++) {
+			e = e->next;
+		}
+		if (!e) {
+			break;
+		}
+		a->rule_reports[idx] = cdsl_vm_execute(wvm, e->rule, a->ctx);
+	}
+
+	CDSL_RWLOCK_DESTROY(&wvm->rwlock);
+	free(wvm);
 	return NULL;
 }
 
@@ -223,90 +249,118 @@ cdsl_vm_execute_ruleset_parallel(cdsl_vm_t* vm,
 	}
 	batch->rule_count = set->count;
 
-	parallel_worker_arg_t* args = calloc(set->count, sizeof(parallel_worker_arg_t));
-	cdsl_thread_t* threads = calloc(set->count, sizeof(cdsl_thread_t));
+	/* Snapshot parent's callbacks/functions under write lock so workers
+	   can traverse them without holding any parent lock (avoids self-deadlock
+	   if a user callback tries to register a new action/function). */
+	cdsl_action_cb_entry_t* cb_snapshot = NULL;
+	cdsl_func_entry_t* fn_snapshot = NULL;
+	CDSL_RWLOCK_WRLOCK(&vm->rwlock);
+	for (cdsl_action_cb_entry_t* cb = vm->callbacks; cb; cb = cb->next) {
+		cdsl_action_cb_entry_t* entry = calloc(1, sizeof(*entry));
+		if (!entry) {
+			break;
+		}
+		entry->action_name = strdup(cb->action_name);
+		entry->cb = cb->cb;
+		entry->next = cb_snapshot;
+		cb_snapshot = entry;
+	}
+	for (cdsl_func_entry_t* fn = vm->functions; fn; fn = fn->next) {
+		cdsl_func_entry_t* entry = calloc(1, sizeof(*entry));
+		if (!entry) {
+			break;
+		}
+		entry->func_name = strdup(fn->func_name);
+		entry->cb = fn->cb;
+		entry->next = fn_snapshot;
+		fn_snapshot = entry;
+	}
+	CDSL_RWLOCK_UNLOCK_WR(&vm->rwlock);
+
+	/* Limit concurrency to thread_count (clamped to rule count) */
+	int nthreads = thread_count > 0 && thread_count < set->count ? thread_count : set->count;
+	cdsl_atomic_int_t next_idx = 0;
+
+	parallel_worker_arg_t* args = calloc(nthreads, sizeof(*args));
+	cdsl_thread_t* threads = calloc(nthreads, sizeof(*threads));
 	if (!args || !threads) {
 		free(args);
 		free(threads);
+		/* Free snapshots */
+		while (cb_snapshot) {
+			cdsl_action_cb_entry_t* next = cb_snapshot->next;
+			free(cb_snapshot->action_name);
+			free(cb_snapshot);
+			cb_snapshot = next;
+		}
+		while (fn_snapshot) {
+			cdsl_func_entry_t* next = fn_snapshot->next;
+			free(fn_snapshot->func_name);
+			free(fn_snapshot);
+			fn_snapshot = next;
+		}
 		free((void*)batch->rule_reports);
 		free(batch);
 		return NULL;
 	}
 
-	int idx = 0;
-	for (cdsl_ruleset_entry_t* e = set->entries; e; e = e->next, idx++) {
-		args[idx].rule = e->rule;
-		args[idx].ctx = ctx;
-		/* Use bare calloc instead of cdsl_vm_create: worker VMs share
-		   callbacks and functions pointers from the parent VM, so
-		   registering builtins would allocate entries that are immediately
-		   orphaned when we overwrite functions below. */
-		args[idx].vm = calloc(1, sizeof(cdsl_vm_t));
-		if (!args[idx].vm) {
-			args[idx].result = NULL;
-			continue;
-		}
-		CDSL_RWLOCK_INIT(&args[idx].vm->rwlock);
-		args[idx].parent_vm = vm;
-		args[idx].vm->schema = vm->schema;
-		args[idx].vm->max_expr_depth = vm->max_expr_depth;
-		args[idx].vm->callbacks = vm->callbacks;
-		args[idx].vm->functions = vm->functions;
-		args[idx].vm->user_data = vm->user_data;
-		args[idx].vm->debug_enabled = vm->debug_enabled;
+	for (int t = 0; t < nthreads; t++) {
+		args[t].callbacks_snapshot = cb_snapshot;
+		args[t].functions_snapshot = fn_snapshot;
+		args[t].set = set;
+		args[t].ctx = ctx;
+		args[t].next_idx = &next_idx;
+		args[t].rule_reports = batch->rule_reports;
+		args[t].total_rules = set->count;
 
-		if (CDSL_THREAD_CREATE(&threads[idx], parallel_worker, &args[idx]) != 0) {
-			args[idx].result = NULL;
-			/* callbacks and functions are shared; set to NULL before free */
-			args[idx].vm->callbacks = NULL;
-			args[idx].vm->functions = NULL;
-			CDSL_RWLOCK_DESTROY(&args[idx].vm->rwlock);
-			free(args[idx].vm);
-			args[idx].vm = NULL;
+		if (CDSL_THREAD_CREATE(&threads[t], parallel_worker, &args[t]) != 0) {
+			args[t].callbacks_snapshot = NULL;
+			args[t].functions_snapshot = NULL;
 		}
 	}
 
-	for (int i = 0; i < set->count; i++) {
-		if (args[i].vm) {
-			CDSL_THREAD_JOIN(threads[i]);
-		}
-		batch->rule_reports[i] = args[i].result;
-		if (batch->rule_reports[i]) {
-			cdsl_rule_report_t* r = batch->rule_reports[i];
-			batch->aggregate_score += r->total_obtained_score;
-			batch->aggregate_max += r->total_max_score;
-			switch (r->status) {
-			case CDSL_STATUS_PASSED:
-				batch->total_passed++;
-				break;
-			case CDSL_STATUS_PARTIALLY_PASSED:
-				batch->total_partially++;
-				break;
-			case CDSL_STATUS_FAILED:
-				batch->total_failed++;
-				break;
-			case CDSL_STATUS_ERROR:
-				batch->total_error++;
-				break;
-			}
-		}
-		/* Update main VM stats from worker VM */
-		if (args[i].vm) {
-			CDSL_RWLOCK_WRLOCK(&vm->rwlock);
-			vm->stats.total_executions += args[i].vm->stats.total_executions;
-			vm->stats.total_rules_executed += args[i].vm->stats.total_rules_executed;
-			vm->stats.total_metrics_evaluated +=
-			    args[i].vm->stats.total_metrics_evaluated;
-			vm->stats.total_time_us += args[i].vm->stats.total_time_us;
-			CDSL_RWLOCK_UNLOCK_WR(&vm->rwlock);
+	for (int t = 0; t < nthreads; t++) {
+		CDSL_THREAD_JOIN(threads[t]);
+	}
 
-			/* Worker VM shares callbacks/functions with parent;
-			   detach before freeing to avoid double-free. */
-			args[i].vm->callbacks = NULL;
-			args[i].vm->functions = NULL;
-			CDSL_RWLOCK_DESTROY(&args[i].vm->rwlock);
-			free(args[i].vm);
+	/* Aggregate worker stats into parent VM under write lock */
+	CDSL_RWLOCK_WRLOCK(&vm->rwlock);
+	for (int i = 0; i < set->count; i++) {
+		if (!batch->rule_reports[i]) {
+			continue;
 		}
+		cdsl_rule_report_t* r = batch->rule_reports[i];
+		batch->aggregate_score += r->total_obtained_score;
+		batch->aggregate_max += r->total_max_score;
+		switch (r->status) {
+		case CDSL_STATUS_PASSED:
+			batch->total_passed++;
+			break;
+		case CDSL_STATUS_PARTIALLY_PASSED:
+			batch->total_partially++;
+			break;
+		case CDSL_STATUS_FAILED:
+			batch->total_failed++;
+			break;
+		case CDSL_STATUS_ERROR:
+			batch->total_error++;
+			break;
+		}
+	}
+	CDSL_RWLOCK_UNLOCK_WR(&vm->rwlock);
+
+	/* Free snapshots */
+	while (cb_snapshot) {
+		cdsl_action_cb_entry_t* next = cb_snapshot->next;
+		free(cb_snapshot->action_name);
+		free(cb_snapshot);
+		cb_snapshot = next;
+	}
+	while (fn_snapshot) {
+		cdsl_func_entry_t* next = fn_snapshot->next;
+		free(fn_snapshot->func_name);
+		free(fn_snapshot);
+		fn_snapshot = next;
 	}
 
 	free(args);

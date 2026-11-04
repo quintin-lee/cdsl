@@ -1006,12 +1006,17 @@ cdsl_vm_execute(cdsl_vm_t* vm, const cdsl_rule_t* rule, cdsl_context_t* ctx)
 		}
 	}
 	double elapsed = cdsl_get_time_us_internal() - t0;
+	/* Protect stats update against concurrent execution on the same VM.
+	 * total_time_us is a plain double (not _Atomic), so concurrent
+	 * updates without locking would be a data race. */
+	CDSL_RWLOCK_WRLOCK(&vm->rwlock);
 	vm->stats.total_executions++;
 	vm->stats.total_rules_executed++;
 	vm->stats.total_time_us += elapsed;
 	if (rpt) {
 		vm->stats.total_metrics_evaluated += rpt->metric_count;
 	}
+	CDSL_RWLOCK_UNLOCK_WR(&vm->rwlock);
 	return rpt;
 }
 
