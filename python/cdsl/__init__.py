@@ -442,6 +442,7 @@ class cdsl_value(Structure):
     _fields_ = [
         ("type", c_int),
         ("data", cdsl_value_data),
+        ("owned_string", c_int),
     ]
 
 cdsl_context_entry._fields_ = [
