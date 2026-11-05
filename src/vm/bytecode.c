@@ -1086,6 +1086,17 @@ bc_run_instructions(cdsl_vm_t* vm,
 					    : (av.type == CDSL_TYPE_LONG)   ? CDSL_EXPR_LONG
 									    : CDSL_EXPR_INT;
 					memcpy(&arg_nodes[i].expr->data, &av.data, sizeof(av.data));
+					/* Transfer ownership of heap-owned resources from av
+					 * to the arg node so cdsl_value_free() below does not
+					 * double-free memory the arg node now references. */
+					if (av.type == CDSL_TYPE_STRING) {
+						av.owned_string = 0;
+					} else if (av.type == CDSL_TYPE_ARRAY) {
+						av.data.array_val = NULL;
+					}
+					cdsl_value_free(&av);
+				} else {
+					cdsl_value_free(&av);
 				}
 			}
 			for (int i = 0; i < nargs; i++) {
@@ -1184,9 +1195,11 @@ bc_run_instructions(cdsl_vm_t* vm,
 					break;
 				}
 				if (!metric_handler(ev, bc, ip, metric_val, user_data)) {
+					cdsl_value_free(&popped);
 					goto done;
 				}
 			}
+			cdsl_value_free(&popped);
 			ip++;
 			break;
 		}

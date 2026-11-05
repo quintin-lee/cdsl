@@ -757,6 +757,7 @@ execute_metric_rule(cdsl_vm_t* vm, const cdsl_rule_t* rule, cdsl_context_t* ctx)
 			cdsl_value_t cond =
 			    cdsl_eval_expr_internal(c->condition, ctx, vm, vm->debug_enabled, 0);
 			if (CDSL_ATOMIC_LOAD(&vm->error_state)) {
+				cdsl_value_free(&cond);
 				break;
 			}
 			if (cond.type == CDSL_TYPE_BOOL && cond.data.bool_val) {
@@ -770,6 +771,7 @@ execute_metric_rule(cdsl_vm_t* vm, const cdsl_rule_t* rule, cdsl_context_t* ctx)
 					    c->action->args->expr, ctx, vm, vm->debug_enabled, 0);
 					mr->score_obtained =
 					    (sv.type == CDSL_TYPE_INT) ? sv.data.int_val : 0;
+					cdsl_value_free(&sv);
 					if (CDSL_ATOMIC_LOAD(&vm->error_state)) {
 						break;
 					}
@@ -784,8 +786,10 @@ execute_metric_rule(cdsl_vm_t* vm, const cdsl_rule_t* rule, cdsl_context_t* ctx)
 				}
 				mr->is_passed = (mr->score_obtained > 0);
 				matched = 1;
+				cdsl_value_free(&cond);
 				break;
 			}
+			cdsl_value_free(&cond);
 		}
 		if (CDSL_ATOMIC_LOAD(&vm->error_state)) {
 			break;
@@ -803,6 +807,7 @@ execute_metric_rule(cdsl_vm_t* vm, const cdsl_rule_t* rule, cdsl_context_t* ctx)
 				    m->default_action->args->expr, ctx, vm, vm->debug_enabled, 0);
 				mr->score_obtained =
 				    (sv.type == CDSL_TYPE_INT) ? sv.data.int_val : 0;
+				cdsl_value_free(&sv);
 			} else if (!CDSL_ATOMIC_LOAD(&vm->error_state) && m->default_action &&
 				   strcmp(m->default_action->action_name, "fail_metric") == 0) {
 				mr->score_obtained = 0;
@@ -817,6 +822,7 @@ execute_metric_rule(cdsl_vm_t* vm, const cdsl_rule_t* rule, cdsl_context_t* ctx)
 					    rv.type == CDSL_TYPE_STRING && rv.data.string_val) {
 						mr->violation_reason = strdup(rv.data.string_val);
 					}
+					cdsl_value_free(&rv);
 				}
 			} else {
 				mr->score_obtained = 0;
@@ -922,11 +928,13 @@ execute_simple_rule(cdsl_vm_t* vm,
 	}
 	cdsl_value_t cond = evaluate_condition(rule->when_expr, ctx, vm, bc, vm->debug_enabled);
 	if (CDSL_ATOMIC_LOAD(&vm->error_state)) {
+		cdsl_value_free(&cond);
 		cdsl_report_free(report);
 		return NULL;
 	}
 	fire_trace(vm, CDSL_TRACE_EXPR, rule->name, "WHEN", cond, 0);
 	int triggered = (cond.type == CDSL_TYPE_BOOL) ? cond.data.bool_val : 0;
+	cdsl_value_free(&cond);
 	if (vm->debug_enabled) {
 		fprintf(stderr, "[TRACE] WHEN result: %s\n", triggered ? "true" : "false");
 	}
