@@ -44,9 +44,11 @@ THREAD_LOCAL int yycolumn = 0;
 
 #define YY_USER_ACTION yycolumn += yyleng;
 
-/* Override YY_DECL to match bison's 3-arg yylex call (with YYLTYPE* for location) */
+/* Override YY_DECL to match bison's 3-arg yylex call (with YYLTYPE* for location).
+   All parameters must be named: unnamed parameters in a definition are C23-only
+   and rejected by MSVC (C2055). */
 #undef YY_DECL
-#define YY_DECL int yylex(YYSTYPE * yylval_param, YYLTYPE *, yyscan_t yyscanner)
+#define YY_DECL int yylex(YYSTYPE * yylval_param, YYLTYPE * yylloc_param, yyscan_t yyscanner)
 %}
 
 %option noyywrap
@@ -61,6 +63,7 @@ THREAD_LOCAL int yycolumn = 0;
 %x BLOCK_COMMENT
 
 %%
+	(void)yylloc_param; /* location is tracked via yycolumn, not yylloc */
 
 "/*"                    { BEGIN(BLOCK_COMMENT); }
 <BLOCK_COMMENT>"*/"     { BEGIN(INITIAL); }

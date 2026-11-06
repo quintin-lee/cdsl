@@ -19,7 +19,8 @@ typedef SRWLOCK cdsl_rwlock_t;
 #define CDSL_MUTEX_UNLOCK(m) LeaveCriticalSection(m)
 #define CDSL_MUTEX_DESTROY(m) DeleteCriticalSection(m)
 
-#define CDSL_RWLOCK_INIT(l) InitializeSRWLock(l)
+/* InitializeSRWLock returns void; yield 0 to match pthread_rwlock_init semantics */
+#define CDSL_RWLOCK_INIT(l) (InitializeSRWLock(l), 0)
 #define CDSL_RWLOCK_RDLOCK(l) AcquireSRWLockShared(l)
 #define CDSL_RWLOCK_WRLOCK(l) AcquireSRWLockExclusive(l)
 #define CDSL_RWLOCK_UNLOCK_RD(l) ReleaseSRWLockShared(l)

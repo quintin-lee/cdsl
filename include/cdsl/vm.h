@@ -207,7 +207,7 @@ cdsl_context_t* cdsl_ctx_context(cdsl_ctx_t* ctx);
  *
  * Uses C23 _Generic to dispatch to the correct cdsl_context_set_* function
  * based on the type of @p value.  Supports: int, double, float, _Bool,
- * char*, int64_t.
+ * char*, long, long long (covers int64_t and time_t on all platforms).
  *
  * @param ctx   Context handle
  * @param name  Variable name
@@ -220,7 +220,8 @@ cdsl_context_t* cdsl_ctx_context(cdsl_ctx_t* ctx);
 	    float: cdsl_context_set_float,                                                         \
 	    _Bool: cdsl_context_set_bool,                                                          \
 	    char*: cdsl_context_set_string,                                                        \
-	    int64_t: cdsl_context_set_long)(_ctx->ctx, name, value)
+	    long: cdsl_context_set_long,                                                           \
+	    long long: cdsl_context_set_long)(_ctx->ctx, name, value)
 
 /**
  * @brief Get a context variable with automatic type deduction.
@@ -240,7 +241,8 @@ cdsl_context_t* cdsl_ctx_context(cdsl_ctx_t* ctx);
 	    float: cdsl_context_get_float,                                                         \
 	    _Bool: cdsl_context_get_bool,                                                          \
 	    char*: cdsl_context_get_string,                                                        \
-	    int64_t: cdsl_context_get_long)(_ctx->ctx, name, default_val)
+	    long: cdsl_context_get_long,                                                           \
+	    long long: cdsl_context_get_long)(_ctx->ctx, name, default_val)
 
 /* ---- Optional Macro Aliases ---- */
 
