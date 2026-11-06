@@ -303,7 +303,11 @@ test_visualize_rule_to_dot_file(void)
 	    cdsl_parse_string("RULE file_test { WHEN x > 0 THEN log(\"ok\") }", NULL);
 	TEST_ASSERT_NOT_NULL(rule, "Rule should parse");
 
+#ifdef _WIN32
+	const char* filepath = "test_rule.dot";
+#else
 	const char* filepath = "/tmp/test_rule.dot";
+#endif
 	int result = cdsl_rule_to_dot_file(rule, filepath);
 	TEST_ASSERT_INT(result, 1, "Rule to dot file should return 1");
 
@@ -340,7 +344,11 @@ test_visualize_ruleset_to_dot_file(void)
 	cdsl_ruleset_t* ruleset = cdsl_ruleset_create();
 	cdsl_ruleset_add(ruleset, rule, 1);
 
+#ifdef _WIN32
+	const char* filepath = "test_ruleset.dot";
+#else
 	const char* filepath = "/tmp/test_ruleset.dot";
+#endif
 	int result = cdsl_ruleset_to_dot_file(ruleset, filepath);
 	TEST_ASSERT_INT(result, 1, "Ruleset to dot file should return 1");
 
