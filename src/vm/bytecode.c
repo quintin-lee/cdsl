@@ -9,6 +9,7 @@
 #include "cdsl/bytecode.h"
 #include "cdsl/execution.h"
 #include "internal.h"
+#include "value_ops.h"
 #include <stdlib.h>
 #include <string.h>
 #include <stdio.h>
@@ -295,6 +296,10 @@ static int compile_expr(cdsl_expr_node_t* expr,
 static int
 fold_const_expr(cdsl_expr_node_t* expr, cdsl_value_t* out)
 {
+	if (!expr || !out) {
+		return 0;
+	}
+	memset(out, 0, sizeof(*out));
 	switch (expr->type) {
 	case CDSL_EXPR_INT:
 		out->type = CDSL_TYPE_INT;
@@ -325,29 +330,9 @@ fold_const_expr(cdsl_expr_node_t* expr, cdsl_value_t* out)
 		if (!fold_const_expr(expr->data.unary.expr, &v)) {
 			return 0;
 		}
-		if (expr->data.unary.op == CDSL_OP_NOT) {
-			out->type = CDSL_TYPE_BOOL;
-			out->data.bool_val = !v.data.bool_val;
-			return 1;
-		}
-		if (expr->data.unary.op == CDSL_OP_NEG) {
-			if (v.type == CDSL_TYPE_INT) {
-				out->type = CDSL_TYPE_INT;
-				out->data.int_val = -v.data.int_val;
-				return 1;
-			}
-			if (v.type == CDSL_TYPE_FLOAT) {
-				out->type = CDSL_TYPE_FLOAT;
-				out->data.float_val = -v.data.float_val;
-				return 1;
-			}
-			if (v.type == CDSL_TYPE_LONG) {
-				out->type = CDSL_TYPE_LONG;
-				out->data.long_val = -v.data.long_val;
-				return 1;
-			}
-		}
-		return 0;
+		cdsl_valop_status_t st = cdsl_value_unop(expr->data.unary.op, &v, out);
+		cdsl_value_free(&v);
+		return (st == CDSL_VALOP_OK);
 	}
 	case CDSL_EXPR_BINARY: {
 		cdsl_value_t l, r;
@@ -356,98 +341,15 @@ fold_const_expr(cdsl_expr_node_t* expr, cdsl_value_t* out)
 			return 0;
 		}
 		cdsl_op_t op = expr->data.binary.op;
-
-		/* DATE arithmetic */
-		if (l.type == CDSL_TYPE_DATE && r.type == CDSL_TYPE_DATE) {
-			if (op == CDSL_OP_SUB) {
-				double diff = difftime(l.data.date_val, r.data.date_val);
-				out->type = CDSL_TYPE_INT;
-				out->data.int_val = (int)(diff / 86400);
-				return 1;
-			}
+		if (op == CDSL_OP_AND || op == CDSL_OP_OR) {
+			cdsl_value_free(&l);
+			cdsl_value_free(&r);
 			return 0;
 		}
-		if (l.type == CDSL_TYPE_DATE &&
-		    (r.type == CDSL_TYPE_INT || r.type == CDSL_TYPE_LONG)) {
-			int64_t days =
-			    (r.type == CDSL_TYPE_LONG) ? r.data.long_val : (int64_t)r.data.int_val;
-			out->type = CDSL_TYPE_DATE;
-			out->data.date_val = (op == CDSL_OP_ADD)
-						 ? l.data.date_val + (time_t)(days * 86400)
-						 : l.data.date_val - (time_t)(days * 86400);
-			return 1;
-		}
-		if ((l.type == CDSL_TYPE_INT || l.type == CDSL_TYPE_LONG) &&
-		    r.type == CDSL_TYPE_DATE && op == CDSL_OP_ADD) {
-			int64_t days =
-			    (l.type == CDSL_TYPE_LONG) ? l.data.long_val : (int64_t)l.data.int_val;
-			out->type = CDSL_TYPE_DATE;
-			out->data.date_val = r.data.date_val + (time_t)(days * 86400);
-			return 1;
-		}
-
-		/* Numeric arithmetic */
-		if (cdsl_op_is_arithmetic(op)) {
-			double lv = (l.type == CDSL_TYPE_FLOAT)	 ? l.data.float_val
-				    : (l.type == CDSL_TYPE_LONG) ? (double)l.data.long_val
-								 : (double)l.data.int_val;
-			double rv = (r.type == CDSL_TYPE_FLOAT)	 ? r.data.float_val
-				    : (r.type == CDSL_TYPE_LONG) ? (double)r.data.long_val
-								 : (double)r.data.int_val;
-			if (op == CDSL_OP_DIV && rv == 0.0) {
-				return 0;
-			}
-			double result = (op == CDSL_OP_ADD)   ? lv + rv
-					: (op == CDSL_OP_SUB) ? lv - rv
-					: (op == CDSL_OP_MUL) ? lv * rv
-							      : lv / rv;
-			if (l.type == CDSL_TYPE_FLOAT || r.type == CDSL_TYPE_FLOAT) {
-				out->type = CDSL_TYPE_FLOAT;
-				out->data.float_val = result;
-			} else if (l.type == CDSL_TYPE_LONG || r.type == CDSL_TYPE_LONG) {
-				out->type = CDSL_TYPE_LONG;
-				out->data.long_val = (int64_t)result;
-			} else {
-				out->type = CDSL_TYPE_INT;
-				out->data.int_val = (int)result;
-			}
-			return 1;
-		}
-
-		/* Numeric comparison */
-		if (cdsl_op_is_relational(op)) {
-			double lv = (l.type == CDSL_TYPE_FLOAT)	 ? l.data.float_val
-				    : (l.type == CDSL_TYPE_LONG) ? (double)l.data.long_val
-								 : (double)l.data.int_val;
-			double rv = (r.type == CDSL_TYPE_FLOAT)	 ? r.data.float_val
-				    : (r.type == CDSL_TYPE_LONG) ? (double)r.data.long_val
-								 : (double)r.data.int_val;
-			out->type = CDSL_TYPE_BOOL;
-			switch (op) {
-			case CDSL_OP_EQ:
-				out->data.bool_val = fabs(lv - rv) < 1e-9;
-				break;
-			case CDSL_OP_NE:
-				out->data.bool_val = fabs(lv - rv) >= 1e-9;
-				break;
-			case CDSL_OP_LT:
-				out->data.bool_val = lv < rv;
-				break;
-			case CDSL_OP_GT:
-				out->data.bool_val = lv > rv;
-				break;
-			case CDSL_OP_LE:
-				out->data.bool_val = lv <= rv;
-				break;
-			case CDSL_OP_GE:
-				out->data.bool_val = lv >= rv;
-				break;
-			default:
-				return 0;
-			}
-			return 1;
-		}
-		return 0;
+		cdsl_valop_status_t st = cdsl_value_binop(op, &l, &r, out);
+		cdsl_value_free(&l);
+		cdsl_value_free(&r);
+		return (st == CDSL_VALOP_OK);
 	}
 	default:
 		return 0;
@@ -942,10 +844,27 @@ cdsl_bytecode_compile(const cdsl_rule_t* rule, const cdsl_schema_t* schema, cdsl
 		bc->max_stack = stack_used;
 	}
 
+	if (bc->max_stack > CDSL_BYTECODE_MAX_STACK) {
+		cdsl_bytecode_free(bc);
+		return 0;
+	}
+
 	return compiled;
 }
 
 /* ---- bytecode VM executor ---- */
+
+static inline cdsl_value_t
+bc_stack_underflow(cdsl_vm_t* vm)
+{
+	if (vm && !CDSL_ATOMIC_LOAD(&vm->error_state)) {
+		cdsl_vm_set_last_error(
+		    vm, CDSL_ERR_RUNTIME, 0, 0, "Bytecode stack underflow", NULL);
+		CDSL_ATOMIC_STORE(&vm->error_state, 1);
+	}
+	cdsl_value_t void_val = {.type = CDSL_TYPE_VOID};
+	return void_val;
+}
 
 int
 bc_run_instructions(cdsl_vm_t* vm,
@@ -962,12 +881,21 @@ bc_run_instructions(cdsl_vm_t* vm,
 
 #define PUSH(v)                                                                                    \
 	do {                                                                                       \
-		if (sp < CDSL_BYTECODE_MAX_STACK) {                                                \
-			stack[sp++] = (v);                                                         \
+		if (sp >= CDSL_BYTECODE_MAX_STACK) {                                               \
+			cdsl_value_t _overflow_val = (v);                                          \
+			cdsl_value_free(&_overflow_val);                                           \
+			if (vm && !CDSL_ATOMIC_LOAD(&vm->error_state)) {                           \
+				cdsl_vm_set_last_error(                                            \
+				    vm, CDSL_ERR_RUNTIME, 0, 0, "Bytecode stack overflow", NULL);  \
+				CDSL_ATOMIC_STORE(&vm->error_state, 1);                            \
+			}                                                                          \
+			result.type = CDSL_TYPE_VOID;                                              \
+			goto done;                                                                 \
 		}                                                                                  \
+		stack[sp++] = (v);                                                                 \
 	} while (0)
-#define POP() (sp > 0 ? stack[--sp] : result)
-#define PEEK() (sp > 0 ? stack[sp - 1] : result)
+#define POP() (sp > 0 ? stack[--sp] : bc_stack_underflow(vm))
+#define PEEK() (sp > 0 ? stack[sp - 1] : bc_stack_underflow(vm))
 
 	const bc_inst_t* ip = bc->code;
 	const bc_inst_t* end = bc->code + bc->count;
@@ -979,7 +907,7 @@ bc_run_instructions(cdsl_vm_t* vm,
 			int64_t count = CDSL_ATOMIC_FETCH_ADD(&vm->instruction_count, 1) + 1;
 			if (count > vm->instruction_limit) {
 				cdsl_vm_set_last_error(
-				    vm, CDSL_ERR_RUNTIME, 0, 0, "Bytecode execution error", NULL);
+				    vm, CDSL_ERR_RUNTIME, 0, 0, "Instruction quota exceeded", NULL);
 				CDSL_ATOMIC_STORE(&vm->error_state, 1);
 				result.type = CDSL_TYPE_VOID;
 				goto done;
@@ -1031,14 +959,36 @@ bc_run_instructions(cdsl_vm_t* vm,
 			break;
 		case BC_PUSH_ARRAY: {
 			int count = ip->operand.int_val;
-			cdsl_array_t* arr = calloc(1, sizeof(cdsl_array_t));
+			cdsl_array_t* arr = cdsl_vm_calloc(vm, 1, sizeof(cdsl_array_t));
 			if (arr) {
-				arr->items = calloc(count, sizeof(cdsl_value_t));
-				arr->count = count;
-				arr->capacity = count;
-				for (int i = count - 1; i >= 0; i--) {
-					arr->items[i] = POP();
+				arr->items = cdsl_vm_calloc(
+				    vm, count > 0 ? (size_t)count : 1, sizeof(cdsl_value_t));
+				if (!arr->items) {
+					free(arr);
+					arr = NULL;
 				}
+			}
+			if (!arr) {
+				for (int i = 0; i < count; i++) {
+					cdsl_value_t tmp = POP();
+					cdsl_value_free(&tmp);
+				}
+				if (!CDSL_ATOMIC_LOAD(&vm->error_state)) {
+					cdsl_vm_set_last_error(vm,
+							       CDSL_ERR_RUNTIME,
+							       0,
+							       0,
+							       "Out of memory allocating array",
+							       NULL);
+					CDSL_ATOMIC_STORE(&vm->error_state, 1);
+				}
+				result.type = CDSL_TYPE_VOID;
+				goto done;
+			}
+			arr->count = count;
+			arr->capacity = count;
+			for (int i = count - 1; i >= 0; i--) {
+				arr->items[i] = POP();
 			}
 			result.type = CDSL_TYPE_ARRAY;
 			result.data.array_val = arr;
@@ -1052,7 +1002,11 @@ bc_run_instructions(cdsl_vm_t* vm,
 			if (e) {
 				cdsl_value_t v = e->value;
 				if (v.type == CDSL_TYPE_STRING && v.data.string_val) {
-					v.data.string_val = strdup(v.data.string_val);
+					v.data.string_val = cdsl_vm_strdup(vm, v.data.string_val);
+					if (!v.data.string_val) {
+						result.type = CDSL_TYPE_VOID;
+						goto done;
+					}
 					v.owned_string = 1;
 				}
 				PUSH(v);
@@ -1079,67 +1033,43 @@ bc_run_instructions(cdsl_vm_t* vm,
 		case BC_DIV: {
 			cdsl_value_t b = POP();
 			cdsl_value_t a = POP();
-			if (a.type == CDSL_TYPE_DATE &&
-			    (b.type == CDSL_TYPE_INT || b.type == CDSL_TYPE_LONG) &&
-			    (ip->op == BC_ADD || ip->op == BC_SUB)) {
-				int64_t days = (b.type == CDSL_TYPE_LONG) ? b.data.long_val
-									  : (int64_t)b.data.int_val;
-				result.type = CDSL_TYPE_DATE;
-				result.data.date_val =
-				    (ip->op == BC_ADD) ? a.data.date_val + (time_t)(days * 86400)
-						       : a.data.date_val - (time_t)(days * 86400);
-				PUSH(result);
-				ip++;
-				break;
-			}
-			if ((a.type == CDSL_TYPE_INT || a.type == CDSL_TYPE_LONG) &&
-			    b.type == CDSL_TYPE_DATE && ip->op == BC_ADD) {
-				int64_t days = (a.type == CDSL_TYPE_LONG) ? a.data.long_val
-									  : (int64_t)a.data.int_val;
-				result.type = CDSL_TYPE_DATE;
-				result.data.date_val = b.data.date_val + (time_t)(days * 86400);
-				PUSH(result);
-				ip++;
-				break;
-			}
-			if (a.type == CDSL_TYPE_DATE && b.type == CDSL_TYPE_DATE &&
-			    ip->op == BC_SUB) {
-				double diff = difftime(a.data.date_val, b.data.date_val);
-				result.type = CDSL_TYPE_INT;
-				result.data.int_val = (int)(diff / 86400);
-				PUSH(result);
-				ip++;
-				break;
-			}
-			int has_flt = (a.type == CDSL_TYPE_FLOAT || b.type == CDSL_TYPE_FLOAT);
-			int has_lng =
-			    (!has_flt && (a.type == CDSL_TYPE_LONG || b.type == CDSL_TYPE_LONG));
-			double av = (a.type == CDSL_TYPE_FLOAT)	 ? a.data.float_val
-				    : (a.type == CDSL_TYPE_LONG) ? (double)a.data.long_val
-								 : (double)a.data.int_val;
-			double bv = (b.type == CDSL_TYPE_FLOAT)	 ? b.data.float_val
-				    : (b.type == CDSL_TYPE_LONG) ? (double)b.data.long_val
-								 : (double)b.data.int_val;
-			if (ip->op == BC_DIV && bv == 0.0) {
+			if (CDSL_ATOMIC_LOAD(&vm->error_state)) {
+				cdsl_value_free(&a);
+				cdsl_value_free(&b);
 				result.type = CDSL_TYPE_VOID;
-			} else {
-				double r = (ip->op == BC_ADD)	? av + bv
-					   : (ip->op == BC_SUB) ? av - bv
-					   : (ip->op == BC_MUL) ? av * bv
-								: av / bv;
-				if (has_flt) {
-					result.type = CDSL_TYPE_FLOAT;
-					result.data.float_val = r;
-				} else if (has_lng) {
-					result.type = CDSL_TYPE_LONG;
-					result.data.long_val = (int64_t)r;
-				} else {
-					result.type = CDSL_TYPE_INT;
-					result.data.int_val = (int)r;
-				}
+				goto done;
 			}
+			cdsl_op_t op;
+			switch (ip->op) {
+			case BC_ADD:
+				op = CDSL_OP_ADD;
+				break;
+			case BC_SUB:
+				op = CDSL_OP_SUB;
+				break;
+			case BC_MUL:
+				op = CDSL_OP_MUL;
+				break;
+			default:
+				op = CDSL_OP_DIV;
+				break;
+			}
+			cdsl_valop_status_t st = cdsl_value_binop(op, &a, &b, &result);
 			cdsl_value_free(&a);
 			cdsl_value_free(&b);
+			if (st != CDSL_VALOP_OK && st != CDSL_VALOP_VOID_OPERAND) {
+				if (!CDSL_ATOMIC_LOAD(&vm->error_state)) {
+					cdsl_vm_set_last_error(vm,
+							       CDSL_ERR_RUNTIME,
+							       0,
+							       0,
+							       cdsl_valop_status_message(st),
+							       cdsl_valop_status_hint(st));
+					CDSL_ATOMIC_STORE(&vm->error_state, 1);
+				}
+				result.type = CDSL_TYPE_VOID;
+				goto done;
+			}
 			PUSH(result);
 			ip++;
 			break;
@@ -1154,56 +1084,49 @@ bc_run_instructions(cdsl_vm_t* vm,
 		case BC_GE: {
 			cdsl_value_t b = POP();
 			cdsl_value_t a = POP();
-			result.type = CDSL_TYPE_BOOL;
-
-			/* String comparison */
-			if (a.type == CDSL_TYPE_STRING && b.type == CDSL_TYPE_STRING) {
-				int c = strcmp(a.data.string_val ? a.data.string_val : "",
-					       b.data.string_val ? b.data.string_val : "");
-				result.data.bool_val = (ip->op == BC_EQ)   ? (c == 0)
-						       : (ip->op == BC_NE) ? (c != 0)
-						       : (ip->op == BC_LT) ? (c < 0)
-						       : (ip->op == BC_GT) ? (c > 0)
-						       : (ip->op == BC_LE) ? (c <= 0)
-									   : (c >= 0);
-				/* a/b may be heap strings returned by built-ins (uppercase/trim);
-				   cdsl_value_free only releases owned_string=1 pointers. */
+			if (CDSL_ATOMIC_LOAD(&vm->error_state)) {
 				cdsl_value_free(&a);
 				cdsl_value_free(&b);
-				PUSH(result);
-				ip++;
+				result.type = CDSL_TYPE_VOID;
+				goto done;
+			}
+			cdsl_op_t op;
+			switch (ip->op) {
+			case BC_EQ:
+				op = CDSL_OP_EQ;
+				break;
+			case BC_NE:
+				op = CDSL_OP_NE;
+				break;
+			case BC_LT:
+				op = CDSL_OP_LT;
+				break;
+			case BC_GT:
+				op = CDSL_OP_GT;
+				break;
+			case BC_LE:
+				op = CDSL_OP_LE;
+				break;
+			default:
+				op = CDSL_OP_GE;
 				break;
 			}
-
-			/* Date comparison */
-			if (a.type == CDSL_TYPE_DATE && b.type == CDSL_TYPE_DATE) {
-				time_t ta = a.data.date_val, tb = b.data.date_val;
-				result.data.bool_val = (ip->op == BC_EQ)   ? (ta == tb)
-						       : (ip->op == BC_NE) ? (ta != tb)
-						       : (ip->op == BC_LT) ? (ta < tb)
-						       : (ip->op == BC_GT) ? (ta > tb)
-						       : (ip->op == BC_LE) ? (ta <= tb)
-									   : (ta >= tb);
-				PUSH(result);
-				ip++;
-				break;
-			}
-
-			/* Numeric comparison */
-			double av = (a.type == CDSL_TYPE_FLOAT)	 ? a.data.float_val
-				    : (a.type == CDSL_TYPE_LONG) ? (double)a.data.long_val
-								 : (double)a.data.int_val;
-			double bv = (b.type == CDSL_TYPE_FLOAT)	 ? b.data.float_val
-				    : (b.type == CDSL_TYPE_LONG) ? (double)b.data.long_val
-								 : (double)b.data.int_val;
-			result.data.bool_val = (ip->op == BC_EQ)   ? fabs(av - bv) < 1e-9
-					       : (ip->op == BC_NE) ? fabs(av - bv) >= 1e-9
-					       : (ip->op == BC_LT) ? av < bv
-					       : (ip->op == BC_GT) ? av > bv
-					       : (ip->op == BC_LE) ? av <= bv
-								   : av >= bv;
+			cdsl_valop_status_t st = cdsl_value_binop(op, &a, &b, &result);
 			cdsl_value_free(&a);
 			cdsl_value_free(&b);
+			if (st != CDSL_VALOP_OK && st != CDSL_VALOP_VOID_OPERAND) {
+				if (!CDSL_ATOMIC_LOAD(&vm->error_state)) {
+					cdsl_vm_set_last_error(vm,
+							       CDSL_ERR_RUNTIME,
+							       0,
+							       0,
+							       cdsl_valop_status_message(st),
+							       cdsl_valop_status_hint(st));
+					CDSL_ATOMIC_STORE(&vm->error_state, 1);
+				}
+				result.type = CDSL_TYPE_VOID;
+				goto done;
+			}
 			PUSH(result);
 			ip++;
 			break;
@@ -1211,9 +1134,26 @@ bc_run_instructions(cdsl_vm_t* vm,
 
 		case BC_NOT: {
 			cdsl_value_t v = POP();
-			result.type = CDSL_TYPE_BOOL;
-			result.data.bool_val = !v.data.bool_val;
+			if (CDSL_ATOMIC_LOAD(&vm->error_state)) {
+				cdsl_value_free(&v);
+				result.type = CDSL_TYPE_VOID;
+				goto done;
+			}
+			cdsl_valop_status_t st = cdsl_value_unop(CDSL_OP_NOT, &v, &result);
 			cdsl_value_free(&v);
+			if (st != CDSL_VALOP_OK && st != CDSL_VALOP_VOID_OPERAND) {
+				if (!CDSL_ATOMIC_LOAD(&vm->error_state)) {
+					cdsl_vm_set_last_error(vm,
+							       CDSL_ERR_RUNTIME,
+							       0,
+							       0,
+							       cdsl_valop_status_message(st),
+							       cdsl_valop_status_hint(st));
+					CDSL_ATOMIC_STORE(&vm->error_state, 1);
+				}
+				result.type = CDSL_TYPE_VOID;
+				goto done;
+			}
 			PUSH(result);
 			ip++;
 			break;
@@ -1221,19 +1161,26 @@ bc_run_instructions(cdsl_vm_t* vm,
 
 		case BC_NEG: {
 			cdsl_value_t v = POP();
-			if (v.type == CDSL_TYPE_INT) {
-				result.type = CDSL_TYPE_INT;
-				result.data.int_val = -v.data.int_val;
-			} else if (v.type == CDSL_TYPE_FLOAT) {
-				result.type = CDSL_TYPE_FLOAT;
-				result.data.float_val = -v.data.float_val;
-			} else if (v.type == CDSL_TYPE_LONG) {
-				result.type = CDSL_TYPE_LONG;
-				result.data.long_val = -v.data.long_val;
-			} else {
+			if (CDSL_ATOMIC_LOAD(&vm->error_state)) {
+				cdsl_value_free(&v);
 				result.type = CDSL_TYPE_VOID;
+				goto done;
 			}
+			cdsl_valop_status_t st = cdsl_value_unop(CDSL_OP_NEG, &v, &result);
 			cdsl_value_free(&v);
+			if (st != CDSL_VALOP_OK && st != CDSL_VALOP_VOID_OPERAND) {
+				if (!CDSL_ATOMIC_LOAD(&vm->error_state)) {
+					cdsl_vm_set_last_error(vm,
+							       CDSL_ERR_RUNTIME,
+							       0,
+							       0,
+							       cdsl_valop_status_message(st),
+							       cdsl_valop_status_hint(st));
+					CDSL_ATOMIC_STORE(&vm->error_state, 1);
+				}
+				result.type = CDSL_TYPE_VOID;
+				goto done;
+			}
 			PUSH(result);
 			ip++;
 			break;
@@ -1342,15 +1289,18 @@ bc_run_instructions(cdsl_vm_t* vm,
 		}
 
 		case BC_DUP:
-			if (sp > 0) {
+			if (sp <= 0) {
+				bc_stack_underflow(vm);
+				result.type = CDSL_TYPE_VOID;
+				goto done;
+			}
+			{
 				cdsl_value_t top = stack[sp - 1];
 				if (top.type == CDSL_TYPE_STRING && top.data.string_val &&
 				    top.owned_string) {
 					top.data.string_val = strdup(top.data.string_val);
 				}
-				if (sp < CDSL_BYTECODE_MAX_STACK) {
-					stack[sp++] = top;
-				}
+				PUSH(top);
 			}
 			ip++;
 			break;
@@ -1461,6 +1411,7 @@ cdsl_bytecode_execute(cdsl_vm_t* vm, const cdsl_bytecode_t* bc, cdsl_context_t* 
 	if (!vm || !bc || !bc->code) {
 		return result;
 	}
+	cdsl_vm_begin_execution(vm);
 	bc_run_instructions(vm, bc, ctx, NULL, NULL, &result);
 	return result;
 }
@@ -1575,7 +1526,7 @@ cdsl_bytecode_execute_rule(cdsl_vm_t* vm, const cdsl_bytecode_t* bc, cdsl_contex
 	}
 
 	double t0 = cdsl_get_time_us_internal();
-	CDSL_ATOMIC_STORE(&vm->error_state, 0);
+	cdsl_vm_begin_execution(vm);
 
 	cdsl_rule_report_t* report = calloc(1, sizeof(*report));
 	if (!report) {
@@ -1592,6 +1543,20 @@ cdsl_bytecode_execute_rule(cdsl_vm_t* vm, const cdsl_bytecode_t* bc, cdsl_contex
 	/* Check if aborted (instruction quota, timeout, etc.) */
 	if (CDSL_ATOMIC_LOAD(&vm->error_state)) {
 		report->status = CDSL_STATUS_ERROR;
+		if (!report->decision_summary) {
+			report->decision_summary = strdup("ERROR");
+		}
+		if (report->metric_count == 0 && bc->metric_info_count == 0) {
+			/* Simple rule: 1 metric representing the rule itself */
+			report->metric_count = 1;
+			report->metrics = calloc(1, sizeof(cdsl_metric_result_t));
+			if (report->metrics) {
+				report->metrics[0].metric_name =
+				    strdup(bc->rule_name ? bc->rule_name : "");
+				report->metrics[0].description =
+				    strdup(bc->description ? bc->description : "");
+			}
+		}
 		if (vm->last_error) {
 			report->error = cdsl_error_create(vm->last_error->kind,
 							  vm->last_error->line,

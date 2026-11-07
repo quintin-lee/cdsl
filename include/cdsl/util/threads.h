@@ -53,6 +53,15 @@ cdsl_internal_once_wrapper(PINIT_ONCE once, PVOID param, PVOID* context)
 #define CDSL_THREAD_JOIN(t) (WaitForSingleObject(t, INFINITE), CloseHandle(t))
 
 #else
+#ifndef _POSIX_C_SOURCE
+#define _POSIX_C_SOURCE 200809L
+#endif
+#ifndef _DEFAULT_SOURCE
+#define _DEFAULT_SOURCE 1
+#endif
+#ifndef __USE_XOPEN2K
+#define __USE_XOPEN2K 1
+#endif
 #include <pthread.h>
 
 typedef pthread_t cdsl_thread_t;

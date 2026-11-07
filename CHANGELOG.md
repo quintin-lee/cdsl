@@ -2,6 +2,33 @@
 
 ## [Unreleased] - 2026-11-07
 
+### Added
+- **Unified evaluation semantics (`src/vm/value_ops.{c,h}`)**:
+  - Unified binary and unary operator evaluation between AST tree-walk (`eval.c`), bytecode execution (`bytecode.c`), and compile-time constant folding (`fold_const_expr`).
+  - Checked arithmetic for 32-bit `INT` and 64-bit `LONG` with overflow detection.
+  - Exact 64-bit comparison for `LONG` avoiding IEEE 754 precision loss on values exceeding $2^{53}$.
+  - Strict runtime error policy: division by zero, arithmetic overflow, and invalid string relational comparisons (`<`, `>`, `<=`, `>=`) set `vm->last_error` and return `CDSL_STATUS_ERROR`.
+  - Bytecode stack safety hardening: compilation fails if `max_stack > CDSL_BYTECODE_MAX_STACK`, and runtime stack push/pop/peek operations raise runtime errors on overflow/underflow.
+  - Comprehensive differential execution test suite (`tests/test_differential.c`) and differential fuzzing in `tests/fuzz_parse.c`.
+- **Sandbox & Security hardening**:
+  - Cumulative per-execution memory quota enforcement via `cdsl_vm_strdup` / `cdsl_vm_calloc` and `cdsl_vm_set_memory_limit`.
+  - Execution lifecycle reset via `cdsl_vm_begin_execution` ensuring instruction and memory counters do not leak across runs on the same VM.
+  - Safe shell escaping (`cdsl_ai_escape_shell_sq_internal`, `'"'"'`) preventing command injection in the AI bridge; disabled `popen` curl fallback on Windows.
+- **Build & CI improvements**:
+  - Generated `<cdsl/version.h>` from `cmake/version.h.in` with `CDSL_VERSION_MAJOR`, `MINOR`, `PATCH`, and `STRING`.
+  - Exported `$<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}>` on `cdsl_static` and `cdsl_shared` targets.
+  - Added standalone public header compilation check target (`check-headers`) under strict `-std=c2x`.
+  - Added Clang ThreadSanitizer (TSan) job and removed experimental `continue-on-error` on Windows in GitHub Actions CI.
+
+### Fixed
+- Fixed memory leak in parallel ruleset execution by introducing `cdsl_vm_init_worker()` and `cdsl_vm_release_worker()` to properly manage worker VM lifecycles and error state.
+- Fixed $O(N^2)$ rule lookup in parallel execution by pre-indexing rules into an array ($O(1)$ access).
+- Fixed thread join crash risk by tracking successfully created thread IDs before joining.
+- Fixed `codegen.c` float literal precision loss using `%.17g` (guaranteeing decimal dot or exponent) and 64-bit integer literal formatting using `%lldLL` with safe `INT64_MIN` handling.
+- Fixed glibc strict C23 header compatibility for POSIX rwlock feature guards in `<cdsl/util/threads.h>` and `<cdsl/util/portability.h>`.
+- Resolved Bison warnings in `parser/parser.y` (`%precedence NOT UMINUS`, `%empty`).
+- Fixed invalid `ctest` command invocation in CMake `cdsl_coverage` target.
+
 ### Changed
 - **Documentation sync**: Updated all docs (`README.md`, `docs/architecture.md`, `docs/modules.md`, `docs/api-reference.md`, `docs/user-guide.md`, `docs/dsl-syntax.md`) to match the current codebase:
   - Bytecode ISA corrected from "24-instruction" to **31-instruction** (full `bc_op_t` enum in `<cdsl/bytecode.h>`)

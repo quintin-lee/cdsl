@@ -13,6 +13,7 @@
 #ifndef CDSL_API_H
 #define CDSL_API_H
 
+#include "cdsl/version.h"
 #include "cdsl/vm.h"
 #include "cdsl/schema.h"
 #include "cdsl/context.h"

@@ -58,6 +58,51 @@ cdsl_vm_free(cdsl_vm_t* vm)
 	free(vm);
 }
 
+int
+cdsl_vm_init_worker(cdsl_vm_t* wvm,
+		    void* user_data,
+		    int debug_enabled,
+		    int max_expr_depth,
+		    int64_t timeout_us,
+		    int64_t memory_limit,
+		    int64_t instruction_limit,
+		    cdsl_trace_cb_t trace_cb,
+		    void* trace_ud,
+		    cdsl_action_cb_entry_t* cb_snapshot,
+		    cdsl_func_entry_t* fn_snapshot)
+{
+	if (!wvm) {
+		return 0;
+	}
+	memset(wvm, 0, sizeof(*wvm));
+	if (CDSL_RWLOCK_INIT(&wvm->rwlock) != 0) {
+		return 0;
+	}
+	wvm->schema = NULL;
+	wvm->user_data = user_data;
+	wvm->debug_enabled = debug_enabled;
+	wvm->max_expr_depth = max_expr_depth > 0 ? max_expr_depth : CDSL_MAX_EXPR_DEPTH;
+	wvm->timeout_us = timeout_us;
+	wvm->memory_limit = memory_limit;
+	wvm->instruction_limit = instruction_limit;
+	wvm->trace_cb = trace_cb;
+	wvm->trace_ud = trace_ud;
+	wvm->callbacks = cb_snapshot;
+	wvm->functions = fn_snapshot;
+	return 1;
+}
+
+void
+cdsl_vm_release_worker(cdsl_vm_t* wvm)
+{
+	if (!wvm) {
+		return;
+	}
+	cdsl_error_free(wvm->last_error);
+	wvm->last_error = NULL;
+	CDSL_RWLOCK_DESTROY(&wvm->rwlock);
+}
+
 void
 cdsl_vm_register_action(cdsl_vm_t* vm, const char* action_name, cdsl_action_cb_t cb)
 {
@@ -247,6 +292,19 @@ const cdsl_error_t*
 cdsl_vm_get_last_error(const cdsl_vm_t* vm)
 {
 	return vm ? vm->last_error : NULL;
+}
+
+void
+cdsl_vm_begin_execution(cdsl_vm_t* vm)
+{
+	if (!vm) {
+		return;
+	}
+	CDSL_ATOMIC_STORE(&vm->instruction_count, 0);
+	CDSL_ATOMIC_STORE(&vm->alloc_bytes, 0);
+	CDSL_ATOMIC_STORE(&vm->error_state, 0);
+	cdsl_error_free(vm->last_error);
+	vm->last_error = NULL;
 }
 
 /* ---- Context Handle ---- */

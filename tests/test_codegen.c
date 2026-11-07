@@ -590,6 +590,36 @@ test_codegen_compilation(void)
 	TEST_CODEGEN_END();
 }
 
+static void
+test_codegen_literal_precision(void)
+{
+	TEST_CODEGEN_BEGIN("Literal precision in codegen");
+
+	cdsl_schema_t* schema = cdsl_schema_create();
+	cdsl_schema_register_var(schema, "rate", CDSL_TYPE_FLOAT);
+	cdsl_schema_register_var(schema, "id64", CDSL_TYPE_LONG);
+	cdsl_schema_register_action(schema, "block", CDSL_TYPE_VOID, 1, CDSL_TYPE_STRING);
+
+	const char* dsl = "RULE precision_test { WHEN rate > 0.005 && id64 == 9007199254740993L "
+			  "THEN block(\"ok\") }";
+	cdsl_rule_t* rule = cdsl_parse_string(dsl, NULL);
+	TEST_ASSERT_NOT_NULL(rule, "Rule should parse");
+
+	char* c_code = cdsl_codegen_rule_to_c(rule, schema);
+	TEST_ASSERT_NOT_NULL(c_code, "C code generated");
+
+	TEST_ASSERT(strstr(c_code, "0.005") != NULL,
+		    "Float literal 0.005 preserved without rounding");
+	TEST_ASSERT(strstr(c_code, "9007199254740993LL") != NULL,
+		    "64-bit integer literal 9007199254740993LL preserved");
+
+	free(c_code);
+	cdsl_free_rule(rule);
+	cdsl_schema_free(schema);
+
+	TEST_CODEGEN_END();
+}
+
 int
 main()
 {
@@ -609,6 +639,7 @@ main()
 	test_ruleset_codegen();
 	test_codegen_arithmetic_and_escapes();
 	test_codegen_compilation();
+	test_codegen_literal_precision();
 
 	TEST_SUMMARY();
 	TEST_EXIT();

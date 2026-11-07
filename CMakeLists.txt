@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.19)
-project(cdsl VERSION 1.0.0 LANGUAGES C CXX)
+project(cdsl VERSION 1.1.0 LANGUAGES C CXX)
 
 set(CMAKE_C_STANDARD 23)
 set(CMAKE_C_STANDARD_REQUIRED ON)
@@ -9,7 +9,14 @@ set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
 include(GNUInstallDirs)
 
-# 14. ccache support
+# Version header generation
+configure_file(
+    "${CMAKE_CURRENT_SOURCE_DIR}/cmake/version.h.in"
+    "${CMAKE_CURRENT_BINARY_DIR}/include/cdsl/version.h"
+    @ONLY
+)
+
+# 2. Compiler launchers (ccache)
 find_program(CCACHE ccache)
 if(CCACHE)
     set(CMAKE_C_COMPILER_LAUNCHER ${CCACHE})
@@ -17,7 +24,7 @@ if(CCACHE)
     message(STATUS "ccache found - compiler launcher enabled")
 endif()
 
-# 13. Code coverage (Moved up to apply to all targets)
+# 3. Code coverage options (Moved up to apply to all targets)
 option(CDSL_ENABLE_COVERAGE "Enable gcov code coverage reporting" OFF)
 if(CDSL_ENABLE_COVERAGE)
     if(NOT CMAKE_BUILD_TYPE STREQUAL "Debug")
@@ -28,17 +35,17 @@ if(CDSL_ENABLE_COVERAGE)
     message(STATUS "Code coverage enabled (--coverage -fprofile-update=atomic)")
 endif()
 
-# MSVC security warnings
+# 4. Compiler warnings & definitions
 if(MSVC)
     add_compile_definitions(_CRT_SECURE_NO_WARNINGS)
     add_compile_options(/wd4702)
 endif()
 
-# 1. Flex & Bison
+# 5. Flex & Bison
 find_package(FLEX REQUIRED)
 find_package(BISON REQUIRED)
 
-# libcurl for AI bridge
+# 6. External dependencies (libcurl, LibreOffice, Threads)
 find_package(CURL)
 if(CURL_FOUND)
     message(STATUS "Found libcurl - native AI bridge networking enabled")
@@ -46,7 +53,6 @@ else()
     message(WARNING "libcurl not found - AI bridge will fallback to popen(\"curl ...\")")
 endif()
 
-# LibreOffice SDK for document parsing
 set(CDSL_LO_INCLUDE_DIR "/usr/include/libreoffice" CACHE PATH "LibreOffice SDK include directory")
 set(CDSL_LO_LIB_DIR "/usr/lib/libreoffice/program" CACHE PATH "LibreOffice SDK library directory")
 if(EXISTS "${CDSL_LO_INCLUDE_DIR}/LibreOfficeKit/LibreOfficeKit.h" AND
@@ -60,6 +66,9 @@ else()
     set(CDSL_USE_LIBREOFFICE FALSE)
 endif()
 
+find_package(Threads REQUIRED)
+
+# 7. Lexer/Parser targets & sources
 bison_target(MyParser parser/parser.y ${CMAKE_CURRENT_BINARY_DIR}/parser.tab.c)
 flex_target(MyLexer parser/lexer.l ${CMAKE_CURRENT_BINARY_DIR}/lexer.c)
 add_flex_bison_dependency(MyLexer MyParser)
@@ -82,17 +91,17 @@ if(CDSL_USE_LIBREOFFICE)
     list(APPEND CDSL_SOURCES ${CDSL_LO_SOURCES})
 endif()
 
-# 2. Object library (avoids compiling sources twice for static+shared)
+# 8. Object library (avoids compiling sources twice for static+shared)
 option(CDSL_UNITY_BUILD "Enable unity (Jumbo) build for faster compilation" OFF)
 if(CDSL_UNITY_BUILD)
     set_property(GLOBAL PROPERTY UNITY_BUILD ON)
     set_property(GLOBAL PROPERTY UNITY_BUILD_BATCH_SIZE 4)
 endif()
-find_package(Threads REQUIRED)
 add_library(cdsl_objects OBJECT ${CDSL_SOURCES})
 set_property(TARGET cdsl_objects PROPERTY POSITION_INDEPENDENT_CODE 1)
 target_include_directories(cdsl_objects PRIVATE
     $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
+    $<BUILD_INTERFACE:${CMAKE_CURRENT_BINARY_DIR}/include>
     $<BUILD_INTERFACE:${CMAKE_CURRENT_BINARY_DIR}>
 )
 if(CURL_FOUND)
@@ -126,11 +135,13 @@ else()
     endif()
 endif()
 
-# 3. Static library
+# 9. Static library
 add_library(cdsl_static STATIC $<TARGET_OBJECTS:cdsl_objects>)
 target_include_directories(cdsl_static PUBLIC
     $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
+    $<BUILD_INTERFACE:${CMAKE_CURRENT_BINARY_DIR}/include>
     $<BUILD_INTERFACE:${CMAKE_CURRENT_BINARY_DIR}>
+    $<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}>
 )
 set_target_properties(cdsl_static PROPERTIES OUTPUT_NAME cdsl)
 if(UNIX)
@@ -142,11 +153,13 @@ if(CURL_FOUND)
     target_link_libraries(cdsl_static PRIVATE CURL::libcurl)
 endif()
 
-# 4. Shared library
+# 9. Shared library
 add_library(cdsl_shared SHARED $<TARGET_OBJECTS:cdsl_objects>)
 target_include_directories(cdsl_shared PUBLIC
     $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
+    $<BUILD_INTERFACE:${CMAKE_CURRENT_BINARY_DIR}/include>
     $<BUILD_INTERFACE:${CMAKE_CURRENT_BINARY_DIR}>
+    $<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}>
 )
 target_link_libraries(cdsl_shared PUBLIC Threads::Threads ${EXTRA_LIBS})
 if(CURL_FOUND)
@@ -158,12 +171,12 @@ set_target_properties(cdsl_shared PROPERTIES
     SOVERSION 1
 )
 
-# 5. Build-tree aliases
+# 10. Build-tree aliases
 add_library(cdsl ALIAS cdsl_static)
 add_library(cdsl::cdsl_static ALIAS cdsl_static)
 add_library(cdsl::cdsl_shared ALIAS cdsl_shared)
 
-# 6. Common warning flags for all executables (tests, demos, benchmarks)
+# 11. Common warning flags for all executables (tests, demos, benchmarks)
 macro(cdsl_add_warning_flags target)
     if(NOT MSVC)
         target_compile_options(${target} PRIVATE
@@ -171,7 +184,7 @@ macro(cdsl_add_warning_flags target)
     endif()
 endmacro()
 
-# 7. Demo executables
+# 12. Demo executables
 add_executable(cdsl_demo demo/main.c)
 cdsl_add_warning_flags(cdsl_demo)
 target_link_libraries(cdsl_demo PRIVATE cdsl_static)
@@ -189,7 +202,7 @@ if(CDSL_USE_LIBREOFFICE)
     install(TARGETS cdsl_word_parser RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR} COMPONENT demos)
 endif()
 
-# 8. Tests
+# 13. Tests
 enable_testing()
 file(GLOB TEST_SOURCES CONFIGURE_DEPENDS "tests/test_*.c")
 foreach(test_src ${TEST_SOURCES})
@@ -205,6 +218,7 @@ foreach(test_src ${TEST_SOURCES})
         target_compile_options(${test_name} PRIVATE
             -Wno-null-dereference -Wno-sign-compare -Wno-unused-result)
     endif()
+    target_compile_definitions(${test_name} PRIVATE CDSL_TESTING)
     target_link_libraries(${test_name} PRIVATE cdsl_static)
     add_test(NAME ${test_name} COMMAND ${test_name})
     if(${test_name} STREQUAL "test_doc")
@@ -213,7 +227,7 @@ foreach(test_src ${TEST_SOURCES})
     endif()
 endforeach()
 
-# 8. Benchmarks
+# 14. Benchmarks
 option(CDSL_BUILD_BENCHMARKS "Build performance benchmarks" OFF)
 if(CDSL_BUILD_BENCHMARKS)
     add_executable(cdsl_bench tests/bench_execution.c)
@@ -221,12 +235,13 @@ if(CDSL_BUILD_BENCHMARKS)
     message(STATUS "Benchmark target cdsl_bench enabled")
 endif()
 
-# 9. LSP server (optional)
+# 15. LSP server (optional)
 option(CDSL_BUILD_LSP "Build the cdsl-lsp language server" OFF)
 if(CDSL_BUILD_LSP)
     add_subdirectory(tools/cdsl-lsp)
 endif()
 
+# 16. Installation & packaging
 install(TARGETS cdsl_static cdsl_shared
     EXPORT cdslTargets
     LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR}
@@ -236,10 +251,10 @@ install(TARGETS cdsl_static cdsl_shared
 )
 
 install(DIRECTORY include/cdsl/ DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/cdsl COMPONENT headers)
+install(FILES ${CMAKE_CURRENT_BINARY_DIR}/include/cdsl/version.h DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/cdsl COMPONENT headers)
 # parser.tab.h is internal; installed only for build-time access via
 # BUILD_INTERFACE, not as a public API header
 
-# 9. CMake package config
 install(EXPORT cdslTargets
     FILE cdslTargets.cmake
     NAMESPACE cdsl::
@@ -266,17 +281,9 @@ install(FILES
     COMPONENT cmake
 )
 
-# 10. pkg-config
 configure_file(
     "${CMAKE_CURRENT_SOURCE_DIR}/cmake/cdsl.pc.in"
     "${CMAKE_CURRENT_BINARY_DIR}/cdsl.pc"
-    @ONLY
-)
-
-# 11. Python setup.py version
-configure_file(
-    "${CMAKE_CURRENT_SOURCE_DIR}/python/setup.py"
-    "${CMAKE_CURRENT_BINARY_DIR}/python/setup.py"
     @ONLY
 )
 install(FILES "${CMAKE_CURRENT_BINARY_DIR}/cdsl.pc"
@@ -284,7 +291,13 @@ install(FILES "${CMAKE_CURRENT_BINARY_DIR}/cdsl.pc"
     COMPONENT pkgconfig
 )
 
-# 11. Uninstall target
+configure_file(
+    "${CMAKE_CURRENT_SOURCE_DIR}/python/setup.py"
+    "${CMAKE_CURRENT_BINARY_DIR}/python/setup.py"
+    @ONLY
+)
+
+# 17. Uninstall target
 configure_file(
     "${CMAKE_CURRENT_SOURCE_DIR}/cmake/cmake_uninstall.cmake.in"
     "${CMAKE_CURRENT_BINARY_DIR}/cmake_uninstall.cmake"
@@ -295,7 +308,7 @@ add_custom_target(uninstall
     COMMENT "Removing installed C-DSL files..."
 )
 
-# 12. Code formatting (clang-format)
+# 18. Code formatting (clang-format) & linting
 option(CDSL_FORMAT_ON_BUILD "Run clang-format before every build" OFF)
 
 find_program(CLANG_FORMAT clang-format)
@@ -366,7 +379,22 @@ else()
     message(STATUS "clang-format not found - format targets disabled")
 endif()
 
-# 12. Doxygen documentation
+# Header syntax check (standalone headers check under -std=c2x)
+if(NOT MSVC)
+    add_custom_target(check-headers
+        COMMAND ${CMAKE_C_COMPILER} -std=c2x -Wall -Wextra -Wpedantic -Werror
+            -I${CMAKE_CURRENT_SOURCE_DIR}/include
+            -I${CMAKE_CURRENT_BINARY_DIR}/include
+            -fsyntax-only
+            ${CMAKE_CURRENT_SOURCE_DIR}/include/cdsl/cdsl.h
+            ${CMAKE_CURRENT_SOURCE_DIR}/include/cdsl/api.h
+            ${CMAKE_CURRENT_SOURCE_DIR}/include/cdsl/vm.h
+            ${CMAKE_CURRENT_SOURCE_DIR}/include/cdsl/util/threads.h
+        COMMENT "Checking public headers standalone compilation under -std=c2x"
+    )
+endif()
+
+# 19. Doxygen documentation
 option(CDSL_GENERATE_DOCS "Generate Doxygen API documentation during build" OFF)
 
 find_package(Doxygen QUIET)
@@ -394,7 +422,7 @@ else()
     message(STATUS "Doxygen not found - 'doc' target will not be available")
 endif()
 
-# 14. Fuzz target (requires Clang with libFuzzer)
+# 20. Fuzz target (requires Clang with libFuzzer)
 option(CDSL_BUILD_FUZZ "Build fuzz targets (requires Clang)" OFF)
 if(CDSL_BUILD_FUZZ)
     if(NOT CMAKE_C_COMPILER_ID MATCHES "Clang")
@@ -407,7 +435,7 @@ if(CDSL_BUILD_FUZZ)
     message(STATUS "Fuzz target cdsl_fuzz_parse enabled (Clang + libFuzzer)")
 endif()
 
-# 15. Code coverage reporting target
+# 21. Code coverage reporting target
 option(CDSL_BUILD_COVERAGE_REPORT "Enable coverage report target (requires lcov + gcov)" OFF)
 if(CDSL_BUILD_COVERAGE_REPORT)
     find_program(LCOV lcov)
@@ -415,7 +443,7 @@ if(CDSL_BUILD_COVERAGE_REPORT)
     if(LCOV AND GCOV)
         add_custom_target(cdsl_coverage
             COMMAND ${CMAKE_COMMAND} --build . --config Debug -j${CMAKE_BUILD_PARALLEL_LEVEL}
-            COMMAND ${CMAKE_COMMAND} --test build --output-on-failure --timeout 60
+            COMMAND ${CMAKE_CTEST_COMMAND} --output-on-failure --timeout 60
             COMMAND ${LCOV} --capture --directory . --output-file coverage.info --no-external --rc branch_coverage=1 --rc check_data_consistency=0 --ignore-errors inconsistent,inconsistent,negative,unused,deprecated
             COMMAND ${LCOV} --remove coverage.info '/usr/*' '*/build/*' '*/tests/*' --output-file coverage.filtered.info --ignore-errors inconsistent,negative,unused,deprecated
             COMMAND ${LCOV} --list coverage.filtered.info --ignore-errors inconsistent,unused,deprecated

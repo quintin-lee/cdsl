@@ -116,7 +116,7 @@ parse_date_internal(const char* s)
 %left LT GT LE GE
 %left PLUS MINUS
 %left STAR SLASH
-%right NOT UMINUS
+%precedence NOT UMINUS
 
 %type <rule> program rule_declaration template_declaration
 %type <meta_list> meta_block meta_list meta_item
@@ -173,7 +173,7 @@ template_declaration:
 
 meta_block:
     META LBRACE meta_list RBRACE { $$ = $3; }
-    | /* empty */          { $$ = NULL; }
+    | %empty               { $$ = NULL; }
     ;
 
 meta_list:
@@ -249,7 +249,7 @@ action_statement:
     ;
 
 argument_list:
-    /* empty */                        { $$ = NULL; }
+    %empty                             { $$ = NULL; }
     | argument_list_nonempty           { $$ = $1; }
     ;
 

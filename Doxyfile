@@ -1,7 +1,7 @@
 # Doxyfile for C-DSL Rule Engine
 
 PROJECT_NAME           = "C-DSL Rule Engine"
-PROJECT_NUMBER         = "1.0.0"
+PROJECT_NUMBER         = "1.1.0"
 PROJECT_BRIEF          = "AI-Powered DSL Rule Engine with Three-Layer Architecture"
 
 OUTPUT_DIRECTORY       = docs

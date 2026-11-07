@@ -48,6 +48,9 @@ jobs:
       - name: Build
         run: cmake --build build -j$(nproc)
 
+      - name: Check public headers (-std=c2x standalone)
+        run: cmake --build build --target check-headers
+
       - name: Test
         run: ctest --test-dir build --output-on-failure -j$(nproc)
 
@@ -88,11 +91,10 @@ jobs:
         run: ctest --test-dir build --output-on-failure
 
   ##########################################################################
-  # Build & Test (Windows - experimental)
+  # Build & Test (Windows)
   ##########################################################################
   build-windows:
     runs-on: windows-latest
-    continue-on-error: true # experimental: MSVC lacks C23 stdatomic
 
     steps:
       - uses: actions/checkout@v4
@@ -183,6 +185,41 @@ jobs:
         run: cmake --build build -j$(nproc)
 
       - name: Test with sanitizers
+        run: ctest --test-dir build --output-on-failure
+
+  ##########################################################################
+  # ThreadSanitizer Build (Clang TSan for multi-threaded VM/ruleset execution)
+  ##########################################################################
+  tsan:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install dependencies
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq \
+            cmake \
+            clang \
+            flex \
+            bison \
+            libpthread-stubs0-dev
+
+      - name: Configure with ThreadSanitizer
+        run: |
+          cmake -B build \
+            -DCMAKE_BUILD_TYPE=Debug \
+            -DCMAKE_C_COMPILER=clang \
+            -DCMAKE_CXX_COMPILER=clang++ \
+            -DCMAKE_C_FLAGS="-fsanitize=thread -g -fno-omit-frame-pointer" \
+            -DCMAKE_EXE_LINKER_FLAGS="-fsanitize=thread" \
+            -DCDSL_GENERATE_DOCS=OFF
+
+      - name: Build
+        run: cmake --build build -j$(nproc)
+
+      - name: Test with ThreadSanitizer
         run: ctest --test-dir build --output-on-failure
 
   ##########################################################################

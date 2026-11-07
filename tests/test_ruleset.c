@@ -508,6 +508,43 @@ test_ruleset_performance()
 	TEST_RULESET_END();
 }
 
+static void
+test_ruleset_parallel_quota_error(void)
+{
+	TEST_RULESET_BEGIN("Ruleset parallel quota error handling");
+
+	cdsl_ruleset_t* ruleset = cdsl_ruleset_create();
+	cdsl_schema_t* schema = cdsl_schema_create();
+	cdsl_schema_register_var(schema, "x", CDSL_TYPE_INT);
+	cdsl_schema_register_action(schema, "block", CDSL_TYPE_VOID, 1, CDSL_TYPE_STRING);
+
+	const char* dsl1 = "RULE r1 { WHEN x + x + x > 0 THEN block(\"r1\") }";
+	const char* dsl2 = "RULE r2 { WHEN x + x + x > 0 THEN block(\"r2\") }";
+	char err[256];
+	cdsl_ruleset_load_string(ruleset, dsl1, 1, schema, err, sizeof(err));
+	cdsl_ruleset_load_string(ruleset, dsl2, 2, schema, err, sizeof(err));
+
+	cdsl_vm_t* vm = cdsl_vm_create(schema);
+	cdsl_vm_set_instruction_limit(vm, 1); /* Force instruction quota error in workers */
+
+	cdsl_context_t* ctx = cdsl_context_create(schema);
+	cdsl_context_set_int(ctx, "x", 1);
+
+	cdsl_ruleset_report_t* report = cdsl_vm_execute_ruleset_parallel(vm, ruleset, ctx, 2);
+	TEST_ASSERT_NOT_NULL(report, "Parallel quota error report created");
+	if (report) {
+		TEST_ASSERT_INT(report->total_error, 2, "Both rules should result in ERROR");
+		cdsl_ruleset_report_free(report);
+	}
+
+	cdsl_context_free(ctx);
+	cdsl_vm_free(vm);
+	cdsl_ruleset_free(ruleset);
+	cdsl_schema_free(schema);
+
+	TEST_RULESET_END();
+}
+
 int
 main()
 {
@@ -525,6 +562,7 @@ main()
 	test_ruleset_error_handling();
 	test_complex_ruleset();
 	test_ruleset_performance();
+	test_ruleset_parallel_quota_error();
 
 	TEST_SUMMARY();
 	TEST_EXIT();

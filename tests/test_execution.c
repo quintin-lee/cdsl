@@ -530,6 +530,7 @@ test_execution_edge_cases(void)
 	if (rule) {
 		cdsl_rule_report_t* rpt = cdsl_vm_execute(vm, rule, ctx);
 		TEST_ASSERT(rpt != NULL, "divzero produces report");
+		TEST_ASSERT_INT(rpt->status, CDSL_STATUS_ERROR, "divzero produces ERROR status");
 		cdsl_report_free(rpt);
 		cdsl_free_rule(rule);
 	}

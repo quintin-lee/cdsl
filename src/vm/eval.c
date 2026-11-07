@@ -30,6 +30,7 @@
 
 #include "cdsl/execution.h"
 #include "internal.h"
+#include "value_ops.h"
 #include "cdsl/cache.h"
 #include "cdsl/util/portability.h"
 #include <stdlib.h>
@@ -310,10 +311,11 @@ cdsl_eval_expr_internal(
 			count++;
 			arg = arg->next;
 		}
-		cdsl_array_t* arr = calloc(1, sizeof(cdsl_array_t));
+		cdsl_array_t* arr = cdsl_vm_calloc(vm, 1, sizeof(cdsl_array_t));
 		if (arr) {
-			arr->items = calloc(count > 0 ? count : 1, sizeof(cdsl_value_t));
-			if (!arr->items && count > 0) {
+			arr->items =
+			    cdsl_vm_calloc(vm, count > 0 ? (size_t)count : 1, sizeof(cdsl_value_t));
+			if (!arr->items) {
 				free(arr);
 				arr = NULL;
 			} else {
@@ -372,7 +374,11 @@ cdsl_eval_expr_internal(
 			}
 			cdsl_value_t v = e->value;
 			if (v.type == CDSL_TYPE_STRING && v.data.string_val) {
-				v.data.string_val = strdup(v.data.string_val);
+				v.data.string_val = cdsl_vm_strdup(vm, v.data.string_val);
+				if (!v.data.string_val) {
+					result.type = CDSL_TYPE_VOID;
+					break;
+				}
 				v.owned_string = 1;
 			}
 			return v;
@@ -385,29 +391,30 @@ cdsl_eval_expr_internal(
 	case CDSL_EXPR_UNARY: {
 		cdsl_value_t v =
 		    cdsl_eval_expr_internal(expr->data.unary.expr, ctx, vm, debug, depth + 1);
-		if (expr->data.unary.op == CDSL_OP_NOT) {
-			result.type = CDSL_TYPE_BOOL;
-			result.data.bool_val = !v.data.bool_val;
-			if (debug) {
+		if (vm && CDSL_ATOMIC_LOAD(&vm->error_state)) {
+			cdsl_value_free(&v);
+			break;
+		}
+		cdsl_valop_status_t st = cdsl_value_unop(expr->data.unary.op, &v, &result);
+		if (st != CDSL_VALOP_OK && st != CDSL_VALOP_VOID_OPERAND) {
+			if (vm) {
+				cdsl_vm_set_last_error(vm,
+						       CDSL_ERR_RUNTIME,
+						       expr->line,
+						       expr->column,
+						       cdsl_valop_status_message(st),
+						       cdsl_valop_status_hint(st));
+				CDSL_ATOMIC_STORE(&vm->error_state, 1);
+			}
+			result.type = CDSL_TYPE_VOID;
+		}
+		if (debug) {
+			if (expr->data.unary.op == CDSL_OP_NOT) {
 				fprintf(stderr,
 					"[TRACE]   NOT %s = %s\n",
 					v.data.bool_val ? "true" : "false",
 					result.data.bool_val ? "true" : "false");
-			}
-		} else if (expr->data.unary.op == CDSL_OP_NEG) {
-			if (v.type == CDSL_TYPE_INT) {
-				result.type = CDSL_TYPE_INT;
-				result.data.int_val = -v.data.int_val;
-			} else if (v.type == CDSL_TYPE_FLOAT) {
-				result.type = CDSL_TYPE_FLOAT;
-				result.data.float_val = -v.data.float_val;
-			} else if (v.type == CDSL_TYPE_LONG) {
-				result.type = CDSL_TYPE_LONG;
-				result.data.long_val = -v.data.long_val;
 			} else {
-				result.type = CDSL_TYPE_VOID;
-			}
-			if (debug) {
 				fprintf(stderr, "[TRACE]   NEG\n");
 			}
 		}
@@ -419,16 +426,26 @@ cdsl_eval_expr_internal(
 		if (op == CDSL_OP_AND) {
 			cdsl_value_t l = cdsl_eval_expr_internal(
 			    expr->data.binary.left, ctx, vm, debug, depth + 1);
+			if (vm && CDSL_ATOMIC_LOAD(&vm->error_state)) {
+				cdsl_value_free(&l);
+				break;
+			}
 			if (!l.data.bool_val) {
 				result.type = CDSL_TYPE_BOOL;
 				result.data.bool_val = 0;
 				if (debug) {
 					fprintf(stderr, "[TRACE]   AND short-circuit: false\n");
 				}
+				cdsl_value_free(&l);
 				break;
 			}
+			cdsl_value_free(&l);
 			cdsl_value_t r = cdsl_eval_expr_internal(
 			    expr->data.binary.right, ctx, vm, debug, depth + 1);
+			if (vm && CDSL_ATOMIC_LOAD(&vm->error_state)) {
+				cdsl_value_free(&r);
+				break;
+			}
 			result.type = CDSL_TYPE_BOOL;
 			result.data.bool_val = r.data.bool_val;
 			if (debug) {
@@ -437,21 +454,32 @@ cdsl_eval_expr_internal(
 					r.data.bool_val ? "true" : "false",
 					result.data.bool_val ? "true" : "false");
 			}
+			cdsl_value_free(&r);
 			break;
 		}
 		if (op == CDSL_OP_OR) {
 			cdsl_value_t l = cdsl_eval_expr_internal(
 			    expr->data.binary.left, ctx, vm, debug, depth + 1);
+			if (vm && CDSL_ATOMIC_LOAD(&vm->error_state)) {
+				cdsl_value_free(&l);
+				break;
+			}
 			if (l.data.bool_val) {
 				result.type = CDSL_TYPE_BOOL;
 				result.data.bool_val = 1;
 				if (debug) {
 					fprintf(stderr, "[TRACE]   OR short-circuit: true\n");
 				}
+				cdsl_value_free(&l);
 				break;
 			}
+			cdsl_value_free(&l);
 			cdsl_value_t r = cdsl_eval_expr_internal(
 			    expr->data.binary.right, ctx, vm, debug, depth + 1);
+			if (vm && CDSL_ATOMIC_LOAD(&vm->error_state)) {
+				cdsl_value_free(&r);
+				break;
+			}
 			result.type = CDSL_TYPE_BOOL;
 			result.data.bool_val = r.data.bool_val;
 			if (debug) {
@@ -460,192 +488,38 @@ cdsl_eval_expr_internal(
 					r.data.bool_val ? "true" : "false",
 					result.data.bool_val ? "true" : "false");
 			}
+			cdsl_value_free(&r);
 			break;
 		}
 		cdsl_value_t l =
 		    cdsl_eval_expr_internal(expr->data.binary.left, ctx, vm, debug, depth + 1);
+		if (vm && CDSL_ATOMIC_LOAD(&vm->error_state)) {
+			cdsl_value_free(&l);
+			break;
+		}
 		cdsl_value_t r =
 		    cdsl_eval_expr_internal(expr->data.binary.right, ctx, vm, debug, depth + 1);
-
-		if (l.type == CDSL_TYPE_STRING && r.type == CDSL_TYPE_STRING &&
-		    (op == CDSL_OP_EQ || op == CDSL_OP_NE)) {
-			result.type = CDSL_TYPE_BOOL;
-			int cmp = strcmp(l.data.string_val ? l.data.string_val : "",
-					 r.data.string_val ? r.data.string_val : "");
-			result.data.bool_val = (op == CDSL_OP_EQ) ? (cmp == 0) : (cmp != 0);
-			/* l/r may be heap strings returned by built-ins (uppercase/trim);
-			   cdsl_value_free only releases owned_string=1 pointers, so
-			   borrowed AST/context strings are safe. */
+		if (vm && CDSL_ATOMIC_LOAD(&vm->error_state)) {
 			cdsl_value_free(&l);
 			cdsl_value_free(&r);
 			break;
 		}
 
-		/* DATE arithmetic: DATE +/- INT/LONG → DATE, DATE - DATE → INT */
-		if (l.type == CDSL_TYPE_DATE &&
-		    (r.type == CDSL_TYPE_INT || r.type == CDSL_TYPE_LONG) &&
-		    (op == CDSL_OP_ADD || op == CDSL_OP_SUB)) {
-			int64_t days =
-			    (r.type == CDSL_TYPE_LONG) ? r.data.long_val : (int64_t)r.data.int_val;
-			result.type = CDSL_TYPE_DATE;
-			result.data.date_val = (op == CDSL_OP_ADD)
-						   ? l.data.date_val + (time_t)(days * 86400)
-						   : l.data.date_val - (time_t)(days * 86400);
-			break;
-		}
-		if ((l.type == CDSL_TYPE_INT || l.type == CDSL_TYPE_LONG) &&
-		    r.type == CDSL_TYPE_DATE && op == CDSL_OP_ADD) {
-			int64_t days =
-			    (l.type == CDSL_TYPE_LONG) ? l.data.long_val : (int64_t)l.data.int_val;
-			result.type = CDSL_TYPE_DATE;
-			result.data.date_val = r.data.date_val + (time_t)(days * 86400);
-			break;
-		}
-		if (l.type == CDSL_TYPE_DATE && r.type == CDSL_TYPE_DATE && op == CDSL_OP_SUB) {
-			double diff = difftime(l.data.date_val, r.data.date_val);
-			result.type = CDSL_TYPE_INT;
-			result.data.int_val = (int)(diff / 86400);
-			break;
-		}
-
-		if (l.type == CDSL_TYPE_DATE && r.type == CDSL_TYPE_DATE) {
-			result.type = CDSL_TYPE_BOOL;
-			time_t t1 = l.data.date_val;
-			time_t t2 = r.data.date_val;
-			switch (op) {
-			case CDSL_OP_EQ:
-				result.data.bool_val = (t1 == t2);
-				break;
-			case CDSL_OP_NE:
-				result.data.bool_val = (t1 != t2);
-				break;
-			case CDSL_OP_LT:
-				result.data.bool_val = (t1 < t2);
-				break;
-			case CDSL_OP_GT:
-				result.data.bool_val = (t1 > t2);
-				break;
-			case CDSL_OP_LE:
-				result.data.bool_val = (t1 <= t2);
-				break;
-			case CDSL_OP_GE:
-				result.data.bool_val = (t1 >= t2);
-				break;
-			default:
-				result.data.bool_val = 0;
-				break;
+		cdsl_valop_status_t st = cdsl_value_binop(op, &l, &r, &result);
+		if (st != CDSL_VALOP_OK && st != CDSL_VALOP_VOID_OPERAND) {
+			if (vm) {
+				cdsl_vm_set_last_error(vm,
+						       CDSL_ERR_RUNTIME,
+						       expr->line,
+						       expr->column,
+						       cdsl_valop_status_message(st),
+						       cdsl_valop_status_hint(st));
+				CDSL_ATOMIC_STORE(&vm->error_state, 1);
 			}
-			break;
+			result.type = CDSL_TYPE_VOID;
 		}
-
-		/* Coerce operands to double for comparison; also detect LONG for arithmetic */
-		int has_float = 0;
-		int has_long = 0;
-		double lv, rv;
-		int64_t llv = 0, lrv = 0;
-
-		if (l.type == CDSL_TYPE_INT) {
-			lv = l.data.int_val;
-			llv = l.data.int_val;
-		} else if (l.type == CDSL_TYPE_FLOAT) {
-			lv = l.data.float_val;
-			has_float = 1;
-		} else if (l.type == CDSL_TYPE_LONG) {
-			lv = (double)l.data.long_val;
-			llv = l.data.long_val;
-			has_long = 1;
-		} else if (l.type == CDSL_TYPE_BOOL) {
-			lv = l.data.bool_val;
-			llv = l.data.bool_val;
-		} else {
-			result.type = CDSL_TYPE_BOOL;
-			result.data.bool_val = 0;
-			cdsl_value_free(&l);
-			cdsl_value_free(&r);
-			break;
-		}
-
-		if (r.type == CDSL_TYPE_INT) {
-			rv = r.data.int_val;
-			lrv = r.data.int_val;
-		} else if (r.type == CDSL_TYPE_FLOAT) {
-			rv = r.data.float_val;
-			has_float = 1;
-		} else if (r.type == CDSL_TYPE_LONG) {
-			rv = (double)r.data.long_val;
-			lrv = r.data.long_val;
-			has_long = 1;
-		} else if (r.type == CDSL_TYPE_BOOL) {
-			rv = r.data.bool_val;
-			lrv = r.data.bool_val;
-		} else {
-			result.type = CDSL_TYPE_BOOL;
-			result.data.bool_val = 0;
-			cdsl_value_free(&l);
-			cdsl_value_free(&r);
-			break;
-		}
-
-		result.type = CDSL_TYPE_BOOL;
-		switch (op) {
-		case CDSL_OP_EQ:
-			result.data.bool_val = fabs(lv - rv) < 1e-9;
-			break;
-		case CDSL_OP_NE:
-			result.data.bool_val = fabs(lv - rv) >= 1e-9;
-			break;
-		case CDSL_OP_LT:
-			result.data.bool_val = lv < rv;
-			break;
-		case CDSL_OP_GT:
-			result.data.bool_val = lv > rv;
-			break;
-		case CDSL_OP_LE:
-			result.data.bool_val = lv <= rv;
-			break;
-		case CDSL_OP_GE:
-			result.data.bool_val = lv >= rv;
-			break;
-		case CDSL_OP_ADD:
-		case CDSL_OP_SUB:
-		case CDSL_OP_MUL:
-			if (has_float) {
-				result.type = CDSL_TYPE_FLOAT;
-				result.data.float_val = (op == CDSL_OP_ADD)   ? lv + rv
-							: (op == CDSL_OP_SUB) ? lv - rv
-									      : lv * rv;
-			} else if (has_long) {
-				result.type = CDSL_TYPE_LONG;
-				result.data.long_val = (op == CDSL_OP_ADD)   ? llv + lrv
-						       : (op == CDSL_OP_SUB) ? llv - lrv
-									     : llv * lrv;
-			} else {
-				result.type = CDSL_TYPE_INT;
-				result.data.int_val = (int)((op == CDSL_OP_ADD)	  ? lv + rv
-							    : (op == CDSL_OP_SUB) ? lv - rv
-										  : lv * rv);
-			}
-			break;
-		case CDSL_OP_DIV:
-			if (rv == 0.0) {
-				result.type = CDSL_TYPE_VOID;
-				break;
-			}
-			if (has_float) {
-				result.type = CDSL_TYPE_FLOAT;
-				result.data.float_val = lv / rv;
-			} else if (has_long) {
-				result.type = CDSL_TYPE_LONG;
-				result.data.long_val = llv / lrv;
-			} else {
-				result.type = CDSL_TYPE_INT;
-				result.data.int_val = (int)(lv / rv);
-			}
-			break;
-			break;
-		default:
-			break;
-		}
+		cdsl_value_free(&l);
+		cdsl_value_free(&r);
 		break;
 	}
 	case CDSL_EXPR_CALL: {
@@ -962,14 +836,16 @@ execute_simple_rule(cdsl_vm_t* vm,
 	}
 	/* Abort if timeout or OOM */
 	if (CDSL_ATOMIC_LOAD(&vm->error_state)) {
-		cdsl_report_free(report);
-		return NULL;
+		report->status = CDSL_STATUS_ERROR;
+		report->decision_summary = strdup("ERROR");
+		return report;
 	}
 	cdsl_value_t cond = evaluate_condition(rule->when_expr, ctx, vm, bc, vm->debug_enabled);
 	if (CDSL_ATOMIC_LOAD(&vm->error_state)) {
 		cdsl_value_free(&cond);
-		cdsl_report_free(report);
-		return NULL;
+		report->status = CDSL_STATUS_ERROR;
+		report->decision_summary = strdup("ERROR");
+		return report;
 	}
 	fire_trace(vm, CDSL_TRACE_EXPR, rule->name, "WHEN", cond, 0);
 	int triggered = (cond.type == CDSL_TYPE_BOOL) ? cond.data.bool_val : 0;
@@ -1037,8 +913,8 @@ cdsl_vm_execute(cdsl_vm_t* vm, const cdsl_rule_t* rule, cdsl_context_t* ctx)
 	}
 	double t0 = cdsl_get_time_us_internal();
 	cdsl_rule_report_t* rpt;
-	/* Reset error state for each execution */
-	CDSL_ATOMIC_STORE(&vm->error_state, 0);
+	/* Reset per-execution sandbox counters and error state */
+	cdsl_vm_begin_execution(vm);
 	if (rule->metrics) {
 		rpt = execute_metric_rule(vm, rule, ctx);
 	} else {
@@ -1051,6 +927,16 @@ cdsl_vm_execute(cdsl_vm_t* vm, const cdsl_rule_t* rule, cdsl_context_t* ctx)
 		}
 		if (rpt) {
 			rpt->status = CDSL_STATUS_ERROR;
+			if (!rpt->rule_name && rule && rule->name) {
+				rpt->rule_name = strdup(rule->name);
+			}
+			if (!rpt->description && rule) {
+				char* desc = cdsl_meta_get(rule->meta_list, "description");
+				rpt->description = strdup(desc ? desc : "");
+			}
+			if (!rpt->decision_summary) {
+				rpt->decision_summary = strdup("ERROR");
+			}
 			if (vm->last_error) {
 				rpt->error = cdsl_error_create(vm->last_error->kind,
 							       vm->last_error->line,

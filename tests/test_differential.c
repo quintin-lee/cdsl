@@ -584,6 +584,66 @@ test_diff_instruction_quota(void)
 	TEST_END();
 }
 
+/* 8. Runtime Error and Evaluation Parity Edge Cases */
+static void
+test_diff_runtime_errors_and_edge_cases(void)
+{
+	cdsl_schema_t* s = cdsl_schema_create();
+	cdsl_schema_register_var(s, "user.age", CDSL_TYPE_INT);
+	cdsl_schema_register_action(s, "block", CDSL_TYPE_VOID, 1, CDSL_TYPE_STRING);
+
+	/* Integer overflow -> ERROR on both */
+	run_diff_test("diff: int32 add overflow produces ERROR",
+		      s,
+		      "RULE r_ovf { WHEN 2147483647 + 1 > 0 THEN block(\"bad\") }",
+		      setup_user_simple,
+		      "block",
+		      0);
+
+	/* Integer divide-by-zero -> ERROR on both */
+	run_diff_test("diff: int div-by-zero produces ERROR",
+		      s,
+		      "RULE r_div0 { WHEN user.age / 0 >= 18 THEN block(\"bad\") }",
+		      setup_user_simple,
+		      "block",
+		      0);
+
+	/* Float divide-by-zero -> ERROR on both */
+	run_diff_test("diff: float div-by-zero produces ERROR",
+		      s,
+		      "RULE r_flt0 { WHEN 10.0 / 0.0 > 1.0 THEN block(\"bad\") }",
+		      setup_user_simple,
+		      "block",
+		      0);
+
+	/* Incompatible type comparison (string < string) -> ERROR on both */
+	run_diff_test("diff: string relational comparison produces ERROR",
+		      s,
+		      "RULE r_strop { WHEN \"alpha\" < \"beta\" THEN block(\"bad\") }",
+		      setup_user_simple,
+		      "block",
+		      0);
+
+	/* Exact 64-bit integer comparison (no 53-bit IEEE 754 precision loss) */
+	run_diff_test("diff: 64-bit exact comparison (2^53+1 != 2^53)",
+		      s,
+		      "RULE r_long_prec { WHEN 9007199254740993L == 9007199254740992L THEN "
+		      "block(\"bad\") }",
+		      setup_user_simple,
+		      "block",
+		      0);
+
+	/* Unset variable comparison: missing == 0 is FALSE on both engines (PASSED) */
+	run_diff_test("diff: missing variable comparison parity",
+		      s,
+		      "RULE r_missing { WHEN missing_var == 0 THEN block(\"bad\") }",
+		      setup_user_simple,
+		      "block",
+		      0);
+
+	cdsl_schema_free(s);
+}
+
 int
 main(void)
 {
@@ -596,6 +656,7 @@ main(void)
 	test_diff_array_functions();
 	test_diff_metric_rules();
 	test_diff_instruction_quota();
+	test_diff_runtime_errors_and_edge_cases();
 
 	TEST_SUMMARY();
 	TEST_EXIT();

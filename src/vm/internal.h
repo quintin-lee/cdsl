@@ -102,8 +102,17 @@ cdsl_context_entry_t* cdsl_context_get_entry_internal(cdsl_context_t* ctx, const
  */
 void cdsl_vm_register_builtins(cdsl_vm_t* vm);
 
+/**
+ * @brief Reset per-execution sandbox counters and error state on @p vm.
+ *
+ * Must be called at the start of every top-level VM or bytecode execution.
+ */
+void cdsl_vm_begin_execution(cdsl_vm_t* vm);
+
 int cdsl_vm_track_alloc(cdsl_vm_t* vm, size_t bytes);
 void cdsl_vm_track_free(cdsl_vm_t* vm, size_t bytes);
+char* cdsl_vm_strdup(cdsl_vm_t* vm, const char* s);
+void* cdsl_vm_calloc(cdsl_vm_t* vm, size_t nmemb, size_t size);
 int cdsl_vm_check_abort(cdsl_vm_t* vm, double start_time_us);
 
 /**
@@ -191,6 +200,26 @@ void cdsl_vm_set_last_error(cdsl_vm_t* vm,
 			    int column,
 			    const char* message,
 			    const char* hint);
+
+/**
+ * @brief Initialize a parallel worker VM with parent configuration and snapshots.
+ */
+int cdsl_vm_init_worker(cdsl_vm_t* wvm,
+			void* user_data,
+			int debug_enabled,
+			int max_expr_depth,
+			int64_t timeout_us,
+			int64_t memory_limit,
+			int64_t instruction_limit,
+			cdsl_trace_cb_t trace_cb,
+			void* trace_ud,
+			cdsl_action_cb_entry_t* cb_snapshot,
+			cdsl_func_entry_t* fn_snapshot);
+
+/**
+ * @brief Release resources owned by a parallel worker VM without freeing borrowed snapshots.
+ */
+void cdsl_vm_release_worker(cdsl_vm_t* wvm);
 
 #endif
 /** @} */

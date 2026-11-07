@@ -242,10 +242,22 @@ test_api_api_header_compiles(void)
 	TEST_END();
 }
 
+static void
+test_api_version_macros(void)
+{
+	TEST_BEGIN("api: version macros defined");
+	TEST_ASSERT_INT(CDSL_VERSION_MAJOR, 1, "CDSL_VERSION_MAJOR is 1");
+	TEST_ASSERT_INT(CDSL_VERSION_MINOR, 1, "CDSL_VERSION_MINOR is 1");
+	TEST_ASSERT_INT(CDSL_VERSION_PATCH, 0, "CDSL_VERSION_PATCH is 0");
+	TEST_ASSERT_STR(CDSL_VERSION_STRING, "1.1.0", "CDSL_VERSION_STRING is 1.1.0");
+	TEST_END();
+}
+
 int
 main()
 {
 	printf("Running API unification tests...\n");
+	test_api_version_macros();
 	test_api_ctx_create_free();
 	test_api_ctx_create_free_null_safe();
 	test_api_ctx_create_with_schema();

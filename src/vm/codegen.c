@@ -12,6 +12,9 @@
 #include <stdio.h>
 #include <errno.h>
 #include <ctype.h>
+#include <math.h>
+#include <stdint.h>
+#include <limits.h>
 
 static void
 sanitize_identifier(char* buf, size_t bufsize, const char* src)
@@ -74,9 +77,17 @@ codegen_expr(cdsl_strbuf_t* sb,
 	case CDSL_EXPR_INT:
 		cdsl_strbuf_printf(sb, "%d", expr->data.int_val);
 		break;
-	case CDSL_EXPR_FLOAT:
-		cdsl_strbuf_printf(sb, "%.2f", expr->data.float_val);
+	case CDSL_EXPR_FLOAT: {
+		char fbuf[64];
+		snprintf(fbuf, sizeof(fbuf), "%.17g", expr->data.float_val);
+		if (isfinite(expr->data.float_val) && !strchr(fbuf, '.') && !strchr(fbuf, 'e') &&
+		    !strchr(fbuf, 'E')) {
+			cdsl_strbuf_printf(sb, "%s.0", fbuf);
+		} else {
+			cdsl_strbuf_printf(sb, "%s", fbuf);
+		}
 		break;
+	}
 	case CDSL_EXPR_BOOL:
 		cdsl_strbuf_printf(sb, "%s", expr->data.bool_val ? "1" : "0");
 		break;
@@ -109,10 +120,14 @@ codegen_expr(cdsl_strbuf_t* sb,
 		break;
 	}
 	case CDSL_EXPR_DATE:
-		cdsl_strbuf_printf(sb, "%ldL", (long)expr->data.date_val);
+		cdsl_strbuf_printf(sb, "%lldLL", (long long)expr->data.date_val);
 		break;
 	case CDSL_EXPR_LONG:
-		cdsl_strbuf_printf(sb, "%ldL", (long)expr->data.long_val);
+		if (expr->data.long_val == INT64_MIN) {
+			cdsl_strbuf_printf(sb, "(-9223372036854775807LL - 1LL)");
+		} else {
+			cdsl_strbuf_printf(sb, "%lldLL", (long long)expr->data.long_val);
+		}
 		break;
 	case CDSL_EXPR_ARRAY: {
 		cdsl_strbuf_printf(sb, "{");

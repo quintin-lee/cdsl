@@ -425,13 +425,16 @@ void cdsl_vm_set_timeout(cdsl_vm_t* vm, int64_t timeout_us);
 int64_t cdsl_vm_get_timeout(const cdsl_vm_t* vm);
 
 /**
- * @brief Set a per-execution memory limit.
+ * @brief Set a per-execution cumulative memory allocation budget.
  *
- * When non-zero, allocations exceeding this cap cause execution
- * to abort with CDSL_STATUS_ERROR.
+ * When positive, runtime value allocations (strings, arrays, built-in
+ * string results) within a single execution are charged against this
+ * cumulative byte budget; exceeding it aborts execution with
+ * CDSL_STATUS_ERROR.  The counter resets automatically at the start of
+ * each execution.
  *
  * @param vm          Target VM
- * @param limit_bytes Maximum bytes to allocate per execution (0 = unlimited)
+ * @param limit_bytes Maximum cumulative bytes per execution (0 = unlimited)
  */
 void cdsl_vm_set_memory_limit(cdsl_vm_t* vm, int64_t limit_bytes);
 

@@ -22,6 +22,7 @@
  */
 
 #include "cdsl/ai.h"
+#include "internal.h"
 #include "cdsl/util/json.h"
 #include "cdsl/util/hashmap.h"
 #include "cdsl/util/portability.h"
@@ -115,16 +116,18 @@ cdsl_curl_write_callback(void* contents, size_t size, size_t nmemb, void* userp)
 }
 #endif
 
-#ifndef CDSL_USE_CURL
-/* Escapes single quotes in s for use inside a single-quoted shell argument.
- * Replaces each ' with '"'"' (close-quote, double-quote single-quote, re-open).
+/* Escapes single quotes in s for use inside a single-quoted POSIX shell argument.
+ * Replaces each ' with '"'"' (close-quote, double-quoted single-quote, re-open).
  * Returns allocated string caller must free. */
-static char*
-escape_sq(const char* s)
+char*
+cdsl_ai_escape_shell_sq_internal(const char* s)
 {
+	if (!s) {
+		return NULL;
+	}
 	size_t len = 0;
 	for (const char* p = s; *p; p++) {
-		len += (*p == '\'') ? 4 : 1;
+		len += (*p == '\'') ? 5 : 1;
 	}
 	char* out = malloc(len + 1);
 	if (!out) {
@@ -136,6 +139,7 @@ escape_sq(const char* s)
 			*d++ = '\'';
 			*d++ = '"';
 			*d++ = '\'';
+			*d++ = '"';
 			*d++ = '\'';
 		} else {
 			*d++ = *p;
@@ -143,6 +147,51 @@ escape_sq(const char* s)
 	}
 	*d = '\0';
 	return out;
+}
+
+#if !defined(CDSL_USE_CURL) && !defined(_WIN32)
+static char*
+build_curl_cmd(const cdsl_ai_config_t* config, const char* escaped_prompt, int stream)
+{
+	char* s_url = cdsl_ai_escape_shell_sq_internal(config->api_base);
+	char* s_key = cdsl_ai_escape_shell_sq_internal(config->api_key);
+	char* s_model = cdsl_ai_escape_shell_sq_internal(config->model);
+	char* s_prompt = cdsl_ai_escape_shell_sq_internal(escaped_prompt);
+	if (!s_url || !s_key || !s_model || !s_prompt) {
+		free(s_url);
+		free(s_key);
+		free(s_model);
+		free(s_prompt);
+		return NULL;
+	}
+	size_t cmd_len = strlen(s_url) + strlen(s_key) + strlen(s_model) + strlen(s_prompt) + 256;
+	char* cmd = malloc(cmd_len);
+	if (!cmd) {
+		free(s_url);
+		free(s_key);
+		free(s_model);
+		free(s_prompt);
+		return NULL;
+	}
+	snprintf(cmd,
+		 cmd_len,
+		 "curl -s %s-X POST '%s/chat/completions' "
+		 "-H 'Content-Type: application/json' "
+		 "-H 'Authorization: Bearer %s' "
+		 "-d "
+		 "'{\"model\":\"%s\",\"messages\":[{\"role\":\"user\",\"content\":\"%s\"}],"
+		 "\"temperature\":0.1%s}'",
+		 stream ? "-N " : "",
+		 s_url,
+		 s_key,
+		 s_model,
+		 s_prompt,
+		 stream ? ",\"stream\":true" : "");
+	free(s_url);
+	free(s_key);
+	free(s_model);
+	free(s_prompt);
+	return cmd;
 }
 #endif
 
@@ -402,51 +451,22 @@ call_llm_api(const char* prompt, const cdsl_ai_config_t* config)
 	if (!result) {
 		return NULL;
 	}
+#elif defined(_WIN32)
+	/* popen() on Windows invokes cmd.exe where POSIX single-quote escaping
+	 * does not apply; require libcurl on Windows. */
+	(void)prompt;
+	return NULL;
 #else
 	char* escaped_prompt = escape_json_string(prompt);
 	if (!escaped_prompt) {
 		return NULL;
 	}
 
-	char* s_url = escape_sq(config->api_base);
-	char* s_key = escape_sq(config->api_key);
-	char* s_model = escape_sq(config->model);
-	char* s_prompt = escape_sq(escaped_prompt);
+	char* cmd = build_curl_cmd(config, escaped_prompt, 0);
 	free(escaped_prompt);
-
-	if (!s_url || !s_key || !s_model || !s_prompt) {
-		free(s_url);
-		free(s_key);
-		free(s_model);
-		free(s_prompt);
-		return NULL;
-	}
-
-	size_t cmd_len = strlen(s_url) + strlen(s_key) + strlen(s_model) + strlen(s_prompt) + 256;
-	char* cmd = malloc(cmd_len);
 	if (!cmd) {
-		free(s_url);
-		free(s_key);
-		free(s_model);
-		free(s_prompt);
 		return NULL;
 	}
-	snprintf(cmd,
-		 cmd_len,
-		 "curl -s -X POST '%s/chat/completions' "
-		 "-H 'Content-Type: application/json' "
-		 "-H 'Authorization: Bearer %s' "
-		 "-d "
-		 "'{\"model\":\"%s\",\"messages\":[{\"role\":\"user\",\"content\":\"%s\"}],"
-		 "\"temperature\":0.1}'",
-		 s_url,
-		 s_key,
-		 s_model,
-		 s_prompt);
-	free(s_url);
-	free(s_key);
-	free(s_model);
-	free(s_prompt);
 
 	FILE* fp = popen(cmd, "r");
 	free(cmd);
@@ -1209,6 +1229,10 @@ call_llm_api_stream(const char* prompt,
 
 	size_t cap = 8192;
 	char* result = malloc(cap);
+	if (!result) {
+		free(escaped_prompt);
+		return NULL;
+	}
 	size_t total = 0;
 	result[0] = '\0';
 
@@ -1269,48 +1293,20 @@ call_llm_api_stream(const char* prompt,
 	curl_slist_free_all(headers);
 	free(body);
 	curl_easy_cleanup(curl);
-#else
-	char* s_url = escape_sq(config->api_base);
-	char* s_key = escape_sq(config->api_key);
-	char* s_model = escape_sq(config->model);
-	char* s_prompt = escape_sq(escaped_prompt);
+#elif defined(_WIN32)
+	(void)callback;
+	(void)user_data;
+	(void)total;
 	free(escaped_prompt);
-
-	if (!s_url || !s_key || !s_model || !s_prompt) {
-		free(s_url);
-		free(s_key);
-		free(s_model);
-		free(s_prompt);
-		free(result);
-		return NULL;
-	}
-
-	size_t cmd_len = strlen(s_url) + strlen(s_key) + strlen(s_model) + strlen(s_prompt) + 256;
-	char* cmd = malloc(cmd_len);
+	free(result);
+	return NULL;
+#else
+	char* cmd = build_curl_cmd(config, escaped_prompt, 1);
+	free(escaped_prompt);
 	if (!cmd) {
-		free(s_url);
-		free(s_key);
-		free(s_model);
-		free(s_prompt);
 		free(result);
 		return NULL;
 	}
-	snprintf(cmd,
-		 cmd_len,
-		 "curl -s -N -X POST '%s/chat/completions' "
-		 "-H 'Content-Type: application/json' "
-		 "-H 'Authorization: Bearer %s' "
-		 "-d "
-		 "'{\"model\":\"%s\",\"messages\":[{\"role\":\"user\",\"content\":\"%s\"}],"
-		 "\"temperature\":0.1,\"stream\":true}'",
-		 s_url,
-		 s_key,
-		 s_model,
-		 s_prompt);
-	free(s_url);
-	free(s_key);
-	free(s_model);
-	free(s_prompt);
 
 	FILE* fp = popen(cmd, "r");
 	free(cmd);
