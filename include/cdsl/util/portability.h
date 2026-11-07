@@ -88,6 +88,9 @@ cdsl_localtime_r(const time_t* timer, struct tm* buf)
 
 /* Atomics wrapper */
 #ifdef CDSL_NO_STDATOMIC
+#ifndef _Atomic
+#define _Atomic(T) T
+#endif
 typedef long cdsl_atomic_long_t;
 typedef int cdsl_atomic_int_t;
 typedef int64_t cdsl_atomic_int64_t;

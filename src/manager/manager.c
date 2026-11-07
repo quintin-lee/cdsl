@@ -256,7 +256,8 @@ cdsl_manager_get_active_version(const cdsl_manager_t* mgr)
 	if (!mgr) {
 		return 0;
 	}
-	cdsl_snapshot_t* s = CDSL_ATOMIC_LOAD((_Atomic(cdsl_snapshot_t*)*)&mgr->active);
+	cdsl_manager_t* non_const = (cdsl_manager_t*)mgr;
+	cdsl_snapshot_t* s = CDSL_ATOMIC_LOAD(&non_const->active);
 	return s ? s->version_id : 0;
 }
 

@@ -1353,11 +1353,13 @@ bc_run_instructions(cdsl_vm_t* vm,
 		case BC_CALL: {
 			const char* fn_name = bc->constants[ip->operand.const_idx].data.string_val;
 			cdsl_value_t nv = POP();
-			int nargs = nv.data.int_val;
+			int nargs = (nv.type == CDSL_TYPE_INT && nv.data.int_val >= 0)
+					? (int)nv.data.int_val
+					: 0;
 			/* Build arg list from stack (reverse since stack is LIFO) */
 			cdsl_arg_node_t* arg_list = NULL;
 			cdsl_arg_node_t* arg_nodes =
-			    calloc(nargs > 0 ? nargs : 1, sizeof(cdsl_arg_node_t));
+			    calloc(nargs > 0 ? (size_t)nargs : 1, sizeof(cdsl_arg_node_t));
 			if (!arg_nodes) {
 				for (int i = 0; i < nargs; i++) {
 					cdsl_value_t av = POP();
@@ -1376,16 +1378,18 @@ bc_run_instructions(cdsl_vm_t* vm,
 				result.type = CDSL_TYPE_VOID;
 				goto done;
 			}
-			for (int i = nargs - 1; i >= 0; i--) {
-				cdsl_value_t av = POP();
-				// NOLINTNEXTLINE(clang-analyzer-security.ArrayBound)
-				arg_nodes[i].expr = val_to_temp_expr(&av);
-				cdsl_value_free(&av);
+			if (nargs > 0) {
+				for (int i = nargs - 1; i >= 0; i--) {
+					cdsl_value_t av = POP();
+					arg_nodes[i].expr = val_to_temp_expr(&av);
+					cdsl_value_free(&av);
+				}
+				for (int i = 0; i < nargs; i++) {
+					arg_nodes[i].next =
+					    (i + 1 < nargs) ? &arg_nodes[i + 1] : NULL;
+				}
+				arg_list = &arg_nodes[0];
 			}
-			for (int i = 0; i < nargs; i++) {
-				arg_nodes[i].next = (i + 1 < nargs) ? &arg_nodes[i + 1] : NULL;
-			}
-			arg_list = (nargs > 0) ? &arg_nodes[0] : NULL;
 
 			result.type = CDSL_TYPE_VOID;
 			cdsl_func_cb_t target_fn = NULL;

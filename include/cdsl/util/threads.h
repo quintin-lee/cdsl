@@ -14,7 +14,7 @@ typedef HANDLE cdsl_thread_t;
 typedef CRITICAL_SECTION cdsl_mutex_t;
 typedef SRWLOCK cdsl_rwlock_t;
 
-#define CDSL_MUTEX_INIT(m) InitializeCriticalSection(m)
+#define CDSL_MUTEX_INIT(m) (InitializeCriticalSection(m), 0)
 #define CDSL_MUTEX_LOCK(m) EnterCriticalSection(m)
 #define CDSL_MUTEX_UNLOCK(m) LeaveCriticalSection(m)
 #define CDSL_MUTEX_DESTROY(m) DeleteCriticalSection(m)

@@ -20,14 +20,20 @@ struct cdsl_tracer {
 static uint64_t
 get_unix_nano(void)
 {
+#if defined(_WIN32)
+	FILETIME ft;
+	GetSystemTimeAsFileTime(&ft);
+	ULARGE_INTEGER li;
+	li.LowPart = ft.dwLowDateTime;
+	li.HighPart = ft.dwHighDateTime;
+	return (li.QuadPart - 116444736000000000ULL) * 100ULL;
+#elif defined(CLOCK_REALTIME)
 	struct timespec ts;
-#if defined(CLOCK_REALTIME)
 	clock_gettime(CLOCK_REALTIME, &ts);
-#else
-	ts.tv_sec = time(NULL);
-	ts.tv_nsec = 0;
-#endif
 	return ((uint64_t)ts.tv_sec * 1000000000ULL) + (uint64_t)ts.tv_nsec;
+#else
+	return (uint64_t)time(NULL) * 1000000000ULL;
+#endif
 }
 
 static void
