@@ -361,6 +361,22 @@ test_diff_type_comparisons(void)
 	    "notify",
 	    1);
 
+	/* Float strict equality: 0.1 + 0.2 == 0.3 should be false on both AST & Bytecode */
+	run_diff_test("diff: float strict equality false",
+		      s,
+		      "RULE flt_eq { WHEN 0.1 + 0.2 == 0.3 THEN notify(\"eq\") }",
+		      setup_user_simple,
+		      "notify",
+		      0);
+
+	/* Float approx_eq: approx_eq(0.1 + 0.2, 0.3) should be true on both AST & Bytecode */
+	run_diff_test("diff: float approx_eq true",
+		      s,
+		      "RULE flt_approx { WHEN approx_eq(0.1 + 0.2, 0.3) THEN notify(\"approx\") }",
+		      setup_user_simple,
+		      "notify",
+		      1);
+
 	/* Integer arithmetic */
 	run_diff_test("diff: int arithmetic",
 		      s,
