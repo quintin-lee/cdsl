@@ -22,6 +22,13 @@
 #include "cdsl/util/threads.h"
 #include <time.h>
 
+/**
+ * @brief Default epsilon for approximate floating-point equality comparisons (1e-9).
+ *
+ * Used by the built-in approx_eq(a, b) function when eps is omitted.
+ */
+#define CDSL_DEFAULT_FLOAT_EPSILON 1e-9
+
 struct cdsl_vm;
 struct cdsl_context;
 

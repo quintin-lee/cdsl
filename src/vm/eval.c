@@ -18,8 +18,9 @@
  * ### Type coercion in binary expressions
  *
  * Comparison: numerics promoted to double before comparison using
- * `fabs(lv - rv) < 1e-9` for EQ.  Strings via `strcmp()`, dates
- * via `time_t` arithmetic.
+ * strict IEEE 754 equality (lv == rv).  For fuzzy comparison, use
+ * the built-in approx_eq(a, b, [eps]) function.  Strings via `strcmp()`,
+ * dates via `time_t` arithmetic.
  *
  * Arithmetic: INT/FLOAT/LONG/BOOL promoted to widest type (FLOAT >
  * LONG > INT).  Division by zero → CDSL_TYPE_VOID.

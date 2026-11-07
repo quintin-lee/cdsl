@@ -231,9 +231,13 @@ cdsl_value_binop(cdsl_op_t op, const cdsl_value_t* a, const cdsl_value_t* b, cds
 			return CDSL_VALOP_OK;
 		}
 		if (cdsl_op_is_relational(op)) {
-			int cmp = (fabs(av - bv) < 1e-9) ? 0 : (av < bv) ? -1 : 1;
 			out->type = CDSL_TYPE_BOOL;
-			out->data.bool_val = cdsl_op_eval_cmp(op, cmp);
+			out->data.bool_val = (op == CDSL_OP_EQ)	  ? (av == bv)
+					     : (op == CDSL_OP_NE) ? (av != bv)
+					     : (op == CDSL_OP_LT) ? (av < bv)
+					     : (op == CDSL_OP_GT) ? (av > bv)
+					     : (op == CDSL_OP_LE) ? (av <= bv)
+								  : (av >= bv);
 			return CDSL_VALOP_OK;
 		}
 		return CDSL_VALOP_TYPE_ERROR;

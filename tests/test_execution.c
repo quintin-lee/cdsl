@@ -685,6 +685,64 @@ test_vm_internal_utils(void)
 	TEST_END();
 }
 
+static void
+test_float_strict_equality(void)
+{
+	TEST_BEGIN("Float strict IEEE 754 equality");
+	cdsl_schema_t* schema = cdsl_schema_create();
+	cdsl_vm_t* vm = cdsl_vm_create(schema);
+	cdsl_context_t* ctx = cdsl_context_create(schema);
+
+	/* 1. IEEE 754 典型舍入误差: 0.1 + 0.2 不等于 0.3 */
+	cdsl_rule_t* r_fail = cdsl_parse_string(
+	    "RULE r_fail { WHEN 0.1 + 0.2 == 0.3 THEN block(\"should_not_fire\") }", NULL);
+	TEST_ASSERT_NOT_NULL(r_fail, "parse 0.1 + 0.2 == 0.3 ok");
+	cdsl_rule_report_t* rpt = cdsl_vm_execute(vm, r_fail, ctx);
+	TEST_ASSERT_NOT_NULL(rpt, "execute ok");
+	TEST_ASSERT_INT(rpt->status,
+			CDSL_STATUS_PASSED,
+			"0.1 + 0.2 == 0.3 condition should be false -> PASSED");
+	cdsl_report_free(rpt);
+	cdsl_free_rule(r_fail);
+
+	/* 2. 0.1 + 0.2 != 0.3 为 true -> 触发 block -> FAILED 状态 */
+	cdsl_rule_t* r_ne = cdsl_parse_string(
+	    "RULE r_ne { WHEN 0.1 + 0.2 != 0.3 THEN block(\"not_equal\") }", NULL);
+	TEST_ASSERT_NOT_NULL(r_ne, "parse 0.1 + 0.2 != 0.3 ok");
+	rpt = cdsl_vm_execute(vm, r_ne, ctx);
+	TEST_ASSERT_NOT_NULL(rpt, "execute ok");
+	TEST_ASSERT_INT(
+	    rpt->status, CDSL_STATUS_FAILED, "0.1 + 0.2 != 0.3 condition is true -> FAILED");
+	cdsl_report_free(rpt);
+	cdsl_free_rule(r_ne);
+
+	/* 3. 精确二分浮点等值 3.14 == 3.14 */
+	cdsl_rule_t* r_exact =
+	    cdsl_parse_string("RULE r_exact { WHEN 3.14 == 3.14 THEN block(\"exact\") }", NULL);
+	TEST_ASSERT_NOT_NULL(r_exact, "parse 3.14 == 3.14 ok");
+	rpt = cdsl_vm_execute(vm, r_exact, ctx);
+	TEST_ASSERT_NOT_NULL(rpt, "execute ok");
+	TEST_ASSERT_INT(
+	    rpt->status, CDSL_STATUS_FAILED, "3.14 == 3.14 condition is true -> FAILED");
+	cdsl_report_free(rpt);
+	cdsl_free_rule(r_exact);
+
+	/* 4. 浮点与整型跨类型严格等值 1.0 == 1 */
+	cdsl_rule_t* r_mixed =
+	    cdsl_parse_string("RULE r_mixed { WHEN 1.0 == 1 THEN block(\"mixed\") }", NULL);
+	TEST_ASSERT_NOT_NULL(r_mixed, "parse 1.0 == 1 ok");
+	rpt = cdsl_vm_execute(vm, r_mixed, ctx);
+	TEST_ASSERT_NOT_NULL(rpt, "execute ok");
+	TEST_ASSERT_INT(rpt->status, CDSL_STATUS_FAILED, "1.0 == 1 condition is true -> FAILED");
+	cdsl_report_free(rpt);
+	cdsl_free_rule(r_mixed);
+
+	cdsl_context_free(ctx);
+	cdsl_vm_free(vm);
+	cdsl_schema_free(schema);
+	TEST_END();
+}
+
 /**
  * @brief Main entry: run all execution test cases.
  * @return 0 if all tests passed, 1 otherwise
@@ -712,6 +770,7 @@ main(void)
 	test_execution_edge_cases();
 	test_long_type();
 	test_vm_internal_utils();
+	test_float_strict_equality();
 
 	TEST_SUMMARY();
 	TEST_EXIT();

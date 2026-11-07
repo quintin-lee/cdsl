@@ -31,7 +31,7 @@
 - Modify: `src/vm/eval.c:18-28`
 - Test: `tests/test_execution.c`
 
-- [ ] **Step 1: 在 `tests/test_execution.c` 中编写浮点严格等值测试**
+- [x] **Step 1: 在 `tests/test_execution.c` 中编写浮点严格等值测试**
 
 在 `tests/test_execution.c` 末尾添加测试函数 `test_float_strict_equality`：
 
@@ -93,7 +93,7 @@ test_float_strict_equality(void)
 
 并在 `tests/test_execution.c` 的 `main()` 函数中调用 `test_float_strict_equality();`。
 
-- [ ] **Step 2: 编译并运行测试，验证其因旧硬编码容差而失败**
+- [x] **Step 2: 编译并运行测试，验证其因旧硬编码容差而失败**
 
 运行：
 ```bash
@@ -101,7 +101,7 @@ cmake --build build --target test_execution && ./build/tests/test_execution
 ```
 预期输出：测试在 `0.1 + 0.2 == 0.3` 处失败（因为旧代码中 `fabs(0.30000000000000004 - 0.3) < 1e-9` 误判为 true）。
 
-- [ ] **Step 3: 修改 `src/vm/value_ops.c` 与 `src/vm/eval.c`**
+- [x] **Step 3: 修改 `src/vm/value_ops.c` 与 `src/vm/eval.c`**
 
 在 `src/vm/value_ops.c` 中，将：
 ```c
@@ -140,7 +140,7 @@ cmake --build build --target test_execution && ./build/tests/test_execution
  * dates via time_t arithmetic.
 ```
 
-- [ ] **Step 4: 编译并运行测试验证通过**
+- [x] **Step 4: 编译并运行测试验证通过**
 
 运行：
 ```bash
@@ -148,7 +148,7 @@ cmake --build build --target test_execution && ./build/tests/test_execution
 ```
 预期输出：`Float strict IEEE 754 equality` 全部通过，所有断言成功。
 
-- [ ] **Step 5: 提交改动**
+- [x] **Step 5: 提交改动**
 
 ```bash
 git add src/vm/value_ops.c src/vm/eval.c tests/test_execution.c
@@ -164,7 +164,7 @@ git commit -m "refactor(eval): ⚡ switch float equality to strict IEEE 754 sema
 - Modify: `src/vm/builtins.c`
 - Test: `tests/test_builtins.c`
 
-- [ ] **Step 1: 在 `tests/test_builtins.c` 中编写 `approx_eq` 测试用例**
+- [x] **Step 1: 在 `tests/test_builtins.c` 中编写 `approx_eq` 测试用例**
 
 在 `tests/test_builtins.c` 中添加测试函数 `test_builtin_approx_eq`：
 
@@ -246,7 +246,7 @@ test_builtin_approx_eq(void)
 
 并在 `tests/test_builtins.c` 的 `main()` 中注册并调用 `test_builtin_approx_eq();`。
 
-- [ ] **Step 2: 编译并运行测试，验证其因函数未注册而失败**
+- [x] **Step 2: 编译并运行测试，验证其因函数未注册而失败**
 
 运行：
 ```bash
@@ -254,7 +254,7 @@ cmake --build build --target test_builtins && ./build/tests/test_builtins
 ```
 预期输出：测试失败，提示 `Unknown function 'approx_eq'`。
 
-- [ ] **Step 3: 在 `include/cdsl/vm.h` 中定义公共容差常量**
+- [x] **Step 3: 在 `include/cdsl/vm.h` 中定义公共容差常量**
 
 在 `include/cdsl/vm.h` 的常量定义区域追加：
 ```c
@@ -262,7 +262,7 @@ cmake --build build --target test_builtins && ./build/tests/test_builtins
 #define CDSL_DEFAULT_FLOAT_EPSILON 1e-9
 ```
 
-- [ ] **Step 4: 在 `src/vm/builtins.c` 中实现并注册 `builtin_approx_eq`**
+- [x] **Step 4: 在 `src/vm/builtins.c` 中实现并注册 `builtin_approx_eq`**
 
 在 `src/vm/builtins.c` 中编写辅助数值解包函数与 `builtin_approx_eq`：
 
@@ -354,7 +354,7 @@ builtin_approx_eq(const char* name, cdsl_arg_node_t* args, cdsl_context_t* ctx, 
 cdsl_vm_register_function(vm, "approx_eq", builtin_approx_eq);
 ```
 
-- [ ] **Step 5: 编译并运行测试，验证通过**
+- [x] **Step 5: 编译并运行测试，验证通过**
 
 运行：
 ```bash
@@ -362,7 +362,7 @@ cmake --build build --target test_builtins && ./build/tests/test_builtins
 ```
 预期输出：`built-in approx_eq` 测试通过。
 
-- [ ] **Step 6: 提交改动**
+- [x] **Step 6: 提交改动**
 
 ```bash
 git add include/cdsl/vm.h src/vm/builtins.c tests/test_builtins.c
@@ -376,7 +376,7 @@ git commit -m "feat(vm): ✨ add approx_eq builtin function with hybrid toleranc
 **Files:**
 - Test: `tests/test_differential.c`
 
-- [ ] **Step 1: 在 `tests/test_differential.c` 中添加浮点等值差分用例**
+- [x] **Step 1: 在 `tests/test_differential.c` 中添加浮点等值差分用例**
 
 在 `tests/test_differential.c` 的 `run_differential_tests` 中添加差分验证：
 ```c
@@ -394,7 +394,7 @@ git commit -m "feat(vm): ✨ add approx_eq builtin function with hybrid toleranc
 		      1);
 ```
 
-- [ ] **Step 2: 编译并运行差分测试**
+- [x] **Step 2: 编译并运行差分测试**
 
 运行：
 ```bash
@@ -402,7 +402,7 @@ cmake --build build --target test_differential && ./build/tests/test_differentia
 ```
 预期输出：差分测试通过，Tree-walk 与 Bytecode 执行结果 100% 同构一致。
 
-- [ ] **Step 3: 运行全量测试套件并检查零回归**
+- [x] **Step 3: 运行全量测试套件并检查零回归**
 
 运行：
 ```bash
@@ -410,7 +410,7 @@ ctest --test-dir build --output-on-failure
 ```
 预期输出：100% tests passed, 0 failures (全部 29 个测试及新增用例全部通过)。
 
-- [ ] **Step 4: 提交改动**
+- [x] **Step 4: 提交改动**
 
 ```bash
 git add tests/test_differential.c
