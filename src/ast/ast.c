@@ -283,24 +283,42 @@ cdsl_create_action(char* name, cdsl_arg_node_t* args, int line, int column)
 }
 
 cdsl_meta_item_t*
-cdsl_create_meta_item(char* key, char* value)
+cdsl_create_meta_item(const char* key, const char* value)
 {
+	if (!key || !value) {
+		return NULL;
+	}
 	cdsl_meta_item_t* m = ast_alloc(sizeof(*m));
 	if (!m) {
-		free(key);
-		free(value);
 		return NULL;
 	}
 	if (current_ast_arena) {
 		m->key = cdsl_arena_strdup(current_ast_arena, key);
 		m->value = cdsl_arena_strdup(current_ast_arena, value);
-		free(key);
-		free(value);
 	} else {
-		m->key = key;
-		m->value = value;
+		m->key = strdup(key);
+		m->value = strdup(value);
 	}
+	if (!m->key || !m->value) {
+		if (!current_ast_arena) {
+			free(m->key);
+			free(m->value);
+			free(m);
+		}
+		return NULL;
+	}
+	m->next = NULL;
 	return m;
+}
+
+cdsl_meta_item_t*
+cdsl_append_meta_kv(cdsl_meta_item_t* list, const char* key, const char* value)
+{
+	cdsl_meta_item_t* item = cdsl_create_meta_item(key, value);
+	if (!item) {
+		return list;
+	}
+	return cdsl_append_meta(list, item);
 }
 
 cdsl_meta_item_t*

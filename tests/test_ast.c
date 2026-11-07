@@ -225,6 +225,48 @@ test_ast_operator_and_type_contracts(void)
 }
 
 /**
+ * @brief Test metadata value semantics and append convenience helper.
+ */
+static void
+test_meta_value_semantics(void)
+{
+	TEST_BEGIN("meta value semantics and append helper");
+
+	/* Test 1: string literal safety with cdsl_create_meta_item and cdsl_free_meta */
+	cdsl_meta_item_t* item = cdsl_create_meta_item("version", "1.0.0");
+	TEST_ASSERT(item != NULL, "item created from literals");
+	TEST_ASSERT_STR(item->key, "version", "item key matches");
+	TEST_ASSERT_STR(item->value, "1.0.0", "item value matches");
+	TEST_ASSERT(item->next == NULL, "item next is NULL");
+	cdsl_free_meta(item);
+
+	/* Test 2: NULL safety */
+	TEST_ASSERT(cdsl_create_meta_item(NULL, "val") == NULL, "NULL key returns NULL");
+	TEST_ASSERT(cdsl_create_meta_item("key", NULL) == NULL, "NULL value returns NULL");
+	TEST_ASSERT(cdsl_create_meta_item(NULL, NULL) == NULL, "both NULL returns NULL");
+
+	/* Test 3: cdsl_append_meta_kv convenience helper */
+	cdsl_meta_item_t* list = NULL;
+	list = cdsl_append_meta_kv(list, "k1", "v1");
+	TEST_ASSERT(list != NULL, "list created by helper");
+	TEST_ASSERT_STR(list->key, "k1", "first item key");
+	TEST_ASSERT_STR(list->value, "v1", "first item value");
+
+	list = cdsl_append_meta_kv(list, "k2", "v2");
+	TEST_ASSERT(list->next != NULL, "second item appended");
+	TEST_ASSERT_STR(list->next->key, "k2", "second item key");
+	TEST_ASSERT_STR(list->next->value, "v2", "second item value");
+
+	/* Appending with invalid params does not break list */
+	list = cdsl_append_meta_kv(list, NULL, "v3");
+	TEST_ASSERT(list->next->next == NULL, "invalid append preserves list");
+
+	cdsl_free_meta(list);
+
+	TEST_END();
+}
+
+/**
  * @brief Main entry: run all AST test cases.
  * @return 0 if all tests passed, 1 otherwise
  */
@@ -243,6 +285,7 @@ main(void)
 	test_ast_create_rule();
 	test_ast_parse_limit();
 	test_ast_operator_and_type_contracts();
+	test_meta_value_semantics();
 
 	TEST_SUMMARY();
 	TEST_EXIT();

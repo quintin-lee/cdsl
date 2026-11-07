@@ -401,12 +401,21 @@ cdsl_action_node_t* cdsl_create_action(char* name, cdsl_arg_node_t* args, int li
 /** @{ */
 
 /**
- * @brief Create a single metadata key-value item.
- * @param key Metadata key (ownership transferred)
- * @param value Metadata value (ownership transferred)
- * @return Newly allocated metadata item
+ * @brief 创建元数据项（内部始终执行深拷贝，调用方保留入参所有权）
+ * @param key 键名字符串（支持字面量或堆内存，允许只读）
+ * @param value 键值字符串（支持字面量或堆内存，允许只读）
+ * @return 新分配的元数据项指针，入参非法或 OOM 时返回 NULL
  */
-cdsl_meta_item_t* cdsl_create_meta_item(char* key, char* value);
+cdsl_meta_item_t* cdsl_create_meta_item(const char* key, const char* value);
+
+/**
+ * @brief 创建元数据项并直接追加至列表末尾的便捷助手函数
+ * @param list 现有元数据链表头指针（允许为 NULL）
+ * @param key 键名
+ * @param value 键值
+ * @return 更新后的元数据链表头指针
+ */
+cdsl_meta_item_t* cdsl_append_meta_kv(cdsl_meta_item_t* list, const char* key, const char* value);
 
 /**
  * @brief Append a metadata item to a list.
