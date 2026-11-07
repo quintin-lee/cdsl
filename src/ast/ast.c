@@ -159,6 +159,7 @@ cdsl_create_expr_array(cdsl_arg_node_t* elements, int line, int column)
 {
 	cdsl_expr_node_t* n = ast_alloc(sizeof(*n));
 	if (!n) {
+		cdsl_free_arg(elements);
 		return NULL;
 	}
 	n->type = CDSL_EXPR_ARRAY;
@@ -174,6 +175,8 @@ cdsl_create_expr_binary(
 {
 	cdsl_expr_node_t* n = ast_alloc(sizeof(*n));
 	if (!n) {
+		cdsl_free_expr(left);
+		cdsl_free_expr(right);
 		return NULL;
 	}
 	n->type = CDSL_EXPR_BINARY;
@@ -190,6 +193,7 @@ cdsl_create_expr_unary(cdsl_op_t op, cdsl_expr_node_t* expr, int line, int colum
 {
 	cdsl_expr_node_t* n = ast_alloc(sizeof(*n));
 	if (!n) {
+		cdsl_free_expr(expr);
 		return NULL;
 	}
 	n->type = CDSL_EXPR_UNARY;
@@ -206,6 +210,7 @@ cdsl_create_expr_call(char* func_name, cdsl_arg_node_t* args, int line, int colu
 	cdsl_expr_node_t* n = ast_alloc(sizeof(*n));
 	if (!n) {
 		free(func_name);
+		cdsl_free_arg(args);
 		return NULL;
 	}
 	n->type = CDSL_EXPR_CALL;
@@ -268,6 +273,7 @@ cdsl_create_action(char* name, cdsl_arg_node_t* args, int line, int column)
 	cdsl_action_node_t* a = ast_alloc(sizeof(*a));
 	if (!a) {
 		free(name);
+		cdsl_free_arg(args);
 		return NULL;
 	}
 	if (current_ast_arena) {
@@ -340,6 +346,8 @@ cdsl_create_case(cdsl_expr_node_t* cond, cdsl_action_node_t* action)
 {
 	cdsl_case_node_t* c = ast_alloc(sizeof(*c));
 	if (!c) {
+		cdsl_free_expr(cond);
+		cdsl_free_action(action);
 		return NULL;
 	}
 	c->condition = cond;
@@ -370,6 +378,9 @@ cdsl_create_metric(char* name,
 	cdsl_metric_node_t* m = ast_alloc(sizeof(*m));
 	if (!m) {
 		free(name);
+		cdsl_free_meta(meta);
+		cdsl_free_case(cases);
+		cdsl_free_action(def_act);
 		return NULL;
 	}
 	if (current_ast_arena) {
@@ -409,6 +420,9 @@ cdsl_create_simple_rule(char* name,
 	cdsl_rule_t* r = ast_alloc(sizeof(*r));
 	if (!r) {
 		free(name);
+		cdsl_free_meta(meta);
+		cdsl_free_expr(when);
+		cdsl_free_action(then);
 		return NULL;
 	}
 	if (current_ast_arena) {
@@ -433,6 +447,8 @@ cdsl_create_metric_rule(
 	cdsl_rule_t* r = ast_alloc(sizeof(*r));
 	if (!r) {
 		free(name);
+		cdsl_free_meta(meta);
+		cdsl_free_metric(metrics);
 		return NULL;
 	}
 	if (current_ast_arena) {
@@ -457,6 +473,14 @@ cdsl_create_extends_rule(char* name,
 			 int line,
 			 int column)
 {
+	if (!template_name) {
+		free(name);
+		cdsl_free_meta(meta);
+		if (metrics) {
+			cdsl_free_metric(metrics);
+		}
+		return NULL;
+	}
 	cdsl_rule_t* tpl = cdsl_template_get(template_name);
 	if (!tpl) {
 		fprintf(stderr, "Template '%s' not found\n", template_name);
@@ -469,12 +493,21 @@ cdsl_create_extends_rule(char* name,
 		return NULL;
 	}
 	cdsl_metric_node_t* copied = copy_metric_list(tpl->metrics);
+	if (!copied && tpl->metrics) {
+		free(name);
+		free(template_name);
+		cdsl_free_meta(meta);
+		if (metrics) {
+			cdsl_free_metric(metrics);
+		}
+		return NULL;
+	}
 	cdsl_rule_t* rule = cdsl_create_metric_rule(name, meta, copied, line, column);
 	if (!rule) {
-		/* cdsl_create_metric_rule freed name on alloc failure,
-		 * but meta and the copied metrics still need cleanup. */
-		cdsl_free_meta(meta);
-		cdsl_free_metric(copied);
+		free(template_name);
+		if (metrics) {
+			cdsl_free_metric(metrics);
+		}
 		return NULL;
 	}
 	if (rule && metrics) {

@@ -196,14 +196,19 @@ cdsl_error_list_free(cdsl_error_list_t* list)
 void
 cdsl_error_list_add(cdsl_error_list_t* list, cdsl_error_t* err)
 {
-	if (!list || !err) {
+	if (!err) {
+		return;
+	}
+	if (!list) {
+		cdsl_error_free(err);
 		return;
 	}
 	if (list->count >= list->capacity) {
-		int new_cap = list->capacity * 2;
+		int new_cap = list->capacity > 0 ? list->capacity * 2 : 16;
 		cdsl_error_t** new_errors =
 		    (cdsl_error_t**)realloc((void*)list->errors, sizeof(cdsl_error_t*) * new_cap);
 		if (!new_errors) {
+			cdsl_error_free(err);
 			return;
 		}
 		list->errors = new_errors;

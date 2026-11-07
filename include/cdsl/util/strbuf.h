@@ -41,19 +41,20 @@ static inline CDSL_PRINTF_FORMAT(2,
 		return;
 	}
 
-	if (sb->size + n + 1 > sb->cap) {
-		sb->cap = sb->size + n + 1 + 1024;
-		char* new_buf = realloc(sb->buf, sb->cap);
+	if (!sb->buf || sb->size + (size_t)n + 1 > sb->cap) {
+		size_t needed = sb->size + (size_t)n + 1 + 1024;
+		char* new_buf = realloc(sb->buf, needed);
 		if (!new_buf) {
 			return;
 		}
 		sb->buf = new_buf;
+		sb->cap = needed;
 	}
 
 	va_start(ap, fmt);
 	vsnprintf(sb->buf + sb->size, sb->cap - sb->size, fmt, ap);
 	va_end(ap);
-	sb->size += n;
+	sb->size += (size_t)n;
 }
 
 #endif /* CDSL_UTIL_STRBUF_H */

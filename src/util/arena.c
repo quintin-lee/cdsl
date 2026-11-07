@@ -95,6 +95,9 @@ cdsl_arena_strdup(cdsl_arena_t* arena, const char* s)
 	}
 	size_t len = strlen(s) + 1;
 	char* d = cdsl_arena_alloc(arena, len);
+	if (!d) {
+		return NULL;
+	}
 	memcpy(d, s, len);
 	return d;
 }
