@@ -1,5 +1,7 @@
 #include "test.h"
 #include "cdsl/cdsl.h"
+#include "cdsl/bytecode.h"
+#include <string.h>
 
 /* Simple rule instruction quota: expression has ~15 AST nodes */
 static void
@@ -82,7 +84,7 @@ test_simple_rule_no_limit(void)
 	TEST_END();
 }
 
-/* Instruction count resets between executions */
+/* Instruction count resets between executions (AST and bytecode) */
 static void
 test_quota_reset_between_executions(void)
 {
@@ -95,19 +97,96 @@ test_quota_reset_between_executions(void)
 	    cdsl_parse_string("RULE r { WHEN 1 + 2 + 3 == 6 THEN block(\"ok\") }", NULL);
 	TEST_ASSERT_NOT_NULL(rule, "Parse rule");
 
-	// First execution with high limit
-	cdsl_vm_set_instruction_limit(vm, 1000);
+	/* Tight limit sufficient for 1 execution (~7 AST nodes), repeated 30 times */
+	cdsl_vm_set_instruction_limit(vm, 20);
+	for (int i = 0; i < 30; i++) {
+		cdsl_rule_report_t* rpt = cdsl_vm_execute(vm, rule, ctx);
+		TEST_ASSERT_NOT_NULL(rpt, "AST execution should succeed");
+		TEST_ASSERT_INT(rpt->status, CDSL_STATUS_FAILED, "WHEN true -> FAILED");
+		cdsl_report_free(rpt);
+	}
+
+	/* Same check for bytecode execution */
+	cdsl_schema_register_var(schema, "v", CDSL_TYPE_INT);
+	cdsl_context_set_int(ctx, "v", 1);
+	cdsl_rule_t* bc_rule =
+	    cdsl_parse_string("RULE r2 { WHEN v + v + v == 3 THEN block(\"ok\") }", NULL);
+	TEST_ASSERT_NOT_NULL(bc_rule, "Parse bc_rule");
+	cdsl_bytecode_t bc = {0};
+	TEST_ASSERT_INT(cdsl_bytecode_compile(bc_rule, schema, &bc), 1, "Compile bc_rule");
+	cdsl_vm_set_instruction_limit(vm, 20);
+	for (int i = 0; i < 30; i++) {
+		cdsl_rule_report_t* rpt = cdsl_bytecode_execute_rule(vm, &bc, ctx);
+		TEST_ASSERT_NOT_NULL(rpt, "Bytecode execution should succeed");
+		TEST_ASSERT_INT(rpt->status, CDSL_STATUS_FAILED, "Bytecode WHEN true -> FAILED");
+		cdsl_report_free(rpt);
+	}
+	cdsl_bytecode_free(&bc);
+	cdsl_free_rule(bc_rule);
+
+	cdsl_free_rule(rule);
+	cdsl_context_free(ctx);
+	cdsl_vm_free(vm);
+	cdsl_schema_free(schema);
+	TEST_END();
+}
+
+/* Per-execution cumulative memory allocation budget */
+static void
+test_memory_limit_enforcement(void)
+{
+	TEST_BEGIN("memory limit budget enforcement and reset");
+	cdsl_schema_t* schema = cdsl_schema_create();
+	cdsl_schema_register_var(schema, "payload", CDSL_TYPE_STRING);
+	cdsl_schema_register_action(schema, "block", CDSL_TYPE_VOID, 1, CDSL_TYPE_STRING);
+
+	cdsl_vm_t* vm = cdsl_vm_create(schema);
+	cdsl_context_t* ctx = cdsl_context_create(schema);
+
+	char big_str[256];
+	memset(big_str, 'A', sizeof(big_str) - 1);
+	big_str[sizeof(big_str) - 1] = '\0';
+	cdsl_context_set_string(ctx, "payload", big_str);
+
+	cdsl_rule_t* rule = cdsl_parse_string(
+	    "RULE mem_r { WHEN uppercase(payload) == \"X\" THEN block(\"hit\") }", NULL);
+	TEST_ASSERT_NOT_NULL(rule, "Parse mem_r");
+
+	/* Budget smaller than string allocation -> ERROR with memory message */
+	cdsl_vm_set_memory_limit(vm, 64);
 	cdsl_rule_report_t* rpt = cdsl_vm_execute(vm, rule, ctx);
-	TEST_ASSERT_NOT_NULL(rpt, "First execution should succeed");
+	TEST_ASSERT_NOT_NULL(rpt, "AST report not NULL on memory quota abort");
+	TEST_ASSERT_INT(rpt->status, CDSL_STATUS_ERROR, "AST status should be ERROR");
+	TEST_ASSERT_NOT_NULL(rpt->error, "AST report->error should be populated");
+	if (rpt->error) {
+		TEST_ASSERT(strstr(rpt->error->message, "Memory") != NULL,
+			    "Error message should mention Memory");
+	}
 	cdsl_report_free(rpt);
 
-	// Second execution with lower limit — should still succeed (count resets)
-	cdsl_vm_set_instruction_limit(vm, 100);
-	rpt = cdsl_vm_execute(vm, rule, ctx);
-	TEST_ASSERT_NOT_NULL(rpt, "Second execution should succeed");
-	TEST_ASSERT_INT(rpt->status, CDSL_STATUS_FAILED, "WHEN true -> FAILED");
-
+	/* Bytecode path also enforces memory_limit */
+	cdsl_bytecode_t bc = {0};
+	TEST_ASSERT_INT(cdsl_bytecode_compile(rule, schema, &bc), 1, "Compile mem_r");
+	rpt = cdsl_bytecode_execute_rule(vm, &bc, ctx);
+	TEST_ASSERT_NOT_NULL(rpt, "Bytecode report not NULL on memory quota abort");
+	TEST_ASSERT_INT(rpt->status, CDSL_STATUS_ERROR, "Bytecode status should be ERROR");
 	cdsl_report_free(rpt);
+
+	/* Sufficient budget (~520 bytes per run for var lookup + uppercase) resets across 20 runs */
+	cdsl_vm_set_memory_limit(vm, 1024);
+	for (int i = 0; i < 20; i++) {
+		rpt = cdsl_vm_execute(vm, rule, ctx);
+		TEST_ASSERT_NOT_NULL(rpt, "AST execution within budget");
+		TEST_ASSERT_INT(rpt->status, CDSL_STATUS_PASSED, "Budget resets each run (AST)");
+		cdsl_report_free(rpt);
+
+		rpt = cdsl_bytecode_execute_rule(vm, &bc, ctx);
+		TEST_ASSERT_NOT_NULL(rpt, "BC execution within budget");
+		TEST_ASSERT_INT(rpt->status, CDSL_STATUS_PASSED, "Budget resets each run (BC)");
+		cdsl_report_free(rpt);
+	}
+
+	cdsl_bytecode_free(&bc);
 	cdsl_free_rule(rule);
 	cdsl_context_free(ctx);
 	cdsl_vm_free(vm);
@@ -225,9 +304,11 @@ main()
 	test_simple_rule_quota_sufficient();
 	test_simple_rule_no_limit();
 	test_quota_reset_between_executions();
+	test_memory_limit_enforcement();
 	test_metric_rule_quota();
 	test_expr_depth_limit();
 	test_instruction_limit_get_set();
 	test_expr_depth_get_set();
-	return 0;
+	TEST_SUMMARY();
+	TEST_EXIT();
 }

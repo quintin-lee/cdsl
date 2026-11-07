@@ -9,6 +9,7 @@
 #define CDSL_CDSL_H
 
 /* Infrastructure */
+#include "cdsl/version.h"
 #include "cdsl/util/arena.h"
 #include "cdsl/util/error.h"
 #include "cdsl/util/hashmap.h"

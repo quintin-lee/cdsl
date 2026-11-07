@@ -20,6 +20,7 @@
 #include "cdsl/cache.h"
 #include "cdsl/util/portability.h"
 #include "cdsl/util/error.h"
+#include "../src/vm/internal.h"
 #include <stdlib.h>
 
 /** @brief Whether the most recent action callback was invoked. */
@@ -531,6 +532,7 @@ test_execution_edge_cases(void)
 	if (rule) {
 		cdsl_rule_report_t* rpt = cdsl_vm_execute(vm, rule, ctx);
 		TEST_ASSERT(rpt != NULL, "divzero produces report");
+		TEST_ASSERT_INT(rpt->status, CDSL_STATUS_ERROR, "divzero produces ERROR status");
 		cdsl_report_free(rpt);
 		cdsl_free_rule(rule);
 	}
@@ -640,6 +642,50 @@ test_execution_report_oom(void)
 }
 
 /**
+ * @brief Test VM internal utilities (cdsl_safe_atoi, cdsl_meta_get_int, cdsl_meta_get_bool).
+ */
+static void
+test_vm_internal_utils(void)
+{
+	TEST_BEGIN("vm internal utils: safe_atoi and meta extraction");
+
+	/* safe_atoi boundary tests */
+	TEST_ASSERT_INT(cdsl_safe_atoi("123", 0), 123, "safe_atoi normal positive");
+	TEST_ASSERT_INT(cdsl_safe_atoi("-456", 0), -456, "safe_atoi normal negative");
+	TEST_ASSERT_INT(cdsl_safe_atoi(NULL, 99), 99, "safe_atoi NULL returns default");
+	TEST_ASSERT_INT(cdsl_safe_atoi("", 99), 99, "safe_atoi empty returns default");
+	TEST_ASSERT_INT(cdsl_safe_atoi("abc", 99), 99, "safe_atoi alpha returns default");
+	TEST_ASSERT_INT(
+	    cdsl_safe_atoi("123abc", 99), 99, "safe_atoi trailing garbage returns default");
+	TEST_ASSERT_INT(cdsl_safe_atoi("99999999999999999999999999", 99),
+			99,
+			"safe_atoi overflow returns default");
+
+	/* meta extraction tests */
+	cdsl_meta_item_t* meta = cdsl_create_meta_item("weight", "85");
+	meta = cdsl_append_meta_kv(meta, "is_critical", "true");
+	meta = cdsl_append_meta_kv(meta, "bad_int", "xyz");
+
+	TEST_ASSERT_INT(cdsl_meta_get_int(meta, "weight", 0), 85, "meta get int weight");
+	TEST_ASSERT_INT(
+	    cdsl_meta_get_int(meta, "missing_key", 10), 10, "meta get int missing default");
+	TEST_ASSERT_INT(cdsl_meta_get_int(meta, "bad_int", 20), 20, "meta get int invalid default");
+	TEST_ASSERT_INT(
+	    cdsl_meta_get_int(NULL, "weight", 30), 30, "meta get int NULL list default");
+
+	TEST_ASSERT_INT(cdsl_meta_get_bool(meta, "is_critical", 0), 1, "meta get bool true");
+	TEST_ASSERT_INT(
+	    cdsl_meta_get_bool(meta, "missing_bool", 0), 0, "meta get bool missing default");
+	TEST_ASSERT_INT(cdsl_meta_get_bool(meta, "bad_int", 0), 0, "meta get bool invalid default");
+	TEST_ASSERT_INT(
+	    cdsl_meta_get_bool(NULL, "is_critical", 1), 1, "meta get bool NULL default");
+
+	cdsl_free_meta(meta);
+
+	TEST_END();
+}
+
+/**
  * @brief Main entry: run all execution test cases.
  * @return 0 if all tests passed, 1 otherwise
  */
@@ -665,6 +711,7 @@ main(void)
 	test_report_json();
 	test_execution_edge_cases();
 	test_long_type();
+	test_vm_internal_utils();
 
 	TEST_SUMMARY();
 	TEST_EXIT();

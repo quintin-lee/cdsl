@@ -278,7 +278,7 @@ builtin_uppercase(const char* name, cdsl_arg_node_t* args, cdsl_context_t* ctx, 
 		return res;
 	}
 	size_t len = strlen(v.data.string_val);
-	char* out = malloc(len + 1);
+	char* out = cdsl_vm_calloc(vm, len + 1, 1);
 	if (!out) {
 		cdsl_value_free(&v);
 		return res;
@@ -310,7 +310,7 @@ builtin_lowercase(const char* name, cdsl_arg_node_t* args, cdsl_context_t* ctx, 
 		return res;
 	}
 	size_t len = strlen(v.data.string_val);
-	char* out = malloc(len + 1);
+	char* out = cdsl_vm_calloc(vm, len + 1, 1);
 	if (!out) {
 		cdsl_value_free(&v);
 		return res;
@@ -347,15 +347,17 @@ builtin_trim(const char* name, cdsl_arg_node_t* args, cdsl_context_t* ctx, cdsl_
 	}
 	if (*s == '\0') {
 		cdsl_value_free(&v);
-		res.data.string_val = strdup("");
-		res.owned_string = 1;
+		res.data.string_val = cdsl_vm_strdup(vm, "");
+		if (res.data.string_val) {
+			res.owned_string = 1;
+		}
 		return res;
 	}
 	size_t len = strlen(s);
 	while (len > 0 && isspace((unsigned char)s[len - 1])) {
 		len--;
 	}
-	char* out = malloc(len + 1);
+	char* out = cdsl_vm_calloc(vm, len + 1, 1);
 	if (!out) {
 		cdsl_value_free(&v);
 		return res;

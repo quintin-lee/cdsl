@@ -50,6 +50,13 @@ cdsl_error_t* cdsl_error_create(
     cdsl_error_kind_t kind, int line, int column, const char* message, const char* hint);
 
 /**
+ * @brief Convert error kind to a printable string.
+ * @param kind Error kind value
+ * @return Static string label ("SYNTAX", "TYPE", "SEMANTIC", "RUNTIME", "WARNING", or "UNKNOWN")
+ */
+const char* cdsl_error_kind_str(cdsl_error_kind_t kind);
+
+/**
  * @brief Free an error instance.
  * @param err Error to free (NULL-safe)
  */

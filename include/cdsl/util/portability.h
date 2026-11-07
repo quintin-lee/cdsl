@@ -6,6 +6,18 @@
 #ifndef CDSL_PORTABILITY_H
 #define CDSL_PORTABILITY_H
 
+#if !defined(_WIN32)
+#ifndef _POSIX_C_SOURCE
+#define _POSIX_C_SOURCE 200809L
+#endif
+#ifndef _DEFAULT_SOURCE
+#define _DEFAULT_SOURCE 1
+#endif
+#ifndef __USE_XOPEN2K
+#define __USE_XOPEN2K 1
+#endif
+#endif
+
 #include <assert.h>
 #include <stdint.h>
 #include <stdio.h>

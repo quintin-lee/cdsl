@@ -50,7 +50,7 @@
 | Long    | `123L`, `9999999999L`     | 64-bit signed integer (L suffix)   |
 | Float   | `3.14`, `0.5`, `-1.0`    | 64-bit double precision            |
 | Boolean | `true`, `false`          | Case-sensitive                     |
-| String  | `"hello"`, `"reason"`    | Double-quoted; escape not supported|
+| String  | `"hello"`, `"reason"`    | Double-quoted                      |
 | Date    | `@2026-05-30`, `@2026-05-30 14:30:00` | ISO 8601 format; `@` prefix |
 
 ### 1.4 Identifiers
@@ -65,7 +65,16 @@ Identifiers name variables, metrics, rules, and actions.
 
 **Invalid**: `2fast`, `user-name`, `user.age.`
 
-### 1.5 Function Calls
+### 1.5 Arrays
+
+Literal arrays use bracket syntax and can be passed to functions such as `count()` and `sum()`:
+
+```dsl
+[1, 2, 3]
+["a", "b"]
+```
+
+### 1.6 Function Calls
 
 Function calls use C-style syntax in expressions:
 
@@ -77,7 +86,7 @@ min(score1, score2)
 
 Functions must be registered via `cdsl_vm_register_function()` in the host program.
 
-### 1.6 Comments
+### 1.7 Comments
 
 Two comment styles are supported:
 

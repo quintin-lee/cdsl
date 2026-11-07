@@ -62,6 +62,20 @@ typedef enum {
 } cdsl_op_t;
 ```
 
+#### `cdsl_op_desc_t`
+
+```c
+typedef struct cdsl_op_desc {
+    cdsl_op_t op;          /**< Operator enum constant */
+    const char* c_symbol;  /**< C operator symbol (e.g. "==", "&&", "!", "+") */
+    const char* name;      /**< Friendly name (e.g. "==", "AND", "OR", "NOT", "NEG") */
+    int arity;             /**< Operator arity (1 for unary, 2 for binary) */
+    bool is_relational;    /**< True if relational (==, !=, <, >, <=, >=) */
+    bool is_arithmetic;    /**< True if arithmetic binary (+, -, *, /) */
+    bool is_logical;       /**< True if logical (AND, OR, NOT) */
+} cdsl_op_desc_t;
+```
+
 #### `cdsl_rule_t`
 
 ```c
@@ -80,10 +94,10 @@ typedef struct cdsl_rule {
 #### `cdsl_parse_string`
 
 ```c
-cdsl_rule_t* cdsl_parse_string(const char* dsl_code);
+cdsl_rule_t* cdsl_parse_string(const char* dsl_code, cdsl_error_list_t** errors);
 ```
 
-Parses a DSL string into an AST rule. Returns NULL on parse failure. **Not thread-safe** (Flex uses global state).
+Parses a DSL string into an AST rule. Returns NULL on parse failure. The parser uses a **reentrant** Flex/Bison scanner (a fresh scanner is created per call), so it is thread-safe; AST nodes are allocated in a per-call thread-local arena. The optional `errors` output parameter (pass NULL to discard) receives a structured error list that must be freed with `cdsl_error_list_free()`.
 
 | Returns | Condition          |
 |---------|--------------------|
@@ -137,6 +151,30 @@ char* cdsl_meta_get(cdsl_meta_item_t* list, const char* key);
 ```
 
 Finds a metadata value by key. Returns NULL if the key is not present.
+
+#### `cdsl_create_meta_item`
+
+```c
+cdsl_meta_item_t* cdsl_create_meta_item(const char* key, const char* value);
+```
+
+Creates a metadata item with value semantics (deep copies `key` and `value`). Safe to pass string literals. Returns NULL on OOM or invalid arguments.
+
+#### `cdsl_append_meta_kv`
+
+```c
+cdsl_meta_item_t* cdsl_append_meta_kv(cdsl_meta_item_t* list, const char* key, const char* value);
+```
+
+Creates a metadata item and appends it to the list. Safe against NULL inputs and leaves the existing list intact on failure.
+
+#### `cdsl_op_get_desc`
+
+```c
+const cdsl_op_desc_t* cdsl_op_get_desc(cdsl_op_t op);
+```
+
+Retrieves read-only metadata descriptor for the specified operator. Returns NULL if the operator enum is out of bounds.
 
 ---
 
@@ -295,22 +333,25 @@ typedef struct {
 
 ```c
 typedef struct {
-    long total_executions;        /**< Number of VM execute() calls */
-    long total_rules_executed;    /**< Number of individual rule evaluations */
-    long total_metrics_evaluated; /**< Number of metric evaluations */
-    long total_actions_triggered; /**< Number of action callbacks invoked */
+    cdsl_atomic_long_t total_executions;    /**< Number of VM execute() calls */
+    cdsl_atomic_long_t total_rules_executed;    /**< Number of individual rule evaluations */
+    cdsl_atomic_long_t total_metrics_evaluated; /**< Number of metric evaluations */
+    cdsl_atomic_long_t total_actions_triggered; /**< Number of action callbacks invoked */
     double total_time_us;         /**< Total execution time in microseconds */
     double avg_time_us;           /**< Average time per execution */
 } cdsl_stats_t;
 ```
 
+> Counters use C23 `_Atomic` types (via `cdsl_atomic_long_t`) so parallel rule-set execution can update stats lock-free. Call `cdsl_vm_get_stats()` for a heap-allocated snapshot (caller frees with `free()`); the raw VM counters are protected by the VM's rwlock during aggregation.
+
 #### `cdsl_compiled_rule_t`
 
 ```c
 typedef struct cdsl_compiled_rule {
-    cdsl_rule_t* rule;
-    char* dsl_hash;
-    int verified;
+    cdsl_rule_t* rule;    /**< Parsed + verified AST */
+    char* dsl_hash;       /**< DSL source string used as cache key */
+    int verified;         /**< Non-zero once schema-verified */
+    cdsl_bytecode_t bc;   /**< Compiled bytecode (used by fast execution path) */
 } cdsl_compiled_rule_t;
 ```
 
@@ -319,7 +360,7 @@ typedef struct cdsl_compiled_rule {
 ```c
 typedef struct cdsl_compile_cache {
     cdsl_hashmap_t* map;
-    pthread_rwlock_t lock;
+    cdsl_rwlock_t lock;
 } cdsl_compile_cache_t;
 ```
 

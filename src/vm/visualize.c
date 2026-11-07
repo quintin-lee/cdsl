@@ -12,21 +12,6 @@
 #include <stdio.h>
 #include <errno.h>
 
-static int
-safe_atoi(const char* str, int default_val)
-{
-	if (!str) {
-		return default_val;
-	}
-	char* end = NULL;
-	errno = 0;
-	long val = strtol(str, &end, 10);
-	if (errno != 0 || end == str || *end != '\0') {
-		return default_val;
-	}
-	return (int)val;
-}
-
 static THREAD_LOCAL int dot_id = 0;
 
 static void
@@ -103,23 +88,7 @@ dot_expr(cdsl_strbuf_t* sb, cdsl_expr_node_t* expr, int* id)
 		    expr->data.id_val);
 		break;
 	case CDSL_EXPR_BINARY: {
-		const char* ops[] = {"==",
-				     "!=",
-				     "<",
-				     ">",
-				     "<=",
-				     ">=",
-				     "AND",
-				     "OR",
-				     "NOT",
-				     "+",
-				     "-",
-				     "*",
-				     "/",
-				     "NEG"};
-		int op_idx = (int)expr->data.binary.op;
-		const char* op_str =
-		    (op_idx >= 0 && op_idx <= (int)CDSL_OP_NEG) ? ops[op_idx] : "?";
+		const char* op_str = cdsl_op_name(expr->data.binary.op);
 		cdsl_strbuf_printf(
 		    sb,
 		    "  n%d [label=\"%s\",shape=diamond,style=filled,fillcolor=lightgreen];\n",
@@ -176,11 +145,8 @@ cdsl_rule_to_dot(const cdsl_rule_t* rule)
 				   rname,
 				   rname);
 		for (cdsl_metric_node_t* m = rule->metrics; m; m = m->next) {
-			int weight = safe_atoi(cdsl_meta_get(m->meta_list, "weight"), 0);
-			int critical = (strcmp(cdsl_meta_get(m->meta_list, "is_critical")
-						   ? cdsl_meta_get(m->meta_list, "is_critical")
-						   : "false",
-					       "true") == 0);
+			int weight = cdsl_meta_get_int(m->meta_list, "weight", 0);
+			int critical = cdsl_meta_get_bool(m->meta_list, "is_critical", 0);
 			cdsl_strbuf_printf(
 			    &sb,
 			    "  metric_%s "

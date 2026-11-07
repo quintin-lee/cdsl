@@ -53,8 +53,8 @@ cdsl_test_oom_check_and_decrement(void)
  * @param kind Error kind value
  * @return Static string label
  */
-static const char*
-kind_str(cdsl_error_kind_t kind)
+const char*
+cdsl_error_kind_str(cdsl_error_kind_t kind)
 {
 	switch (kind) {
 	case CDSL_ERR_SYNTAX:
@@ -67,9 +67,17 @@ kind_str(cdsl_error_kind_t kind)
 		return "RUNTIME";
 	case CDSL_ERR_RESOURCE_LIMIT:
 		return "RESOURCE_LIMIT";
+	case CDSL_ERR_WARNING:
+		return "WARNING";
 	default:
 		return "UNKNOWN";
 	}
+}
+
+static const char*
+kind_str(cdsl_error_kind_t kind)
+{
+	return cdsl_error_kind_str(kind);
 }
 
 /**

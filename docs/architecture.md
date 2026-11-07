@@ -129,16 +129,21 @@ Two verification functions are provided:
 
 ### 2.3 Execution Layer
 
-**Files**: `src/vm/eval.c`, `src/vm/context.c`, `src/vm/cache.c`, `src/vm/ruleset.c`, `src/vm/codegen.c`, `src/vm/visual.c`
+**Files**: `src/vm/eval.c`, `src/vm/context.c`, `src/vm/cache.c`, `src/vm/ruleset.c`, `src/vm/codegen.c`, `src/vm/visualize.c`, `src/vm/bytecode.c`, `src/vm/builtins.c`, `src/vm/vm.c`
 
 The Execution Layer interprets the verified AST against a runtime context. It has been modularized for better maintainability and thread-safety:
 
-- **vm/context.c**: Manages execution contexts, variable bindings, VM lifecycle, action/function registration, execution statistics.
-- **vm/eval.c**: Core AST interpreter, rule execution logic (metric and simple rules), report creation, printing, JSON serialization.
+- **vm/vm.c**: VM lifecycle, action/function registration, sandbox quotas, context handle.
+- **vm/context.c**: Manages execution contexts and variable bindings, with O(1) hash-based lookup.
+- **vm/eval.c**: Core AST interpreter (tree-walk path), rule execution logic (metric and simple rules), report creation, printing, JSON serialization.
+- **vm/bytecode.c**: Bytecode compiler and stack-based VM executor (fast path). Compiles expressions to a 31-opcode instruction stream with constant folding, short-circuit jumps, and instruction-quota sandboxing.
+- **vm/builtins.c**: Built-in DSL functions (strlen, contains, abs, min/max, date ops, typeof, etc.), auto-registered at `cdsl_vm_create()`.
 - **vm/cache.c**: Thread-safe compilation cache with robust collision handling.
 - **vm/ruleset.c**: Priority-based batch execution and parallel RuleSet evaluation.
 - **vm/codegen.c**: Translation of DSL rules into standalone C code.
-- **vm/visual.c**: Generation of Graphviz DOT representations for rules and rulesets.
+- **vm/visualize.c**: Generation of Graphviz DOT representations for rules and rulesets.
+
+**Two execution paths**: `cdsl_vm_execute()` uses the recursive tree-walk interpreter in `eval.c`. `cdsl_vm_execute_compiled()` dispatches to the bytecode VM in `bytecode.c` when a compiled bytecode chunk is available (produced by `cdsl_compile()`), falling back to the tree-walk path for metric-rule execution when the bytecode chunk has no metric instructions. Both paths implement identical rule semantics (threshold checks, critical-veto, tri-state status).
 
 **Execution flow**:
 
@@ -160,7 +165,8 @@ The Execution Layer interprets the verified AST against a runtime context. It ha
 ```
 
 **Additional subsystems**:
-- **Compilation cache**: caches parsed+verified rules indexed by DSL source hash to avoid redundant parsing
+- **Compilation cache**: caches parsed+verified rules indexed by DSL source string to avoid redundant parsing; also holds compiled bytecode for fast execution
+- **Bytecode VM**: compiles rule expressions to a 31-opcode stack machine with constant folding and short-circuit jumps; executed via `cdsl_vm_execute_compiled()`
 - **Code generation**: translates DSL rules to equivalent C source code via `cdsl_codegen_rule_to_c()`
 - **Visualization**: generates Graphviz DOT graphs for single rules and complete rulesets
 - **Performance monitoring**: tracks execution count, metric evaluations, and timing via `cdsl_stats_t`
@@ -302,7 +308,7 @@ The project uses CMake with the following options:
 | Option                     | Default | Description                           |
 |----------------------------|---------|---------------------------------------|
 | `CDSL_FORMAT_ON_BUILD`     | OFF     | Auto-format source before each build  |
-| `CDSL_GENERATE_DOCS`       | ON      | Generate Doxygen docs on every build  |
+| `CDSL_GENERATE_DOCS`       | OFF     | Generate Doxygen docs on every build  |
 | `BUILD_SHARED_LIBS`        | —       | Build shared library (default: both)  |
 
 CMake targets:

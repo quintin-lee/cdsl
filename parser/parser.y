@@ -116,7 +116,7 @@ parse_date_internal(const char* s)
 %left LT GT LE GE
 %left PLUS MINUS
 %left STAR SLASH
-%right NOT UMINUS
+%precedence NOT UMINUS
 
 %type <rule> program rule_declaration template_declaration
 %type <meta_list> meta_block meta_list meta_item
@@ -166,15 +166,14 @@ template_declaration:
     TEMPLATE IDENTIFIER LBRACE meta_block metric_list RBRACE {
         $$ = cdsl_create_metric_rule($2, $4, $5, @1.first_line, @1.first_column);
         if ($$) {
-            cdsl_meta_item_t* m = cdsl_create_meta_item(strdup("__is_template"), strdup("true"));
-            $$->meta_list = cdsl_append_meta($$->meta_list, m);
+            $$->meta_list = cdsl_append_meta_kv($$->meta_list, "__is_template", "true");
         }
     }
     ;
 
 meta_block:
     META LBRACE meta_list RBRACE { $$ = $3; }
-    | /* empty */          { $$ = NULL; }
+    | %empty               { $$ = NULL; }
     ;
 
 meta_list:
@@ -185,6 +184,8 @@ meta_list:
 meta_item:
     IDENTIFIER ASSIGN STRING_LIT {
         $$ = cdsl_create_meta_item($1, $3);
+        free($1);
+        free($3);
     }
     | error                                  { $$ = NULL; }
     ;
@@ -248,7 +249,7 @@ action_statement:
     ;
 
 argument_list:
-    /* empty */                        { $$ = NULL; }
+    %empty                             { $$ = NULL; }
     | argument_list_nonempty           { $$ = $1; }
     ;
 

@@ -178,6 +178,23 @@ cdsl_vm_execute_ruleset(cdsl_vm_t* vm, cdsl_ruleset_t* set, cdsl_context_t* ctx)
 	return batch;
 }
 
+static void
+free_snapshots(cdsl_action_cb_entry_t* cb_snapshot, cdsl_func_entry_t* fn_snapshot)
+{
+	while (cb_snapshot) {
+		cdsl_action_cb_entry_t* next = cb_snapshot->next;
+		free(cb_snapshot->action_name);
+		free(cb_snapshot);
+		cb_snapshot = next;
+	}
+	while (fn_snapshot) {
+		cdsl_func_entry_t* next = fn_snapshot->next;
+		free(fn_snapshot->func_name);
+		free(fn_snapshot);
+		fn_snapshot = next;
+	}
+}
+
 typedef struct {
 	cdsl_action_cb_entry_t* callbacks_snapshot; /* Snapshot of parent's callbacks */
 	cdsl_func_entry_t* functions_snapshot;	    /* Snapshot of parent's functions */
@@ -190,7 +207,7 @@ typedef struct {
 	cdsl_trace_cb_t trace_cb;
 	void* trace_ud;
 	cdsl_stats_t worker_stats;
-	cdsl_ruleset_t* set;
+	cdsl_ruleset_entry_t** entry_arr;
 	cdsl_context_t* ctx;
 	cdsl_atomic_int_t* next_idx;
 	cdsl_rule_report_t** rule_reports;
@@ -202,34 +219,32 @@ parallel_worker(void* arg)
 {
 	parallel_worker_arg_t* a = (parallel_worker_arg_t*)arg;
 
-	/* Create worker VM with snapshot callbacks/functions (no parent lock needed) */
+	/* Create worker VM with snapshot callbacks/functions */
 	cdsl_vm_t* wvm = calloc(1, sizeof(*wvm));
 	if (!wvm) {
 		return NULL;
 	}
-	CDSL_RWLOCK_INIT(&wvm->rwlock);
-	wvm->schema = NULL;
-	wvm->user_data = a->user_data;
-	wvm->debug_enabled = a->debug_enabled;
-	wvm->max_expr_depth = a->max_expr_depth > 0 ? a->max_expr_depth : 64;
-	wvm->timeout_us = a->timeout_us;
-	wvm->memory_limit = a->memory_limit;
-	wvm->instruction_limit = a->instruction_limit;
-	wvm->trace_cb = a->trace_cb;
-	wvm->trace_ud = a->trace_ud;
-	wvm->callbacks = a->callbacks_snapshot;
-	wvm->functions = a->functions_snapshot;
+	if (!cdsl_vm_init_worker(wvm,
+				 a->user_data,
+				 a->debug_enabled,
+				 a->max_expr_depth,
+				 a->timeout_us,
+				 a->memory_limit,
+				 a->instruction_limit,
+				 a->trace_cb,
+				 a->trace_ud,
+				 a->callbacks_snapshot,
+				 a->functions_snapshot)) {
+		free(wvm);
+		return NULL;
+	}
 
 	while (1) {
 		int idx = CDSL_ATOMIC_FETCH_ADD(a->next_idx, 1);
 		if (idx >= a->total_rules) {
 			break;
 		}
-		/* Find the idx-th rule entry */
-		cdsl_ruleset_entry_t* e = a->set->entries;
-		for (int i = 0; i < idx && e; i++) {
-			e = e->next;
-		}
+		cdsl_ruleset_entry_t* e = a->entry_arr[idx];
 		if (!e) {
 			break;
 		}
@@ -237,7 +252,7 @@ parallel_worker(void* arg)
 	}
 
 	a->worker_stats = wvm->stats;
-	CDSL_RWLOCK_DESTROY(&wvm->rwlock);
+	cdsl_vm_release_worker(wvm);
 	free(wvm);
 	return NULL;
 }
@@ -323,28 +338,33 @@ cdsl_vm_execute_ruleset_parallel(cdsl_vm_t* vm,
 	}
 	CDSL_RWLOCK_UNLOCK_WR(&vm->rwlock);
 
+	/* Build O(1) indexed rule entry array */
+	cdsl_ruleset_entry_t** entry_arr =
+	    (cdsl_ruleset_entry_t**)calloc(set->count, sizeof(*entry_arr));
+	if (!entry_arr) {
+		free_snapshots(cb_snapshot, fn_snapshot);
+		free((void*)batch->rule_reports);
+		free(batch);
+		return NULL;
+	}
+	int e_idx = 0;
+	for (cdsl_ruleset_entry_t* e = set->entries; e && e_idx < set->count; e = e->next) {
+		entry_arr[e_idx++] = e;
+	}
+
 	/* Limit concurrency to thread_count (clamped to rule count) */
 	int nthreads = thread_count > 0 && thread_count < set->count ? thread_count : set->count;
 	cdsl_atomic_int_t next_idx = 0;
 
 	parallel_worker_arg_t* args = calloc(nthreads, sizeof(*args));
 	cdsl_thread_t* threads = calloc(nthreads, sizeof(*threads));
-	if (!args || !threads) {
+	int* created = calloc(nthreads, sizeof(*created));
+	if (!args || !threads || !created) {
+		free((void*)entry_arr);
+		free(created);
 		free(args);
 		free(threads);
-		/* Free snapshots */
-		while (cb_snapshot) {
-			cdsl_action_cb_entry_t* next = cb_snapshot->next;
-			free(cb_snapshot->action_name);
-			free(cb_snapshot);
-			cb_snapshot = next;
-		}
-		while (fn_snapshot) {
-			cdsl_func_entry_t* next = fn_snapshot->next;
-			free(fn_snapshot->func_name);
-			free(fn_snapshot);
-			fn_snapshot = next;
-		}
+		free_snapshots(cb_snapshot, fn_snapshot);
 		free((void*)batch->rule_reports);
 		free(batch);
 		return NULL;
@@ -361,30 +381,46 @@ cdsl_vm_execute_ruleset_parallel(cdsl_vm_t* vm,
 		args[t].instruction_limit = snap_instruction_limit;
 		args[t].trace_cb = snap_trace_cb;
 		args[t].trace_ud = snap_trace_ud;
-		args[t].set = set;
+		args[t].entry_arr = entry_arr;
 		args[t].ctx = ctx;
 		args[t].next_idx = &next_idx;
 		args[t].rule_reports = batch->rule_reports;
 		args[t].total_rules = set->count;
 
-		if (CDSL_THREAD_CREATE(&threads[t], parallel_worker, &args[t]) != 0) {
-			args[t].callbacks_snapshot = NULL;
-			args[t].functions_snapshot = NULL;
+		if (CDSL_THREAD_CREATE(&threads[t], parallel_worker, &args[t]) == 0) {
+			created[t] = 1;
+		}
+	}
+
+	/* If any rules were not claimed by workers, execute on current thread */
+	while (1) {
+		int idx = CDSL_ATOMIC_FETCH_ADD(&next_idx, 1);
+		if (idx >= set->count) {
+			break;
+		}
+		if (entry_arr[idx]) {
+			batch->rule_reports[idx] = cdsl_vm_execute(vm, entry_arr[idx]->rule, ctx);
 		}
 	}
 
 	for (int t = 0; t < nthreads; t++) {
-		CDSL_THREAD_JOIN(threads[t]);
+		if (created[t]) {
+			CDSL_THREAD_JOIN(threads[t]);
+		}
 	}
 
 	/* Aggregate worker stats into parent VM under write lock */
 	CDSL_RWLOCK_WRLOCK(&vm->rwlock);
 	for (int t = 0; t < nthreads; t++) {
-		vm->stats.total_executions += args[t].worker_stats.total_executions;
-		vm->stats.total_rules_executed += args[t].worker_stats.total_rules_executed;
-		vm->stats.total_metrics_evaluated += args[t].worker_stats.total_metrics_evaluated;
-		vm->stats.total_actions_triggered += args[t].worker_stats.total_actions_triggered;
-		vm->stats.total_time_us += args[t].worker_stats.total_time_us;
+		if (created[t]) {
+			vm->stats.total_executions += args[t].worker_stats.total_executions;
+			vm->stats.total_rules_executed += args[t].worker_stats.total_rules_executed;
+			vm->stats.total_metrics_evaluated +=
+			    args[t].worker_stats.total_metrics_evaluated;
+			vm->stats.total_actions_triggered +=
+			    args[t].worker_stats.total_actions_triggered;
+			vm->stats.total_time_us += args[t].worker_stats.total_time_us;
+		}
 	}
 	if (vm->stats.total_executions > 0) {
 		vm->stats.avg_time_us =
@@ -414,20 +450,10 @@ cdsl_vm_execute_ruleset_parallel(cdsl_vm_t* vm,
 	}
 	CDSL_RWLOCK_UNLOCK_WR(&vm->rwlock);
 
-	/* Free snapshots */
-	while (cb_snapshot) {
-		cdsl_action_cb_entry_t* next = cb_snapshot->next;
-		free(cb_snapshot->action_name);
-		free(cb_snapshot);
-		cb_snapshot = next;
-	}
-	while (fn_snapshot) {
-		cdsl_func_entry_t* next = fn_snapshot->next;
-		free(fn_snapshot->func_name);
-		free(fn_snapshot);
-		fn_snapshot = next;
-	}
-
+	/* Free snapshots and resources */
+	free_snapshots(cb_snapshot, fn_snapshot);
+	free((void*)entry_arr);
+	free(created);
 	free(args);
 	free(threads);
 

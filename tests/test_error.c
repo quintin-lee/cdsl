@@ -376,6 +376,25 @@ test_error_create_oom_fallback(void)
 	TEST_ERROR_END();
 }
 
+static void
+test_error_warning_kind_formatting(void)
+{
+	TEST_ERROR_BEGIN("error warning kind formatting");
+	TEST_ASSERT_STR(cdsl_error_kind_str(CDSL_ERR_SYNTAX), "SYNTAX", "kind SYNTAX");
+	TEST_ASSERT_STR(cdsl_error_kind_str(CDSL_ERR_TYPE), "TYPE", "kind TYPE");
+	TEST_ASSERT_STR(cdsl_error_kind_str(CDSL_ERR_SEMANTIC), "SEMANTIC", "kind SEMANTIC");
+	TEST_ASSERT_STR(cdsl_error_kind_str(CDSL_ERR_RUNTIME), "RUNTIME", "kind RUNTIME");
+	TEST_ASSERT_STR(cdsl_error_kind_str(CDSL_ERR_WARNING), "WARNING", "kind WARNING");
+	TEST_ASSERT_STR(
+	    cdsl_error_kind_str((cdsl_error_kind_t)999), "UNKNOWN", "invalid kind UNKNOWN");
+
+	cdsl_error_t* err = cdsl_error_create(CDSL_ERR_WARNING, 10, 5, "Unused rule", "Remove it");
+	TEST_ASSERT_NOT_NULL(err, "error created");
+	TEST_ASSERT_STR(cdsl_error_kind_str(err->kind), "WARNING", "err->kind is WARNING");
+	cdsl_error_free(err);
+	TEST_ERROR_END();
+}
+
 int
 main()
 {
@@ -393,6 +412,7 @@ main()
 	test_error_memory_management();
 	test_schema_validation_error_reporting();
 	test_error_performance();
+	test_error_warning_kind_formatting();
 
 	TEST_SUMMARY();
 	TEST_EXIT();

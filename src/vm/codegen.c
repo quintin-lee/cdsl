@@ -12,21 +12,9 @@
 #include <stdio.h>
 #include <errno.h>
 #include <ctype.h>
-
-static int
-safe_atoi(const char* str, int default_val)
-{
-	if (!str) {
-		return default_val;
-	}
-	char* end = NULL;
-	errno = 0;
-	long val = strtol(str, &end, 10);
-	if (errno != 0 || end == str || *end != '\0') {
-		return default_val;
-	}
-	return (int)val;
-}
+#include <math.h>
+#include <stdint.h>
+#include <limits.h>
 
 static void
 sanitize_identifier(char* buf, size_t bufsize, const char* src)
@@ -89,9 +77,17 @@ codegen_expr(cdsl_strbuf_t* sb,
 	case CDSL_EXPR_INT:
 		cdsl_strbuf_printf(sb, "%d", expr->data.int_val);
 		break;
-	case CDSL_EXPR_FLOAT:
-		cdsl_strbuf_printf(sb, "%.2f", expr->data.float_val);
+	case CDSL_EXPR_FLOAT: {
+		char fbuf[64];
+		snprintf(fbuf, sizeof(fbuf), "%.17g", expr->data.float_val);
+		if (isfinite(expr->data.float_val) && !strchr(fbuf, '.') && !strchr(fbuf, 'e') &&
+		    !strchr(fbuf, 'E')) {
+			cdsl_strbuf_printf(sb, "%s.0", fbuf);
+		} else {
+			cdsl_strbuf_printf(sb, "%s", fbuf);
+		}
 		break;
+	}
 	case CDSL_EXPR_BOOL:
 		cdsl_strbuf_printf(sb, "%s", expr->data.bool_val ? "1" : "0");
 		break;
@@ -124,10 +120,14 @@ codegen_expr(cdsl_strbuf_t* sb,
 		break;
 	}
 	case CDSL_EXPR_DATE:
-		cdsl_strbuf_printf(sb, "%ldL", (long)expr->data.date_val);
+		cdsl_strbuf_printf(sb, "%lldLL", (long long)expr->data.date_val);
 		break;
 	case CDSL_EXPR_LONG:
-		cdsl_strbuf_printf(sb, "%ldL", (long)expr->data.long_val);
+		if (expr->data.long_val == INT64_MIN) {
+			cdsl_strbuf_printf(sb, "(-9223372036854775807LL - 1LL)");
+		} else {
+			cdsl_strbuf_printf(sb, "%lldLL", (long long)expr->data.long_val);
+		}
 		break;
 	case CDSL_EXPR_ARRAY: {
 		cdsl_strbuf_printf(sb, "{");
@@ -183,11 +183,7 @@ codegen_expr(cdsl_strbuf_t* sb,
 		}
 		cdsl_strbuf_printf(sb, "(");
 		codegen_expr(sb, expr->data.binary.left, schema, indent);
-		const char* ops[] = {
-		    "==", "!=", "<", ">", "<=", ">=", "&&", "||", "!", "+", "-", "*", "/", "-"};
-		int op_idx = (int)op;
-		const char* op_str =
-		    (op_idx >= 0 && op_idx <= (int)CDSL_OP_NEG) ? ops[op_idx] : "?";
+		const char* op_str = cdsl_op_c_symbol(op);
 		cdsl_strbuf_printf(sb, " %s ", op_str);
 		codegen_expr(sb, expr->data.binary.right, schema, indent);
 		cdsl_strbuf_printf(sb, ")");
@@ -293,10 +289,8 @@ cdsl_codegen_rule_to_c(const cdsl_rule_t* rule, const cdsl_schema_t* schema)
 				   safe_rname);
 		cdsl_strbuf_printf(&sb, "    int total_score = 0;\n");
 		for (cdsl_metric_node_t* m = rule->metrics; m; m = m->next) {
-			const char* w_meta = cdsl_meta_get(m->meta_list, "weight");
-			int weight = safe_atoi(w_meta, 0);
-			const char* c_meta = cdsl_meta_get(m->meta_list, "is_critical");
-			int critical = (strcmp(c_meta ? c_meta : "false", "true") == 0);
+			int weight = cdsl_meta_get_int(m->meta_list, "weight", 0);
+			int critical = cdsl_meta_get_bool(m->meta_list, "is_critical", 0);
 			char safe_mname[256];
 			sanitize_identifier(
 			    safe_mname, sizeof(safe_mname), m->name ? m->name : "unnamed_metric");

@@ -121,7 +121,7 @@ context_var_is_readonly(const cdsl_context_t* ctx, const char* name)
 }
 
 /**
- * @brief Track memory allocation and enforce per-VM limit (internal).
+ * @brief Track memory allocation and enforce per-execution VM budget (internal).
  * @return 1 if allocation should proceed, 0 if limit exceeded
  */
 int
@@ -135,10 +135,57 @@ cdsl_vm_track_alloc(cdsl_vm_t* vm, size_t bytes)
 	}
 	int64_t cur = CDSL_ATOMIC_FETCH_ADD(&vm->alloc_bytes, (int64_t)bytes) + (int64_t)bytes;
 	if (cur > vm->memory_limit) {
+		cdsl_vm_set_last_error(vm,
+				       CDSL_ERR_RUNTIME,
+				       0,
+				       0,
+				       "Memory quota exceeded",
+				       "Increase VM memory limit or reduce runtime allocations");
 		CDSL_ATOMIC_STORE(&vm->error_state, 1);
 		return 0;
 	}
 	return 1;
+}
+
+/**
+ * @brief Duplicate a string while charging the VM's per-execution memory budget.
+ */
+char*
+cdsl_vm_strdup(cdsl_vm_t* vm, const char* s)
+{
+	if (!s) {
+		return NULL;
+	}
+#if defined(CDSL_TESTING) || !defined(NDEBUG)
+	if (cdsl_test_oom_check_and_decrement()) {
+		return NULL;
+	}
+#endif
+	size_t n = strlen(s) + 1;
+	if (!cdsl_vm_track_alloc(vm, n)) {
+		return NULL;
+	}
+	char* p = malloc(n);
+	if (p) {
+		memcpy(p, s, n);
+	}
+	return p;
+}
+
+/**
+ * @brief Zero-allocate memory while charging the VM's per-execution memory budget.
+ */
+void*
+cdsl_vm_calloc(cdsl_vm_t* vm, size_t nmemb, size_t size)
+{
+	if (size != 0 && nmemb > ((size_t)-1) / size) {
+		return NULL;
+	}
+	size_t total = nmemb * size;
+	if (!cdsl_vm_track_alloc(vm, total)) {
+		return NULL;
+	}
+	return calloc(nmemb, size);
 }
 
 /**
@@ -168,6 +215,10 @@ cdsl_vm_check_abort(cdsl_vm_t* vm, double start_time_us)
 	if (vm->timeout_us > 0) {
 		double elapsed = cdsl_get_time_us_internal() - start_time_us;
 		if (elapsed > (double)vm->timeout_us) {
+			if (!vm->last_error) {
+				cdsl_vm_set_last_error(
+				    vm, CDSL_ERR_RUNTIME, 0, 0, "Execution timeout exceeded", NULL);
+			}
 			CDSL_ATOMIC_STORE(&vm->error_state, 1);
 			return 1;
 		}
