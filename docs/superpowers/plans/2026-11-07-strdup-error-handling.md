@@ -18,7 +18,7 @@
 - Create / Modify: `src/util/error.c:15-35` (or a dedicated helper in `src/util/arena.c`)
 - Test: `tests/test_memory.c`
 
-- [ ] **Step 1: Write the failing test for `cdsl_strdup` and OOM countdown hook**
+- [x] **Step 1: Write the failing test for `cdsl_strdup` and OOM countdown hook**
 
 In `tests/test_memory.c`:
 ```c
@@ -55,12 +55,12 @@ test_cdsl_strdup_and_oom_hook(void)
 }
 ```
 
-- [ ] **Step 2: Run test to verify it fails**
+- [x] **Step 2: Run test to verify it fails**
 
 Run: `cmake --build build --target test_memory && ./build/test_memory`
 Expected: Compilation failure or undefined reference to `cdsl_test_set_oom_countdown` / `cdsl_strdup`.
 
-- [ ] **Step 3: Implement `cdsl_strdup` and OOM hook**
+- [x] **Step 3: Implement `cdsl_strdup` and OOM hook**
 
 In `include/cdsl/util/portability.h`:
 ```c
@@ -131,12 +131,12 @@ cdsl_test_oom_check_and_decrement(void)
 #endif
 ```
 
-- [ ] **Step 4: Run test to verify it passes**
+- [x] **Step 4: Run test to verify it passes**
 
 Run: `cmake --build build --target test_memory && ./build/test_memory`
 Expected: `[TEST] cdsl_strdup NULL tolerance and OOM injection hook ... OK`
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add include/cdsl/util/portability.h src/util/error.c tests/test_memory.c
@@ -151,7 +151,7 @@ git commit -m "feat(util): ✨ introduce cdsl_strdup and test-time OOM fault inj
 - Modify: `src/vm/context.c:190-380` (getters, setters, JSON loading)
 - Test: `tests/test_context.c`
 
-- [ ] **Step 1: Write the failing test for Context OOM rollback**
+- [x] **Step 1: Write the failing test for Context OOM rollback**
 
 In `tests/test_context.c`:
 ```c
@@ -189,12 +189,12 @@ test_context_set_string_oom_rollback(void)
 }
 ```
 
-- [ ] **Step 2: Run test to verify it fails**
+- [x] **Step 2: Run test to verify it fails**
 
 Run: `cmake --build build --target test_context && ./build/test_context`
 Expected: FAIL on `TEST_ASSERT_STR(..., "Initial", ...)` because old code freed old value before `strdup` succeeded.
 
-- [ ] **Step 3: Implement transactional rollback in `src/vm/context.c`**
+- [x] **Step 3: Implement transactional rollback in `src/vm/context.c`**
 
 Replace all raw `strdup` calls with `cdsl_strdup` and add rollback handling:
 1. In `cdsl_context_set_string`:
@@ -210,12 +210,12 @@ Replace all raw `strdup` calls with `cdsl_strdup` and add rollback handling:
 3. In `cdsl_context_load_json`:
    - When copying JSON keys and strings, check `cdsl_strdup` return values. On NULL, free temporary key buffers and return `0`.
 
-- [ ] **Step 4: Run test to verify it passes**
+- [x] **Step 4: Run test to verify it passes**
 
 Run: `cmake --build build --target test_context && ./build/test_context`
 Expected: PASS with 0 failures.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add src/vm/context.c tests/test_context.c
@@ -231,7 +231,7 @@ git commit -m "fix(context): 🐛 ensure transactional rollback on strdup failur
 - Modify: `src/util/hashmap.c:120-145`
 - Test: `tests/test_schema.c`
 
-- [ ] **Step 1: Write the failing test for Schema registration OOM**
+- [x] **Step 1: Write the failing test for Schema registration OOM**
 
 In `tests/test_schema.c`:
 ```c
@@ -261,12 +261,12 @@ test_schema_registration_oom(void)
 }
 ```
 
-- [ ] **Step 2: Run test to verify it fails**
+- [x] **Step 2: Run test to verify it fails**
 
 Run: `cmake --build build --target test_schema && ./build/test_schema`
 Expected: FAIL because `cdsl_schema_register_var` does not check `strdup` return value.
 
-- [ ] **Step 3: Implement clean rollback in `src/schema/schema.c` and `src/util/hashmap.c`**
+- [x] **Step 3: Implement clean rollback in `src/schema/schema.c` and `src/util/hashmap.c`**
 
 In `src/schema/schema.c`:
 - In `cdsl_schema_register_var`:
@@ -300,12 +300,12 @@ In `src/util/hashmap.c`:
   e->key = ekey;
   ```
 
-- [ ] **Step 4: Run test to verify it passes**
+- [x] **Step 4: Run test to verify it passes**
 
 Run: `cmake --build build --target test_schema && ./build/test_schema`
 Expected: PASS with 0 failures.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add src/schema/schema.c src/util/hashmap.c tests/test_schema.c
@@ -320,7 +320,7 @@ git commit -m "fix(schema): 🐛 clean rollback on strdup failure in schema and 
 - Modify: `src/vm/vm.c:65-115`
 - Test: `tests/test_vm_config.c`
 
-- [ ] **Step 1: Write the failing test for VM callback registration OOM**
+- [x] **Step 1: Write the failing test for VM callback registration OOM**
 
 In `tests/test_vm_config.c`:
 ```c
@@ -352,12 +352,12 @@ test_vm_register_callbacks_oom(void)
 }
 ```
 
-- [ ] **Step 2: Run test to verify it fails**
+- [x] **Step 2: Run test to verify it fails**
 
 Run: `cmake --build build --target test_vm_config && ./build/test_vm_config`
 Expected: FAIL because `cdsl_vm_register_action` does not check `strdup` and returns void / void*.
 
-- [ ] **Step 3: Implement clean rollback in `src/vm/vm.c`**
+- [x] **Step 3: Implement clean rollback in `src/vm/vm.c`**
 
 In `src/vm/vm.c`:
 - In `cdsl_vm_register_action`:
@@ -381,12 +381,12 @@ In `src/vm/vm.c`:
   e->func_name = func_dup;
   ```
 
-- [ ] **Step 4: Run test to verify it passes**
+- [x] **Step 4: Run test to verify it passes**
 
 Run: `cmake --build build --target test_vm_config && ./build/test_vm_config`
 Expected: PASS with 0 failures.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add src/vm/vm.c tests/test_vm_config.c
@@ -401,7 +401,7 @@ git commit -m "fix(vm): 🐛 handle strdup failure in action and function regist
 - Modify: `src/vm/eval.c:710-1010`
 - Test: `tests/test_execution.c`
 
-- [ ] **Step 1: Write the failing test for Report OOM error propagation**
+- [x] **Step 1: Write the failing test for Report OOM error propagation**
 
 In `tests/test_execution.c`:
 ```c
@@ -440,12 +440,12 @@ test_execution_report_oom(void)
 }
 ```
 
-- [ ] **Step 2: Run test to verify it fails**
+- [x] **Step 2: Run test to verify it fails**
 
 Run: `cmake --build build --target test_execution && ./build/test_execution`
 Expected: Segmentation fault or NULL dereference because `report->rule_name = strdup(...)` is not checked.
 
-- [ ] **Step 3: Implement clean OOM checking in `src/vm/eval.c`**
+- [x] **Step 3: Implement clean OOM checking in `src/vm/eval.c`**
 
 In `execute_simple_rule` and `execute_metric_rule`:
 1. Check `report->rule_name` and `report->description`. If NULL, call:
@@ -461,12 +461,12 @@ In `execute_simple_rule` and `execute_metric_rule`:
 4. In `decision_summary`: check `cdsl_strdup`. If NULL, goto error cleanup.
 5. In `cdsl_vm_execute`: if `CDSL_ATOMIC_LOAD(&vm->error_state)` is set and `rpt == NULL`, allocate an emergency `calloc(1, sizeof(cdsl_rule_report_t))`, populate `rpt->status = CDSL_STATUS_ERROR` and transfer `vm->last_error` to `rpt->error`.
 
-- [ ] **Step 4: Run test to verify it passes**
+- [x] **Step 4: Run test to verify it passes**
 
 Run: `cmake --build build --target test_execution && ./build/test_execution`
 Expected: PASS with 0 failures.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add src/vm/eval.c tests/test_execution.c
@@ -481,7 +481,7 @@ git commit -m "fix(eval): 🐛 propagate CDSL_ERR_RESOURCE_LIMIT on strdup failu
 - Modify: `src/vm/bytecode.c:55-80, 800-845, 1500-1695`
 - Test: `tests/test_bytecode.c`
 
-- [ ] **Step 1: Write the failing test for Bytecode OOM safety**
+- [x] **Step 1: Write the failing test for Bytecode OOM safety**
 
 In `tests/test_bytecode.c`:
 ```c
@@ -528,12 +528,12 @@ test_bytecode_compile_and_execute_oom(void)
 }
 ```
 
-- [ ] **Step 2: Run test to verify it fails**
+- [x] **Step 2: Run test to verify it fails**
 
 Run: `cmake --build build --target test_bytecode && ./build/test_bytecode`
 Expected: FAIL because compile does not check string constant duplication or report allocation in `cdsl_bytecode_execute_rule`.
 
-- [ ] **Step 3: Implement clean OOM checking in `src/vm/bytecode.c`**
+- [x] **Step 3: Implement clean OOM checking in `src/vm/bytecode.c`**
 
 1. In `bc_add_constant`:
    - `char* str_dup = cdsl_strdup(val.data.string_val);`
@@ -546,12 +546,12 @@ Expected: FAIL because compile does not check string constant duplication or rep
    - In `bc_rule_metric_handler`: check `mr->metric_name`, `mr->description`, `mr->violation_reason`. On failure, return `0` (abort execution).
    - In `bc_finalize_simple_rule_report`: check `m->metric_name`, `m->description`, `report->decision_summary`. If NULL, mark `report->status = CDSL_STATUS_ERROR`.
 
-- [ ] **Step 4: Run test to verify it passes**
+- [x] **Step 4: Run test to verify it passes**
 
 Run: `cmake --build build --target test_bytecode && ./build/test_bytecode`
 Expected: PASS with 0 failures.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add src/vm/bytecode.c tests/test_bytecode.c
@@ -567,7 +567,7 @@ git commit -m "fix(bytecode): 🐛 handle strdup failure in bytecode compile and
 - Modify: `src/vm/ruleset.c:170-185, 430-445, 590-695`
 - Test: `tests/test_error.c`, `tests/test_ruleset.c`
 
-- [ ] **Step 1: Write the failing test for `cdsl_error_create` OOM fallback**
+- [x] **Step 1: Write the failing test for `cdsl_error_create` OOM fallback**
 
 In `tests/test_error.c`:
 ```c
@@ -589,12 +589,12 @@ test_error_create_oom_fallback(void)
 }
 ```
 
-- [ ] **Step 2: Run test to verify it fails**
+- [x] **Step 2: Run test to verify it fails**
 
 Run: `cmake --build build --target test_error && ./build/test_error`
 Expected: Crash or failure when `strdup` returns NULL.
 
-- [ ] **Step 3: Implement fallback in `src/util/error.c` and `src/vm/ruleset.c`**
+- [x] **Step 3: Implement fallback in `src/util/error.c` and `src/vm/ruleset.c`**
 
 In `src/util/error.c`:
 - In `cdsl_error_create`:
@@ -617,12 +617,12 @@ In `src/vm/ruleset.c`:
 - Check `batch->summary = cdsl_strdup(buf);`. If NULL, ensure `batch->summary` remains NULL without crashing `cdsl_batch_report_free()`.
 - In dependency resolution (`char* dep_buf = cdsl_strdup(deps)`): if NULL, handle OOM gracefully and return failure.
 
-- [ ] **Step 4: Run test to verify it passes**
+- [x] **Step 4: Run test to verify it passes**
 
 Run: `cmake --build build --target test_error && cmake --build build --target test_ruleset && ctest --test-dir build -R "test_error|test_ruleset"`
 Expected: PASS.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add src/util/error.c src/vm/ruleset.c tests/test_error.c
@@ -637,7 +637,7 @@ git commit -m "fix(error): 🐛 provide safe emergency fallback for error constr
 - Modify: `tests/test_memory.c`
 - Test: All 28 C tests + 104 Python tests
 
-- [ ] **Step 1: Write comprehensive fault injection suite in `tests/test_memory.c`**
+- [x] **Step 1: Write comprehensive fault injection suite in `tests/test_memory.c`**
 
 Add tests exercising:
 1. `test_context_deep_oom()`: iterating countdown from 0 to 5 over JSON context loading and nested key setting.
@@ -645,7 +645,7 @@ Add tests exercising:
 3. `test_eval_deep_oom()`: iterating countdown over multi-metric rule execution, asserting `report->status == CDSL_STATUS_ERROR` and 0 memory leaks.
 4. `test_bytecode_deep_oom()`: iterating countdown over compilation and execution.
 
-- [ ] **Step 2: Run all tests with CMake and CTest**
+- [x] **Step 2: Run all tests with CMake and CTest**
 
 Run:
 ```bash
@@ -655,7 +655,7 @@ pytest python/tests
 ```
 Expected: 100% PASS across all 28 C tests and 104 pytest tests.
 
-- [ ] **Step 3: Run full suite with AddressSanitizer and UndefinedBehaviorSanitizer**
+- [x] **Step 3: Run full suite with AddressSanitizer and UndefinedBehaviorSanitizer**
 
 Run:
 ```bash
@@ -666,7 +666,7 @@ rm -rf build-asan
 ```
 Expected: All tests pass with zero leaks, zero memory errors, zero undefined behavior.
 
-- [ ] **Step 4: Commit**
+- [x] **Step 4: Commit**
 
 ```bash
 git add tests/test_memory.c
