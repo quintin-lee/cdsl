@@ -1,5 +1,28 @@
 # Changelog
 
+## [1.4.0] - 2026-11-08
+
+### Added
+- **Enterprise Rule Manager & RCU Hot Reload (`include/cdsl/manager.h`, `src/manager/manager.c`)**:
+  - Implemented lock-free Copy-On-Write (RCU) hot reload manager (`cdsl_manager_t`) for zero-downtime ruleset deployments.
+  - In-flight execution reader safety through atomic ref-counting and epoch snapshot handles (`cdsl_manager_acquire`, `cdsl_manager_release`).
+  - Ring buffer retaining up to 8 historical version snapshots with instant nanosecond-level rollback (`cdsl_manager_rollback`).
+  - Unified manager execution helper (`cdsl_manager_execute`) ensuring transparent snapshot acquisition and release.
+- **Canary Pre-Flight Verification Gate (`include/cdsl/canary.h`, `src/manager/canary.c`)**:
+  - Automated pre-flight validation pipeline checking DSL syntax, static schema types, and isolated dry-run execution against mock business contexts.
+  - Protected deployment API (`cdsl_manager_deploy_canary`) automatically rejecting invalid or crashing rule updates before touching production traffic.
+- **Prometheus Metrics Exposition (`include/cdsl/metrics.h`, `src/obs/metrics.c`)**:
+  - Standard Prometheus text format (v0.0.4) metrics collector and exporter (`cdsl_metrics_export_prometheus`).
+  - Real-time counters for rule executions by status (`passed`, `partially_passed`, `failed`, `error`), custom actions, and gauges for system state.
+  - High-precision latency histograms covering latency distributions from 0.1ms to 5.0s.
+- **OpenTelemetry Decision Tracing (`include/cdsl/trace.h`, `src/obs/trace.c`)**:
+  - Standard W3C TraceContext header support (`traceparent: 00-{trace_id}-{span_id}-01`) for end-to-end distributed transaction tracking.
+  - Fine-grained audit decision spans recording evaluation trees, metric scores, rule triggers, and custom attributes.
+  - OpenTelemetry OTLP JSON export format (`cdsl_trace_export_json`) enabling seamless integration with Jaeger, Zipkin, Datadog, and Grafana Tempo.
+- **Test Coverage**:
+  - Added test suites `tests/test_manager.c`, `tests/test_canary.c`, `tests/test_metrics.c`, and `tests/test_opentelemetry.c`.
+  - 100% clean verification across all 39 test suites under AddressSanitizer, LeakSanitizer, UndefinedBehaviorSanitizer, and ThreadSanitizer.
+
 ## [1.3.0] - 2026-11-08
 
 ### Added

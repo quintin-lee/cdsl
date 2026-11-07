@@ -549,9 +549,9 @@ DO_BC_CALL: {
 DO_BC_ACTION: {
 	const char* act_name = bc->constants[ip->operand.const_idx].data.string_val;
 	cdsl_value_t nv = POP();
-	int nargs = nv.data.int_val;
+	int nargs = (nv.type == CDSL_TYPE_INT && nv.data.int_val >= 0) ? nv.data.int_val : 0;
 	cdsl_arg_node_t* arg_list = NULL;
-	cdsl_arg_node_t* arg_nodes = calloc(nargs > 0 ? nargs : 1, sizeof(cdsl_arg_node_t));
+	cdsl_arg_node_t* arg_nodes = calloc(nargs > 0 ? (size_t)nargs : 1, sizeof(cdsl_arg_node_t));
 	if (!arg_nodes) {
 		for (int i = 0; i < nargs; i++) {
 			cdsl_value_t av = POP();

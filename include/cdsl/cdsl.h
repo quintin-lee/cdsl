@@ -30,6 +30,12 @@
 #include "cdsl/columnar.h"
 #include "cdsl/cse.h"
 
+/* Enterprise Management & Observability */
+#include "cdsl/manager.h"
+#include "cdsl/canary.h"
+#include "cdsl/metrics.h"
+#include "cdsl/trace.h"
+
 /* AI bridge */
 #include "cdsl/ai.h"
 

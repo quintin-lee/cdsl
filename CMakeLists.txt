@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.19)
-project(cdsl VERSION 1.3.0 LANGUAGES C CXX)
+project(cdsl VERSION 1.4.0 LANGUAGES C CXX)
 
 set(CMAKE_C_STANDARD 23)
 set(CMAKE_C_STANDARD_REQUIRED ON)
