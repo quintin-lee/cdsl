@@ -139,12 +139,12 @@ void cdsl_lexer_reset_column(void) {
                         }
 
 [a-zA-Z_][a-zA-Z0-9_\.]* {
-                            yylval->id_val = strdup(yytext);
+                            yylval->id_val = cdsl_strdup(yytext);
                             return IDENTIFIER;
                         }
 
 @[0-9]{4}-[0-9]{2}-[0-9]{2}([ ]+[0-9]{2}:[0-9]{2}:[0-9]{2})? {
-                            yylval->string_val = strdup(yytext + 1);
+                            yylval->string_val = cdsl_strdup(yytext + 1);
                             return DATE_LIT;
                         }
 

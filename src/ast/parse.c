@@ -87,16 +87,24 @@ cdsl_parse_string(const char* dsl_code, cdsl_error_list_t** errors)
 			/* Caller wants errors: keep partial rule if any, report errors via list */
 			if (!rule) {
 				cdsl_arena_free(arena);
+				arena = NULL;
 			}
 		} else {
 			/* Caller doesn't want errors: fail fast, discard partial results */
 			if (rule) {
 				cdsl_free_rule(rule);
 				rule = NULL;
+				arena = NULL;
 			} else {
 				cdsl_arena_free(arena);
+				arena = NULL;
 			}
 		}
+	}
+
+	if (!rule && arena) {
+		cdsl_arena_free(arena);
+		arena = NULL;
 	}
 
 	/* Reset arena context */

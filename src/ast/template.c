@@ -203,9 +203,12 @@ cdsl_template_register(cdsl_rule_t* template_rule)
 cdsl_rule_t*
 cdsl_template_get(const char* name)
 {
+	if (!name) {
+		return NULL;
+	}
 	CDSL_RWLOCK_RDLOCK(&template_lock);
 	for (cdsl_template_entry_t* e = template_registry; e; e = e->next) {
-		if (strcmp(e->name, name) == 0) {
+		if (e->name && strcmp(e->name, name) == 0) {
 			cdsl_rule_t* r = e->rule;
 			CDSL_RWLOCK_UNLOCK_RD(&template_lock);
 			return r;

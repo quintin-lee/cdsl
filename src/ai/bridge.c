@@ -514,7 +514,7 @@ call_llm_api(const char* prompt, const cdsl_ai_config_t* config)
 		if (message) {
 			cdsl_json_value_t* content_val = find_json_key(message, "content");
 			if (content_val && content_val->type == CDSL_JSON_STRING) {
-				decoded = strdup(content_val->value.string_val);
+				decoded = cdsl_strdup(content_val->value.string_val);
 			}
 		}
 	}
@@ -769,17 +769,18 @@ mock_translate_generic(const char* natural_language,
 	int n_vars = count_schema_vars(schema);
 
 	if (!schema || n_vars == 0) {
-		return strdup("RULE generated_rule {\n"
-			      "    META {\n"
-			      "        description = \"Auto-generated rule\"\n"
-			      "        pass_threshold = \"80\"\n"
-			      "        partial_threshold = \"50\"\n"
-			      "    }\n"
-			      "    METRIC score {\n"
-			      "        META { description = \"Score metric\" weight = \"100\" }\n"
-			      "        DEFAULT score(0)\n"
-			      "    }\n"
-			      "}\n");
+		return cdsl_strdup(
+		    "RULE generated_rule {\n"
+		    "    META {\n"
+		    "        description = \"Auto-generated rule\"\n"
+		    "        pass_threshold = \"80\"\n"
+		    "        partial_threshold = \"50\"\n"
+		    "    }\n"
+		    "    METRIC score {\n"
+		    "        META { description = \"Score metric\" weight = \"100\" }\n"
+		    "        DEFAULT score(0)\n"
+		    "    }\n"
+		    "}\n");
 	}
 
 	char rule_name[128] = {0};
@@ -825,7 +826,7 @@ mock_translate_generic(const char* natural_language,
 			 first_var->type == CDSL_TYPE_STRING ? "\"expected\""
 			 : first_var->type == CDSL_TYPE_BOOL ? "true"
 							     : "0");
-		return strdup(buf);
+		return cdsl_strdup(buf);
 	}
 
 	char buf[8192] = {0};
@@ -909,7 +910,7 @@ mock_translate_generic(const char* natural_language,
 	}
 
 	snprintf(buf + strlen(buf), sizeof(buf) - strlen(buf), "}\n");
-	return strdup(buf);
+	return cdsl_strdup(buf);
 }
 
 static char*
@@ -977,7 +978,7 @@ default_translate(void* ctx,
 					return dsl;
 				}
 			}
-			char* dsl = strdup(response);
+			char* dsl = cdsl_strdup(response);
 			free(response);
 			return dsl;
 		}
@@ -1078,6 +1079,9 @@ default_review(void* ctx,
 		int risk = (score < 30) ? 100 - (score * 2) : 100 - score;
 
 		cdsl_ai_review_t* rev = calloc(1, sizeof(*rev));
+		if (!rev) {
+			return NULL;
+		}
 		rev->approved = (score >= 40);
 		rev->risk_score = risk < 0 ? 0 : (risk > 100 ? 100 : risk);
 		char reason[512];
@@ -1087,9 +1091,15 @@ default_review(void* ctx,
 			 score,
 			 rev->approved ? "Rule structure is adequate."
 				       : "Rule structure needs improvement.");
-		rev->reason = strdup(reason);
+		rev->reason = cdsl_strdup(reason);
 		rev->suggestions =
-		    suggestions[0] ? strdup(suggestions) : strdup("No issues found.");
+		    suggestions[0] ? cdsl_strdup(suggestions) : cdsl_strdup("No issues found.");
+		if (!rev->reason || !rev->suggestions) {
+			free(rev->reason);
+			free(rev->suggestions);
+			free(rev);
+			return NULL;
+		}
 		return rev;
 	}
 
@@ -1110,6 +1120,10 @@ default_review(void* ctx,
 
 		char* response = call_llm_api(review_prompt, config);
 		cdsl_ai_review_t* rev = calloc(1, sizeof(*rev));
+		if (!rev) {
+			free(response);
+			return NULL;
+		}
 		if (response) {
 			cdsl_json_value_t* root = cdsl_json_parse(response);
 			if (root) {
@@ -1125,30 +1139,45 @@ default_review(void* ctx,
 				}
 				if ((v = find_json_key(root, "reason")) &&
 				    v->type == CDSL_JSON_STRING) {
-					rev->reason = strdup(v->value.string_val);
+					rev->reason = cdsl_strdup(v->value.string_val);
 				}
 				if ((v = find_json_key(root, "suggestions")) &&
 				    v->type == CDSL_JSON_STRING) {
-					rev->suggestions = strdup(v->value.string_val);
+					rev->suggestions = cdsl_strdup(v->value.string_val);
 				}
 				cdsl_json_free(root);
 			}
 			free(response);
 		}
 		if (!rev->reason) {
-			rev->reason = strdup("LLM review completed");
+			rev->reason = cdsl_strdup("LLM review completed");
 		}
 		if (!rev->suggestions) {
-			rev->suggestions = strdup("");
+			rev->suggestions = cdsl_strdup("");
+		}
+		if (!rev->reason || !rev->suggestions) {
+			free(rev->reason);
+			free(rev->suggestions);
+			free(rev);
+			return NULL;
 		}
 		return rev;
 	}
 
 	cdsl_ai_review_t* rev = calloc(1, sizeof(*rev));
+	if (!rev) {
+		return NULL;
+	}
 	rev->approved = 1;
 	rev->risk_score = 10;
-	rev->reason = strdup("Generic review passed");
-	rev->suggestions = strdup("No suggestions");
+	rev->reason = cdsl_strdup("Generic review passed");
+	rev->suggestions = cdsl_strdup("No suggestions");
+	if (!rev->reason || !rev->suggestions) {
+		free(rev->reason);
+		free(rev->suggestions);
+		free(rev);
+		return NULL;
+	}
 	return rev;
 }
 

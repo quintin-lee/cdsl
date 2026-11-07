@@ -12,6 +12,8 @@
 #include <cdsl/schema.h>
 #include <cdsl/ast.h>
 #include <cdsl/execution.h>
+#include <cdsl/cache.h>
+#include <cdsl/util/error.h>
 #include <cdsl/util/json.h>
 #include <stdlib.h>
 #include <string.h>
@@ -748,6 +750,179 @@ test_bytecode_deep_oom(void)
 	TEST_END();
 }
 
+static void
+test_eval_array_oom(void)
+{
+	TEST_BEGIN("eval array OOM handling");
+
+	cdsl_schema_t* s = cdsl_schema_create();
+	cdsl_schema_register_action(s, "check", CDSL_TYPE_VOID, 1, CDSL_TYPE_BOOL);
+
+	cdsl_vm_t* vm = cdsl_vm_create(s);
+	cdsl_context_t* ctx = cdsl_context_create(s);
+
+	const char* dsl = "RULE arr_rule {\n"
+			  "  META { description = \"array oom\" }\n"
+			  "  WHEN contains([1, 2, 3], 2) THEN check(true)\n"
+			  "}";
+
+	cdsl_rule_t* rule = cdsl_parse_string(dsl, NULL);
+	TEST_ASSERT_NOT_NULL(rule, "Rule parsed successfully");
+
+	for (int cd = 0; cd <= 8; cd++) {
+		cdsl_test_set_oom_countdown(cd);
+		cdsl_rule_report_t* rpt = cdsl_vm_execute(vm, rule, ctx);
+		if (rpt) {
+			cdsl_report_free(rpt);
+		}
+	}
+
+	cdsl_test_set_oom_countdown(-1);
+	cdsl_free_rule(rule);
+	cdsl_context_free(ctx);
+	cdsl_vm_free(vm);
+	cdsl_schema_free(s);
+
+	TEST_END();
+}
+
+static void
+test_builtins_string_oom(void)
+{
+	TEST_BEGIN("builtins uppercase/lowercase/trim OOM handling");
+
+	cdsl_schema_t* s = cdsl_schema_create();
+	cdsl_schema_register_var(s, "str", CDSL_TYPE_STRING);
+	cdsl_schema_register_action(s, "test_act", CDSL_TYPE_VOID, 1, CDSL_TYPE_STRING);
+
+	cdsl_vm_t* vm = cdsl_vm_create(s);
+	cdsl_context_t* ctx = cdsl_context_create(s);
+	cdsl_context_set_string(ctx, "str", "  Hello World  ");
+
+	const char* dsl =
+	    "RULE str_rule {\n"
+	    "  META { description = \"string builtins oom\" }\n"
+	    "  WHEN uppercase(trim(str)) == \"HELLO WORLD\" THEN test_act(lowercase(str))\n"
+	    "}";
+
+	cdsl_rule_t* rule = cdsl_parse_string(dsl, NULL);
+	TEST_ASSERT_NOT_NULL(rule, "Rule parsed successfully");
+
+	for (int cd = 0; cd <= 10; cd++) {
+		cdsl_test_set_oom_countdown(cd);
+		cdsl_rule_report_t* rpt = cdsl_vm_execute(vm, rule, ctx);
+		if (rpt) {
+			cdsl_report_free(rpt);
+		}
+	}
+
+	cdsl_test_set_oom_countdown(-1);
+	cdsl_free_rule(rule);
+	cdsl_context_free(ctx);
+	cdsl_vm_free(vm);
+	cdsl_schema_free(s);
+
+	TEST_END();
+}
+
+static void
+test_template_copy_oom(void)
+{
+	TEST_BEGIN("template copy OOM handling");
+
+	const char* tpl_dsl = "TEMPLATE base_tpl {\n"
+			      "  META { description = \"base template\" }\n"
+			      "  METRIC m1 {\n"
+			      "    META { weight = \"50\" is_critical = \"false\" }\n"
+			      "    CASE 1 == 1 THEN score(50)\n"
+			      "    DEFAULT score(0)\n"
+			      "  }\n"
+			      "}";
+
+	cdsl_rule_t* tpl = cdsl_parse_string(tpl_dsl, NULL);
+	TEST_ASSERT_NOT_NULL(tpl, "Template parsed");
+	cdsl_template_register(tpl);
+
+	/* Now test parsing a rule extending the template under countdowns */
+	const char* ext_dsl = "RULE ext_rule EXTENDS base_tpl {\n"
+			      "  META { description = \"extended rule\" }\n"
+			      "  METRIC m2 {\n"
+			      "    META { weight = \"50\" }\n"
+			      "    CASE 2 == 2 THEN score(50)\n"
+			      "    DEFAULT score(0)\n"
+			      "  }\n"
+			      "}";
+
+	for (int cd = 0; cd <= 10; cd++) {
+		cdsl_test_set_oom_countdown(cd);
+		cdsl_rule_t* ext = cdsl_parse_string(ext_dsl, NULL);
+		if (ext) {
+			cdsl_free_rule(ext);
+		}
+	}
+
+	cdsl_test_set_oom_countdown(-1);
+	cdsl_template_clear();
+
+	TEST_END();
+}
+
+static void
+test_cache_oom_rollback(void)
+{
+	TEST_BEGIN("cache OOM rollback and cleanup");
+
+	cdsl_compile_cache_t* cache = cdsl_compile_cache_create(16);
+	TEST_ASSERT_NOT_NULL(cache, "Cache created");
+
+	cdsl_schema_t* schema = cdsl_schema_create();
+	cdsl_schema_register_var(schema, "x", CDSL_TYPE_INT);
+	cdsl_schema_register_action(schema, "act", CDSL_TYPE_VOID, 1, CDSL_TYPE_INT);
+
+	const char* dsl = "RULE test_cache {\n"
+			  "  META { description = \"cache rule\" }\n"
+			  "  WHEN x > 10 THEN act(1)\n"
+			  "}";
+
+	for (int cd = 0; cd <= 6; cd++) {
+		cdsl_test_set_oom_countdown(cd);
+		char err[256];
+		cdsl_compiled_rule_t* c = cdsl_compile(cache, dsl, schema, err, sizeof(err));
+		(void)c;
+	}
+
+	cdsl_test_set_oom_countdown(-1);
+	cdsl_compile_cache_free(cache);
+	cdsl_schema_free(schema);
+
+	TEST_END();
+}
+
+static void
+test_error_list_oom_free(void)
+{
+	TEST_BEGIN("error list OOM and NULL safety");
+
+	/* Test NULL list: ownership transferred, err should be freed */
+	cdsl_error_t* err1 = cdsl_error_create(CDSL_ERR_SYNTAX, 1, 1, "test message", "test hint");
+	TEST_ASSERT_NOT_NULL(err1, "Error created");
+	cdsl_error_list_add(NULL, err1);
+
+	/* Test normal list add */
+	cdsl_error_list_t* list = cdsl_error_list_create();
+	TEST_ASSERT_NOT_NULL(list, "Error list created");
+
+	for (int i = 0; i < 30; i++) {
+		cdsl_error_t* e = cdsl_error_create(CDSL_ERR_TYPE, i, 1, "msg", "hint");
+		cdsl_error_list_add(list, e);
+	}
+	TEST_ASSERT(list->count == 30, "All errors added to list");
+
+	cdsl_error_list_free(list);
+
+	TEST_END();
+}
+
 int
 main()
 {
@@ -759,6 +934,11 @@ main()
 	test_schema_deep_oom();
 	test_eval_deep_oom();
 	test_bytecode_deep_oom();
+	test_eval_array_oom();
+	test_builtins_string_oom();
+	test_template_copy_oom();
+	test_cache_oom_rollback();
+	test_error_list_oom_free();
 	test_arena_allocator();
 	test_arena_large_allocations();
 	test_arena_boundary_conditions();
