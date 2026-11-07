@@ -65,6 +65,8 @@ kind_str(cdsl_error_kind_t kind)
 		return "SEMANTIC";
 	case CDSL_ERR_RUNTIME:
 		return "RUNTIME";
+	case CDSL_ERR_RESOURCE_LIMIT:
+		return "RESOURCE_LIMIT";
 	default:
 		return "UNKNOWN";
 	}
@@ -86,12 +88,25 @@ cdsl_error_create(
 	e->kind = kind;
 	e->line = line;
 	e->column = column;
-	e->message = message ? strdup(message) : strdup("");
-	if (!e->message) {
-		free(e);
-		return NULL;
+	if (message) {
+		e->message = cdsl_strdup(message);
+		if (!e->message) {
+			e->message = strdup(message ? message : "Out of memory");
+			if (!e->message) {
+				free(e);
+				return NULL;
+			}
+		}
+	} else {
+		e->message = strdup("");
+		if (!e->message) {
+			free(e);
+			return NULL;
+		}
 	}
-	e->hint = hint ? strdup(hint) : NULL;
+	if (hint) {
+		e->hint = cdsl_strdup(hint);
+	}
 	return e;
 }
 

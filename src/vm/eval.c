@@ -349,8 +349,21 @@ cdsl_eval_expr_internal(
 			}
 			cdsl_value_t v = e->value;
 			if (v.type == CDSL_TYPE_STRING && v.data.string_val) {
-				v.data.string_val = strdup(v.data.string_val);
+				v.data.string_val = cdsl_strdup(v.data.string_val);
 				v.owned_string = 1;
+				if (!v.data.string_val) {
+					v.type = CDSL_TYPE_VOID;
+					if (vm) {
+						cdsl_vm_set_last_error(
+						    vm,
+						    CDSL_ERR_RESOURCE_LIMIT,
+						    0,
+						    0,
+						    "Out of memory duplicating string variable",
+						    NULL);
+						CDSL_ATOMIC_STORE(&vm->error_state, 1);
+					}
+				}
 			}
 			return v;
 		}
@@ -715,13 +728,27 @@ execute_metric_rule(cdsl_vm_t* vm, const cdsl_rule_t* rule, cdsl_context_t* ctx)
 {
 	cdsl_rule_report_t* report = calloc(1, sizeof(*report));
 	if (!report) {
+		cdsl_vm_set_last_error(vm,
+				       CDSL_ERR_RESOURCE_LIMIT,
+				       0,
+				       0,
+				       "Out of memory allocating rule report",
+				       NULL);
+		CDSL_ATOMIC_STORE(&vm->error_state, 1);
 		return NULL;
 	}
-	report->rule_name = rule->name ? strdup(rule->name) : strdup("");
+	report->rule_name = rule->name ? cdsl_strdup(rule->name) : cdsl_strdup("");
 	char* desc = cdsl_meta_get(rule->meta_list, "description");
-	report->description = desc ? strdup(desc) : strdup("");
+	report->description = desc ? cdsl_strdup(desc) : cdsl_strdup("");
 	if (!report->rule_name || !report->description) {
 		cdsl_report_free(report);
+		cdsl_vm_set_last_error(vm,
+				       CDSL_ERR_RESOURCE_LIMIT,
+				       0,
+				       0,
+				       "Out of memory allocating rule report metadata",
+				       NULL);
+		CDSL_ATOMIC_STORE(&vm->error_state, 1);
 		return NULL;
 	}
 
@@ -733,6 +760,13 @@ execute_metric_rule(cdsl_vm_t* vm, const cdsl_rule_t* rule, cdsl_context_t* ctx)
 	report->metrics = calloc(metric_count, sizeof(cdsl_metric_result_t));
 	if (!report->metrics && metric_count > 0) {
 		cdsl_report_free(report);
+		cdsl_vm_set_last_error(vm,
+				       CDSL_ERR_RESOURCE_LIMIT,
+				       0,
+				       0,
+				       "Out of memory allocating metric array",
+				       NULL);
+		CDSL_ATOMIC_STORE(&vm->error_state, 1);
 		return NULL;
 	}
 
@@ -745,9 +779,20 @@ execute_metric_rule(cdsl_vm_t* vm, const cdsl_rule_t* rule, cdsl_context_t* ctx)
 			break;
 		}
 		cdsl_metric_result_t* mr = &report->metrics[idx];
-		mr->metric_name = strdup(m->name);
+		mr->metric_name = cdsl_strdup(m->name);
 		char* mdesc = cdsl_meta_get(m->meta_list, "description");
-		mr->description = mdesc ? strdup(mdesc) : strdup("");
+		mr->description = mdesc ? cdsl_strdup(mdesc) : cdsl_strdup("");
+		if (!mr->metric_name || !mr->description) {
+			cdsl_report_free(report);
+			cdsl_vm_set_last_error(vm,
+					       CDSL_ERR_RESOURCE_LIMIT,
+					       0,
+					       0,
+					       "Out of memory allocating metric result metadata",
+					       NULL);
+			CDSL_ATOMIC_STORE(&vm->error_state, 1);
+			return NULL;
+		}
 		mr->max_weight = safe_atoi(get_metric_meta(m->meta_list, "weight", "0"), 0);
 		mr->is_critical =
 		    (strcmp(get_metric_meta(m->meta_list, "is_critical", "false"), "true") == 0);
@@ -797,7 +842,7 @@ execute_metric_rule(cdsl_vm_t* vm, const cdsl_rule_t* rule, cdsl_context_t* ctx)
 						    rv.type == CDSL_TYPE_STRING &&
 						    rv.data.string_val) {
 							mr->violation_reason =
-							    strdup(rv.data.string_val);
+							    cdsl_strdup(rv.data.string_val);
 						}
 						cdsl_value_free(&rv);
 					}
@@ -846,7 +891,8 @@ execute_metric_rule(cdsl_vm_t* vm, const cdsl_rule_t* rule, cdsl_context_t* ctx)
 					    0);
 					if (!CDSL_ATOMIC_LOAD(&vm->error_state) &&
 					    rv.type == CDSL_TYPE_STRING && rv.data.string_val) {
-						mr->violation_reason = strdup(rv.data.string_val);
+						mr->violation_reason =
+						    cdsl_strdup(rv.data.string_val);
 					}
 					cdsl_value_free(&rv);
 				}
@@ -855,7 +901,7 @@ execute_metric_rule(cdsl_vm_t* vm, const cdsl_rule_t* rule, cdsl_context_t* ctx)
 			}
 			mr->is_passed = (mr->score_obtained > 0);
 			if (mr->violation_reason == NULL && !mr->is_passed) {
-				mr->violation_reason = strdup("default_condition_triggered");
+				mr->violation_reason = cdsl_strdup("default_condition_triggered");
 			}
 		}
 
@@ -908,7 +954,18 @@ execute_metric_rule(cdsl_vm_t* vm, const cdsl_rule_t* rule, cdsl_context_t* ctx)
 		snprintf(buf, sizeof(buf), "ERROR");
 		break;
 	}
-	report->decision_summary = strdup(buf);
+	report->decision_summary = cdsl_strdup(buf);
+	if (!report->decision_summary) {
+		cdsl_report_free(report);
+		cdsl_vm_set_last_error(vm,
+				       CDSL_ERR_RESOURCE_LIMIT,
+				       0,
+				       0,
+				       "Out of memory allocating decision summary",
+				       NULL);
+		CDSL_ATOMIC_STORE(&vm->error_state, 1);
+		return NULL;
+	}
 
 	return report;
 }
@@ -921,26 +978,54 @@ execute_simple_rule(cdsl_vm_t* vm,
 {
 	cdsl_rule_report_t* report = calloc(1, sizeof(*report));
 	if (!report) {
+		cdsl_vm_set_last_error(vm,
+				       CDSL_ERR_RESOURCE_LIMIT,
+				       0,
+				       0,
+				       "Out of memory allocating rule report",
+				       NULL);
+		CDSL_ATOMIC_STORE(&vm->error_state, 1);
 		return NULL;
 	}
-	report->rule_name = strdup(rule->name);
+	report->rule_name = rule->name ? cdsl_strdup(rule->name) : cdsl_strdup("");
 	char* desc = cdsl_meta_get(rule->meta_list, "description");
-	report->description = desc ? strdup(desc) : strdup("");
+	report->description = desc ? cdsl_strdup(desc) : cdsl_strdup("");
 	if (!report->rule_name || !report->description) {
 		cdsl_report_free(report);
+		cdsl_vm_set_last_error(vm,
+				       CDSL_ERR_RESOURCE_LIMIT,
+				       0,
+				       0,
+				       "Out of memory allocating rule report metadata",
+				       NULL);
+		CDSL_ATOMIC_STORE(&vm->error_state, 1);
 		return NULL;
 	}
 	report->metric_count = 1;
 	report->metrics = calloc(1, sizeof(cdsl_metric_result_t));
 	if (!report->metrics) {
 		cdsl_report_free(report);
+		cdsl_vm_set_last_error(vm,
+				       CDSL_ERR_RESOURCE_LIMIT,
+				       0,
+				       0,
+				       "Out of memory allocating rule report metrics",
+				       NULL);
+		CDSL_ATOMIC_STORE(&vm->error_state, 1);
 		return NULL;
 	}
-	report->metrics[0].metric_name = rule->name ? strdup(rule->name) : strdup("");
+	report->metrics[0].metric_name = rule->name ? cdsl_strdup(rule->name) : cdsl_strdup("");
 	report->metrics[0].description =
-	    report->description ? strdup(report->description) : strdup("");
+	    report->description ? cdsl_strdup(report->description) : cdsl_strdup("");
 	if (!report->metrics[0].metric_name || !report->metrics[0].description) {
 		cdsl_report_free(report);
+		cdsl_vm_set_last_error(vm,
+				       CDSL_ERR_RESOURCE_LIMIT,
+				       0,
+				       0,
+				       "Out of memory allocating rule report metric metadata",
+				       NULL);
+		CDSL_ATOMIC_STORE(&vm->error_state, 1);
 		return NULL;
 	}
 
@@ -1000,7 +1085,18 @@ execute_simple_rule(cdsl_vm_t* vm,
 		 "%s (score: %d/100)",
 		 triggered ? "FAILED" : "PASSED",
 		 report->total_obtained_score);
-	report->decision_summary = strdup(buf);
+	report->decision_summary = cdsl_strdup(buf);
+	if (!report->decision_summary) {
+		cdsl_report_free(report);
+		cdsl_vm_set_last_error(vm,
+				       CDSL_ERR_RESOURCE_LIMIT,
+				       0,
+				       0,
+				       "Out of memory allocating decision summary",
+				       NULL);
+		CDSL_ATOMIC_STORE(&vm->error_state, 1);
+		return NULL;
+	}
 	return report;
 }
 
@@ -1039,13 +1135,15 @@ cdsl_vm_execute(cdsl_vm_t* vm, const cdsl_rule_t* rule, cdsl_context_t* ctx)
 		if (rpt) {
 			rpt->status = CDSL_STATUS_ERROR;
 			if (vm->last_error) {
-				rpt->error = cdsl_error_create(vm->last_error->kind,
-							       vm->last_error->line,
-							       vm->last_error->column,
-							       vm->last_error->message,
-							       vm->last_error->hint);
-				cdsl_error_free(vm->last_error);
+				rpt->error = vm->last_error;
 				vm->last_error = NULL;
+			} else {
+				rpt->error =
+				    cdsl_error_create(CDSL_ERR_RESOURCE_LIMIT,
+						      0,
+						      0,
+						      "Execution failed due to resource limits",
+						      NULL);
 			}
 		}
 	}
@@ -1124,7 +1222,7 @@ char*
 cdsl_report_to_json(const cdsl_rule_report_t* report)
 {
 	if (!report) {
-		return strdup("{}");
+		return cdsl_strdup("{}");
 	}
 
 	size_t cap = 1024;

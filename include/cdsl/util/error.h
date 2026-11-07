@@ -17,11 +17,12 @@
  * @brief Error category classification.
  */
 typedef enum {
-	CDSL_ERR_SYNTAX,   /**< Parse error (invalid syntax) */
-	CDSL_ERR_TYPE,	   /**< Type mismatch error */
-	CDSL_ERR_SEMANTIC, /**< Semantic error (unknown variable/action) */
-	CDSL_ERR_RUNTIME,  /**< Runtime evaluation error */
-	CDSL_ERR_WARNING   /**< Static analysis warning (non-fatal) */
+	CDSL_ERR_SYNTAX,	 /**< Parse error (invalid syntax) */
+	CDSL_ERR_TYPE,		 /**< Type mismatch error */
+	CDSL_ERR_SEMANTIC,	 /**< Semantic error (unknown variable/action) */
+	CDSL_ERR_RUNTIME,	 /**< Runtime evaluation error */
+	CDSL_ERR_WARNING,	 /**< Static analysis warning (non-fatal) */
+	CDSL_ERR_RESOURCE_LIMIT, /**< Resource limit exceeded (OOM, timeout, quotas) */
 } cdsl_error_kind_t;
 
 /**

@@ -18,6 +18,8 @@
 #include "cdsl/schema.h"
 #include "cdsl/execution.h"
 #include "cdsl/cache.h"
+#include "cdsl/util/portability.h"
+#include "cdsl/util/error.h"
 #include <stdlib.h>
 
 /** @brief Whether the most recent action callback was invoked. */
@@ -599,6 +601,44 @@ test_long_type(void)
 	TEST_END();
 }
 
+static void
+test_execution_report_oom(void)
+{
+	TEST_BEGIN("execution report OOM sets CDSL_ERR_RESOURCE_LIMIT");
+
+	cdsl_schema_t* s = cdsl_schema_create();
+	cdsl_schema_register_var(s, "age", CDSL_TYPE_INT);
+	cdsl_vm_t* vm = cdsl_vm_create(s);
+	cdsl_context_t* ctx = cdsl_context_create(s);
+	cdsl_context_set_int(ctx, "age", 25);
+
+	cdsl_rule_t* rule = cdsl_parse_string(
+	    "RULE r { META { description = \"test\" } WHEN age > 18 THEN block() }", NULL);
+	TEST_ASSERT_NOT_NULL(rule, "Rule parsed");
+
+	/* Force OOM during report construction */
+	cdsl_test_set_oom_countdown(0);
+	cdsl_rule_report_t* rpt = cdsl_vm_execute(vm, rule, ctx);
+	TEST_ASSERT_NOT_NULL(rpt, "Report returned for error state");
+	if (rpt) {
+		TEST_ASSERT_INT(rpt->status, CDSL_STATUS_ERROR, "Status is ERROR");
+		TEST_ASSERT_NOT_NULL(rpt->error, "Report carries error object");
+		if (rpt->error) {
+			TEST_ASSERT_INT(rpt->error->kind,
+					CDSL_ERR_RESOURCE_LIMIT,
+					"Error kind is RESOURCE_LIMIT");
+		}
+		cdsl_report_free(rpt);
+	}
+
+	cdsl_test_set_oom_countdown(-1);
+	cdsl_free_rule(rule);
+	cdsl_context_free(ctx);
+	cdsl_vm_free(vm);
+	cdsl_schema_free(s);
+	TEST_END();
+}
+
 /**
  * @brief Main entry: run all execution test cases.
  * @return 0 if all tests passed, 1 otherwise
@@ -610,6 +650,7 @@ main(void)
 	printf("  Execution Unit Tests\n");
 	printf("========================================\n");
 
+	test_execution_report_oom();
 	test_context_set_get();
 	test_context_load_json();
 	test_simple_rule_pass();
