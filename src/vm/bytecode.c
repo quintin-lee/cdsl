@@ -58,7 +58,12 @@ bc_add_constant(cdsl_bytecode_t* bc, cdsl_value_t val)
 	// NOLINTNEXTLINE(clang-analyzer-security.ArrayBound)
 	bc->constants[idx] = val;
 	if (val.type == CDSL_TYPE_STRING) {
-		bc->constants[idx].data.string_val = strdup(val.data.string_val);
+		char* s = cdsl_strdup(val.data.string_val);
+		if (!s && val.data.string_val) {
+			bc->const_count--;
+			return -1;
+		}
+		bc->constants[idx].data.string_val = s;
 	}
 	return idx;
 }
@@ -766,7 +771,7 @@ val_to_temp_expr(const cdsl_value_t* av)
 		break;
 	case CDSL_TYPE_STRING:
 		expr->type = CDSL_EXPR_STRING;
-		expr->data.string_val = strdup(av->data.string_val ? av->data.string_val : "");
+		expr->data.string_val = cdsl_strdup(av->data.string_val ? av->data.string_val : "");
 		break;
 	case CDSL_TYPE_ARRAY: {
 		expr->type = CDSL_EXPR_ARRAY;
@@ -804,9 +809,13 @@ cdsl_bytecode_compile(const cdsl_rule_t* rule, const cdsl_schema_t* schema, cdsl
 		return 0;
 	}
 	memset(bc, 0, sizeof(*bc));
-	bc->rule_name = strdup(rule->name ? rule->name : "");
+	bc->rule_name = cdsl_strdup(rule->name ? rule->name : "");
 	char* rdesc = cdsl_meta_get(rule->meta_list, "description");
-	bc->description = strdup(rdesc ? rdesc : "");
+	bc->description = cdsl_strdup(rdesc ? rdesc : "");
+	if (!bc->rule_name || !bc->description) {
+		cdsl_bytecode_free(bc);
+		return 0;
+	}
 	bc->pass_threshold = bc_safe_atoi(cdsl_meta_get(rule->meta_list, "pass_threshold"), 80);
 	bc->partial_threshold =
 	    bc_safe_atoi(cdsl_meta_get(rule->meta_list, "partial_threshold"), 60);
@@ -830,8 +839,14 @@ cdsl_bytecode_compile(const cdsl_rule_t* rule, const cdsl_schema_t* schema, cdsl
 			char* c_str = cdsl_meta_get(m->meta_list, "is_critical");
 			int m_weight = bc_safe_atoi(w_str, 0);
 			if (bc->metric_infos) {
-				bc->metric_infos[midx].name = strdup(m->name ? m->name : "");
-				bc->metric_infos[midx].description = strdup(mdesc ? mdesc : "");
+				bc->metric_infos[midx].name = cdsl_strdup(m->name ? m->name : "");
+				bc->metric_infos[midx].description =
+				    cdsl_strdup(mdesc ? mdesc : "");
+				if (!bc->metric_infos[midx].name ||
+				    !bc->metric_infos[midx].description) {
+					cdsl_bytecode_free(bc);
+					return 0;
+				}
 				bc->metric_infos[midx].max_weight = m_weight;
 				bc->metric_infos[midx].is_critical =
 				    (c_str && strcmp(c_str, "true") == 0) ? 1 : 0;
@@ -1070,8 +1085,21 @@ bc_run_instructions(cdsl_vm_t* vm,
 			if (e) {
 				cdsl_value_t v = e->value;
 				if (v.type == CDSL_TYPE_STRING && v.data.string_val) {
-					v.data.string_val = strdup(v.data.string_val);
+					v.data.string_val = cdsl_strdup(v.data.string_val);
 					v.owned_string = 1;
+					if (!v.data.string_val) {
+						v.type = CDSL_TYPE_VOID;
+						CDSL_ATOMIC_STORE(&vm->error_state, 1);
+						cdsl_vm_set_last_error(
+						    vm,
+						    CDSL_ERR_RESOURCE_LIMIT,
+						    0,
+						    0,
+						    "Out of memory duplicating string variable in "
+						    "bytecode",
+						    NULL);
+						goto done;
+					}
 				}
 				PUSH(v);
 			} else {
@@ -1364,7 +1392,18 @@ bc_run_instructions(cdsl_vm_t* vm,
 				cdsl_value_t top = stack[sp - 1];
 				if (top.type == CDSL_TYPE_STRING && top.data.string_val &&
 				    top.owned_string) {
-					top.data.string_val = strdup(top.data.string_val);
+					top.data.string_val = cdsl_strdup(top.data.string_val);
+					if (!top.data.string_val) {
+						CDSL_ATOMIC_STORE(&vm->error_state, 1);
+						cdsl_vm_set_last_error(
+						    vm,
+						    CDSL_ERR_RESOURCE_LIMIT,
+						    0,
+						    0,
+						    "Out of memory duplicating string in BC_DUP",
+						    NULL);
+						goto done;
+					}
 				}
 				if (sp < CDSL_BYTECODE_MAX_STACK) {
 					stack[sp++] = top;
@@ -1500,8 +1539,8 @@ bc_finalize_simple_rule_report(cdsl_rule_report_t* report, const cdsl_bytecode_t
 		return;
 	}
 	cdsl_metric_result_t* m = &report->metrics[0];
-	m->metric_name = strdup(bc && bc->rule_name ? bc->rule_name : "");
-	m->description = strdup(bc && bc->description ? bc->description : "");
+	m->metric_name = cdsl_strdup(bc && bc->rule_name ? bc->rule_name : "");
+	m->description = cdsl_strdup(bc && bc->description ? bc->description : "");
 	m->max_weight = 100;
 	m->score_obtained = when_true ? 0 : 100;
 	m->is_passed = when_true ? 0 : 1;
@@ -1514,7 +1553,10 @@ bc_finalize_simple_rule_report(cdsl_rule_report_t* report, const cdsl_bytecode_t
 		 "%s (score: %d/100)",
 		 when_true ? "FAILED" : "PASSED",
 		 report->total_obtained_score);
-	report->decision_summary = strdup(buf);
+	report->decision_summary = cdsl_strdup(buf);
+	if (!m->metric_name || !m->description || !report->decision_summary) {
+		report->status = CDSL_STATUS_ERROR;
+	}
 }
 
 /**
@@ -1542,17 +1584,20 @@ bc_rule_metric_handler(bc_metric_event_t event,
 		report->metrics = new_metrics;
 		cdsl_metric_result_t* mr = &report->metrics[idx];
 		memset(mr, 0, sizeof(cdsl_metric_result_t));
-		mr->metric_name = strdup(name);
+		mr->metric_name = cdsl_strdup(name);
 		if (bc->metric_infos && idx < bc->metric_info_count) {
-			mr->description = strdup(bc->metric_infos[idx].description
-						     ? bc->metric_infos[idx].description
-						     : "");
+			mr->description = cdsl_strdup(bc->metric_infos[idx].description
+							  ? bc->metric_infos[idx].description
+							  : "");
 			mr->max_weight = bc->metric_infos[idx].max_weight;
 			mr->is_critical = bc->metric_infos[idx].is_critical;
 		} else {
-			mr->description = strdup("");
+			mr->description = cdsl_strdup("");
 			mr->max_weight = 100;
 			mr->is_critical = 0;
+		}
+		if (!mr->metric_name || !mr->description) {
+			return 0;
 		}
 		report->metric_count = new_count;
 		return 1;
@@ -1573,7 +1618,7 @@ bc_rule_metric_handler(bc_metric_event_t event,
 		cdsl_metric_result_t* mr = &report->metrics[report->metric_count - 1];
 		const char* reason = bc->constants[inst->operand.const_idx].data.string_val;
 		free(mr->violation_reason);
-		mr->violation_reason = strdup(reason);
+		mr->violation_reason = cdsl_strdup(reason);
 		mr->score_obtained = 0;
 		mr->is_passed = 0;
 		return 1;
@@ -1599,8 +1644,21 @@ cdsl_bytecode_execute_rule(cdsl_vm_t* vm, const cdsl_bytecode_t* bc, cdsl_contex
 	if (!report) {
 		return NULL;
 	}
-	report->rule_name = strdup(bc->rule_name ? bc->rule_name : "");
-	report->description = strdup(bc->description ? bc->description : "");
+	report->rule_name = cdsl_strdup(bc->rule_name ? bc->rule_name : "");
+	report->description = cdsl_strdup(bc->description ? bc->description : "");
+	if (!report->rule_name || !report->description) {
+		CDSL_ATOMIC_STORE(&vm->error_state, 1);
+		cdsl_vm_set_last_error(vm,
+				       CDSL_ERR_RESOURCE_LIMIT,
+				       0,
+				       0,
+				       "Out of memory allocating bytecode report metadata",
+				       NULL);
+		report->status = CDSL_STATUS_ERROR;
+		report->error = vm->last_error;
+		vm->last_error = NULL;
+		return report;
+	}
 
 	bc_rule_state_t state;
 	state.report = report;
@@ -1611,13 +1669,14 @@ cdsl_bytecode_execute_rule(cdsl_vm_t* vm, const cdsl_bytecode_t* bc, cdsl_contex
 	if (CDSL_ATOMIC_LOAD(&vm->error_state)) {
 		report->status = CDSL_STATUS_ERROR;
 		if (vm->last_error) {
-			report->error = cdsl_error_create(vm->last_error->kind,
-							  vm->last_error->line,
-							  vm->last_error->column,
-							  vm->last_error->message,
-							  vm->last_error->hint);
-			cdsl_error_free(vm->last_error);
+			report->error = vm->last_error;
 			vm->last_error = NULL;
+		} else {
+			report->error = cdsl_error_create(CDSL_ERR_RESOURCE_LIMIT,
+							  0,
+							  0,
+							  "Execution failed due to resource limits",
+							  NULL);
 		}
 		cdsl_value_free(&out_result);
 	} else if (report->metric_count == 0 && out_result.type == CDSL_TYPE_BOOL) {
@@ -1643,7 +1702,7 @@ cdsl_bytecode_execute_rule(cdsl_vm_t* vm, const cdsl_bytecode_t* bc, cdsl_contex
 			total_max += mr->max_weight;
 			total_obtained += mr->score_obtained;
 			if (!mr->is_passed && !mr->violation_reason) {
-				mr->violation_reason = strdup("default_condition_triggered");
+				mr->violation_reason = cdsl_strdup("default_condition_triggered");
 			}
 			if (mr->is_critical && !mr->is_passed) {
 				any_critical_failed = 1;
@@ -1689,7 +1748,10 @@ cdsl_bytecode_execute_rule(cdsl_vm_t* vm, const cdsl_bytecode_t* bc, cdsl_contex
 			snprintf(buf, sizeof(buf), "ERROR");
 			break;
 		}
-		report->decision_summary = strdup(buf);
+		report->decision_summary = cdsl_strdup(buf);
+		if (!report->decision_summary) {
+			report->status = CDSL_STATUS_ERROR;
+		}
 	}
 
 	double elapsed = cdsl_get_time_us_internal() - t0;

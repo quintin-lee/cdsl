@@ -7,6 +7,8 @@
 #include "cdsl/ast.h"
 #include "cdsl/schema.h"
 #include "cdsl/execution.h"
+#include "cdsl/util/portability.h"
+#include "cdsl/util/error.h"
 #include <stdlib.h>
 #include <string.h>
 #include <time.h>
@@ -488,6 +490,50 @@ test_bytecode_action_and_critical_metric(void)
 	TEST_END();
 }
 
+static void
+test_bytecode_compile_and_execute_oom(void)
+{
+	TEST_BEGIN("bytecode compile and execute OOM safety");
+
+	cdsl_schema_t* s = cdsl_schema_create();
+	cdsl_schema_register_var(s, "age", CDSL_TYPE_INT);
+	cdsl_vm_t* vm = cdsl_vm_create(s);
+	cdsl_context_t* ctx = cdsl_context_create(s);
+	cdsl_context_set_int(ctx, "age", 25);
+
+	cdsl_rule_t* rule = cdsl_parse_string(
+	    "RULE r { META { description = \"test\" } WHEN age > 18 THEN block() }", NULL);
+	TEST_ASSERT_NOT_NULL(rule, "Rule parsed");
+
+	/* 1. Compile under OOM */
+	cdsl_bytecode_t bc = {0};
+	cdsl_test_set_oom_countdown(0);
+	int ok = cdsl_bytecode_compile(rule, s, &bc);
+	TEST_ASSERT_INT(ok, 0, "bytecode compile under OOM returns 0");
+	cdsl_bytecode_free(&bc); /* must not crash or leak */
+
+	/* 2. Execute under OOM */
+	cdsl_test_set_oom_countdown(-1);
+	ok = cdsl_bytecode_compile(rule, s, &bc);
+	TEST_ASSERT_INT(ok, 1, "bytecode compile succeeds");
+
+	cdsl_test_set_oom_countdown(0);
+	cdsl_rule_report_t* rpt = cdsl_bytecode_execute_rule(vm, &bc, ctx);
+	TEST_ASSERT_NOT_NULL(rpt, "Report returned for error state");
+	if (rpt) {
+		TEST_ASSERT_INT(rpt->status, CDSL_STATUS_ERROR, "Status is ERROR on OOM");
+		cdsl_report_free(rpt);
+	}
+
+	cdsl_test_set_oom_countdown(-1);
+	cdsl_bytecode_free(&bc);
+	cdsl_free_rule(rule);
+	cdsl_context_free(ctx);
+	cdsl_vm_free(vm);
+	cdsl_schema_free(s);
+	TEST_END();
+}
+
 int
 main(void)
 {
@@ -495,6 +541,7 @@ main(void)
 	printf("  Bytecode VM Unit Tests\n");
 	printf("========================================\n");
 
+	test_bytecode_compile_and_execute_oom();
 	test_bytecode_simple();
 	test_bytecode_arithmetic();
 	test_bytecode_short_circuit();
