@@ -166,14 +166,8 @@ codegen_expr(cdsl_strbuf_t* sb,
 		cdsl_type_t rt = expr_get_type(expr->data.binary.right, schema);
 		int is_str = (lt == CDSL_TYPE_STRING || rt == CDSL_TYPE_STRING);
 		cdsl_op_t op = expr->data.binary.op;
-		if (is_str && (op == CDSL_OP_EQ || op == CDSL_OP_NE || op == CDSL_OP_LT ||
-			       op == CDSL_OP_GT || op == CDSL_OP_LE || op == CDSL_OP_GE)) {
-			const char* cmp_op = (op == CDSL_OP_EQ)	  ? "=="
-					     : (op == CDSL_OP_NE) ? "!="
-					     : (op == CDSL_OP_LT) ? "<"
-					     : (op == CDSL_OP_GT) ? ">"
-					     : (op == CDSL_OP_LE) ? "<="
-								  : ">=";
+		if (is_str && cdsl_op_is_relational(op)) {
+			const char* cmp_op = cdsl_op_c_symbol(op);
 			cdsl_strbuf_printf(sb, "(strcmp(");
 			codegen_expr(sb, expr->data.binary.left, schema, indent);
 			cdsl_strbuf_printf(sb, ", ");
