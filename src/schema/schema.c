@@ -245,7 +245,7 @@ resolve_expr_type(cdsl_expr_node_t* expr,
 		cdsl_op_t op = expr->data.binary.op;
 
 		/* Logical operators (AND, OR) */
-		if (op >= CDSL_OP_AND && op <= CDSL_OP_OR) {
+		if (cdsl_op_is_logical_binary(op)) {
 			if (lt != CDSL_TYPE_BOOL || rt != CDSL_TYPE_BOOL) {
 				REPORT_ERR(CDSL_ERR_TYPE,
 					   "Logical operators require boolean operands",
@@ -258,7 +258,7 @@ resolve_expr_type(cdsl_expr_node_t* expr,
 		}
 
 		/* Arithmetic operators (+, -, *, /) */
-		if (op >= CDSL_OP_ADD && op <= CDSL_OP_DIV) {
+		if (cdsl_op_is_arithmetic(op)) {
 			/* DATE arithmetic: DATE +/- INT/LONG → DATE, DATE - DATE → INT */
 			if (lt == CDSL_TYPE_DATE) {
 				if (op == CDSL_OP_SUB && rt == CDSL_TYPE_DATE) {
