@@ -30,6 +30,7 @@
  */
 
 #include "cdsl/execution.h"
+#include "cdsl/cse.h"
 #include "internal.h"
 #include "value_ops.h"
 #include "cdsl/cache.h"
@@ -117,11 +118,23 @@ evaluate_condition(cdsl_expr_node_t* expr,
 		   const cdsl_bytecode_t* bc,
 		   int debug)
 {
+	if (vm && vm->pred_cache && expr) {
+		cdsl_value_t cached;
+		if (cdsl_pred_cache_get(vm->pred_cache, expr, &cached)) {
+			return cached;
+		}
+	}
+	cdsl_value_t res;
 	if (bc && bc->code) {
 		(void)debug;
-		return cdsl_bytecode_execute(vm, bc, ctx);
+		res = cdsl_bytecode_execute(vm, bc, ctx);
+	} else {
+		res = cdsl_eval_expr_internal(expr, ctx, vm, debug, 0);
 	}
-	return cdsl_eval_expr_internal(expr, ctx, vm, debug, 0);
+	if (vm && vm->pred_cache && expr) {
+		cdsl_pred_cache_put(vm->pred_cache, expr, &res);
+	}
+	return res;
 }
 
 static size_t
@@ -252,6 +265,15 @@ cdsl_eval_expr_internal(
 			    vm, CDSL_ERR_RUNTIME, 0, 0, "Instruction quota exceeded", NULL);
 			CDSL_ATOMIC_STORE(&vm->error_state, 1);
 			return result;
+		}
+	}
+
+	if (vm && vm->pred_cache &&
+	    (expr->type == CDSL_EXPR_BINARY || expr->type == CDSL_EXPR_UNARY ||
+	     expr->type == CDSL_EXPR_CALL)) {
+		cdsl_value_t cached;
+		if (cdsl_pred_cache_get(vm->pred_cache, expr, &cached)) {
+			return cached;
 		}
 	}
 
@@ -684,6 +706,11 @@ cdsl_eval_expr_internal(
 		}
 		break;
 	}
+	}
+	if (vm && vm->pred_cache &&
+	    (expr->type == CDSL_EXPR_BINARY || expr->type == CDSL_EXPR_UNARY ||
+	     expr->type == CDSL_EXPR_CALL)) {
+		cdsl_pred_cache_put(vm->pred_cache, expr, &result);
 	}
 	return result;
 }

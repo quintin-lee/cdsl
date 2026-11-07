@@ -19,6 +19,7 @@
 #include "cdsl/context.h"
 #include "cdsl/vm.h"
 #include "cdsl/report.h"
+#include "cdsl/bytecode.h"
 
 /**
  * @brief Recursively evaluate an expression against the context.
@@ -204,6 +205,16 @@ int bc_run_instructions(cdsl_vm_t* vm,
 			bc_metric_handler_t metric_handler,
 			void* user_data,
 			cdsl_value_t* out_result);
+
+/**
+ * @brief Direct-threaded bytecode interpreter execution loop.
+ */
+int cdsl_bc_run_threaded(cdsl_vm_t* vm,
+			 const cdsl_bytecode_t* bc,
+			 cdsl_context_t* ctx,
+			 bc_metric_handler_t metric_handler,
+			 void* user_data,
+			 cdsl_value_t* out_result);
 
 /**
  * @brief Set the VM's last runtime error, replacing any previous one.

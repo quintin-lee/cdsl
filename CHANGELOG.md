@@ -1,5 +1,26 @@
 # Changelog
 
+## [1.3.0] - 2026-11-08
+
+### Added
+- **Direct-Threaded Bytecode Dispatch Engine (`src/vm/threaded.c`)**:
+  - Implemented GNU C computed goto dispatch (`&&label` jump tables) eliminating central switch statement branch misprediction overhead.
+  - Provided clean, portable fallback for standard C compilers and MSVC.
+  - Exposed `cdsl_bytecode_execute_threaded` in public bytecode API (`include/cdsl/bytecode.h`).
+- **SIMD-Vectorized Columnar Batch Engine (`include/cdsl/columnar.h`, `src/vm/columnar.c`)**:
+  - Added columnar execution context (`cdsl_columnar_ctx_t`) supporting contiguous storage for `INT`, `LONG`, `FLOAT`, `BOOL`, and `STRING` columns.
+  - Auto-vectorized batch rule condition evaluation (`cdsl_columnar_eval_rule`) achieving over **105 Million rows/sec** throughput.
+  - Support for relational operators (`==`, `!=`, `<`, `<=`, `>`, `>=`), closed interval ranges (`in [min..max]`), and logical operators (`AND`, `OR`, `NOT`).
+  - Added 10,000-row differential equivalence test against standard row VM in `tests/test_columnar.c`.
+- **Common Subexpression Elimination (CSE) & Shared Predicate Cache (`include/cdsl/cse.h`, `src/vm/cse.c`)**:
+  - Implemented 64-bit structural AST hashing (`cdsl_expr_hash`) using FNV-1a.
+  - Implemented deep structural AST equality (`cdsl_expr_equal`) covering all 16 AST node types.
+  - Added transaction-level predicate evaluation cache (`cdsl_pred_cache_t`) for sharing condition and subexpression results across rules in a ruleset.
+  - Integrated predicate caching automatically into ruleset batch execution (`cdsl_vm_execute_ruleset`) and exposed VM configuration API (`cdsl_vm_enable_pred_cache`, `cdsl_vm_set_pred_cache`).
+- **Benchmarks & Tooling**:
+  - Extended `tests/bench_execution.c` to benchmark direct-threaded execution and vectorized columnar batch throughput.
+  - Added new test suites `tests/test_threaded.c`, `tests/test_columnar.c`, and `tests/test_cse.c`.
+
 ## [1.2.0] - 2026-11-07
 
 ### Added

@@ -1605,8 +1605,14 @@ cdsl_bytecode_execute(cdsl_vm_t* vm, const cdsl_bytecode_t* bc, cdsl_context_t* 
 		return result;
 	}
 	cdsl_vm_begin_execution(vm);
-	bc_run_instructions(vm, bc, ctx, NULL, NULL, &result);
+	cdsl_bc_run_threaded(vm, bc, ctx, NULL, NULL, &result);
 	return result;
+}
+
+cdsl_value_t
+cdsl_bytecode_execute_threaded(cdsl_vm_t* vm, const cdsl_bytecode_t* bc, cdsl_context_t* ctx)
+{
+	return cdsl_bytecode_execute(vm, bc, ctx);
 }
 
 typedef struct {
@@ -1750,7 +1756,7 @@ cdsl_bytecode_execute_rule(cdsl_vm_t* vm, const cdsl_bytecode_t* bc, cdsl_contex
 	bc_rule_state_t state;
 	state.report = report;
 	cdsl_value_t out_result = {.type = CDSL_TYPE_VOID};
-	bc_run_instructions(vm, bc, ctx, bc_rule_metric_handler, &state, &out_result);
+	cdsl_bc_run_threaded(vm, bc, ctx, bc_rule_metric_handler, &state, &out_result);
 
 	/* Check if aborted (instruction quota, timeout, etc.) */
 	if (CDSL_ATOMIC_LOAD(&vm->error_state)) {

@@ -16,6 +16,7 @@
  */
 
 #include "cdsl/execution.h"
+#include "cdsl/cse.h"
 #include "internal.h"
 #include <stdlib.h>
 #include <string.h>
@@ -139,6 +140,12 @@ cdsl_vm_execute_ruleset(cdsl_vm_t* vm, cdsl_ruleset_t* set, cdsl_context_t* ctx)
 	}
 	batch->rule_count = set->count;
 
+	int temp_cache = 0;
+	if (!vm->pred_cache) {
+		vm->pred_cache = cdsl_pred_cache_create(256);
+		temp_cache = 1;
+	}
+
 	int idx = 0;
 	for (cdsl_ruleset_entry_t* e = set->entries; e; e = e->next, idx++) {
 		batch->rule_reports[idx] = cdsl_vm_execute(vm, e->rule, ctx);
@@ -163,6 +170,11 @@ cdsl_vm_execute_ruleset(cdsl_vm_t* vm, cdsl_ruleset_t* set, cdsl_context_t* ctx)
 		} else {
 			batch->total_error++;
 		}
+	}
+
+	if (temp_cache && vm->pred_cache) {
+		cdsl_pred_cache_free(vm->pred_cache);
+		vm->pred_cache = NULL;
 	}
 
 	char buf[512];

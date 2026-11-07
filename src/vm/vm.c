@@ -11,6 +11,7 @@
  */
 
 #include "cdsl/execution.h"
+#include "cdsl/cse.h"
 #include "internal.h"
 #include <stdlib.h>
 
@@ -54,6 +55,9 @@ cdsl_vm_free(cdsl_vm_t* vm)
 		fn = next;
 	}
 	cdsl_error_free(vm->last_error);
+	if (vm->pred_cache_owned && vm->pred_cache) {
+		cdsl_pred_cache_free(vm->pred_cache);
+	}
 	CDSL_RWLOCK_DESTROY(&vm->rwlock);
 	free(vm);
 }
@@ -156,6 +160,45 @@ cdsl_vm_set_debug(cdsl_vm_t* vm, int enabled)
 {
 	if (vm) {
 		vm->debug_enabled = enabled;
+	}
+}
+
+void
+cdsl_vm_set_pred_cache(cdsl_vm_t* vm, cdsl_pred_cache_t* cache)
+{
+	if (!vm) {
+		return;
+	}
+	if (vm->pred_cache_owned && vm->pred_cache) {
+		cdsl_pred_cache_free(vm->pred_cache);
+	}
+	vm->pred_cache = cache;
+	vm->pred_cache_owned = 0;
+}
+
+cdsl_pred_cache_t*
+cdsl_vm_get_pred_cache(const cdsl_vm_t* vm)
+{
+	return vm ? vm->pred_cache : NULL;
+}
+
+void
+cdsl_vm_enable_pred_cache(cdsl_vm_t* vm, int enable)
+{
+	if (!vm) {
+		return;
+	}
+	if (enable) {
+		if (!vm->pred_cache) {
+			vm->pred_cache = cdsl_pred_cache_create(256);
+			vm->pred_cache_owned = 1;
+		}
+	} else {
+		if (vm->pred_cache_owned && vm->pred_cache) {
+			cdsl_pred_cache_free(vm->pred_cache);
+		}
+		vm->pred_cache = NULL;
+		vm->pred_cache_owned = 0;
 	}
 }
 

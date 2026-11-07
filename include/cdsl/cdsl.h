@@ -27,6 +27,8 @@
 #include "cdsl/ruleset.h"
 #include "cdsl/codegen.h"
 #include "cdsl/visual.h"
+#include "cdsl/columnar.h"
+#include "cdsl/cse.h"
 
 /* AI bridge */
 #include "cdsl/ai.h"

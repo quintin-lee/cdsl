@@ -31,6 +31,7 @@
 
 struct cdsl_vm;
 struct cdsl_context;
+struct cdsl_pred_cache;
 
 /**
  * @brief Action callback — invoked when a THEN action fires.
@@ -145,6 +146,10 @@ typedef struct cdsl_vm {
 	cdsl_trace_cb_t trace_cb; /**< Optional trace callback (NULL=disabled) */
 	void* trace_ud;		  /**< User data pointer for trace callback */
 	cdsl_rwlock_t rwlock;	  /**< Protects callbacks/functions lists and stats aggregation */
+
+	/* ---- Predicate cache / CSE ---- */
+	struct cdsl_pred_cache* pred_cache; /**< Shared predicate evaluation cache */
+	int pred_cache_owned;		    /**< 1 if pred_cache owned and freed with VM */
 } cdsl_vm_t;
 
 /* ---- Context Handle ---- */
@@ -369,6 +374,29 @@ void cdsl_vm_register_function(cdsl_vm_t* vm, const char* func_name, cdsl_func_c
  * @param enabled Non-zero to enable, zero to disable
  */
 void cdsl_vm_set_debug(cdsl_vm_t* vm, int enabled);
+
+/* ---- Predicate Cache (CSE) ---- */
+
+/**
+ * @brief Attach a predicate cache to the VM for sharing subexpression results.
+ * @param vm Target VM
+ * @param cache Predicate cache (caller retains ownership unless enabled via cdsl_vm_enable_pred_cache)
+ */
+void cdsl_vm_set_pred_cache(cdsl_vm_t* vm, struct cdsl_pred_cache* cache);
+
+/**
+ * @brief Get the VM's current predicate cache.
+ * @param vm Target VM
+ * @return Predicate cache or NULL if not set
+ */
+struct cdsl_pred_cache* cdsl_vm_get_pred_cache(const cdsl_vm_t* vm);
+
+/**
+ * @brief Enable or disable VM-owned predicate cache.
+ * @param vm Target VM
+ * @param enable 1 to create an internal predicate cache, 0 to disable and free it
+ */
+void cdsl_vm_enable_pred_cache(cdsl_vm_t* vm, int enable);
 
 /* ---- Expression depth ---- */
 

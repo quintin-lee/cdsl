@@ -132,7 +132,15 @@ main(void)
 			(void)v;
 		}
 		double elapsed = get_time_us() - start;
-		report("Execute simple rule (bytecode)", elapsed, BENCH_ITERATIONS);
+		report("Execute simple rule (bytecode switch)", elapsed, BENCH_ITERATIONS);
+
+		start = get_time_us();
+		for (int i = 0; i < BENCH_ITERATIONS; i++) {
+			cdsl_value_t v = cdsl_bytecode_execute_threaded(vm, &bc, ctx);
+			(void)v;
+		}
+		elapsed = get_time_us() - start;
+		report("Execute simple rule (bytecode threaded)", elapsed, BENCH_ITERATIONS);
 		cdsl_bytecode_free(&bc);
 	}
 
@@ -171,6 +179,37 @@ main(void)
 		double elapsed = get_time_us() - start;
 		report("RuleSet parallel (4 rules, 4 threads)", elapsed, 1000);
 		cdsl_ruleset_free(set);
+	}
+
+	/* ---- Benchmark 8: Vectorized Columnar Batch Evaluation ---- */
+	{
+		const size_t batch_size = 100000;
+		cdsl_columnar_ctx_t* cctx = cdsl_columnar_create(batch_size);
+		int32_t* ages = malloc(batch_size * sizeof(int32_t));
+		uint8_t* matches = malloc(batch_size * sizeof(uint8_t));
+		for (size_t i = 0; i < batch_size; i++) {
+			ages[i] = (int32_t)(i % 80);
+		}
+		cdsl_columnar_add_int(cctx, "user.age", ages);
+
+		const int runs = 100;
+		double start = get_time_us();
+		for (int i = 0; i < runs; i++) {
+			cdsl_columnar_eval_rule(simple_rule, cctx, matches);
+		}
+		double elapsed = get_time_us() - start;
+		double total_rows = (double)batch_size * runs;
+		double rows_per_sec = (total_rows / (elapsed / 1e6));
+		printf("  %-40s %8.2f us/op  (%10.2f ms total, %d iters, %.2f M rows/sec)\n",
+		       "Vectorized Columnar Batch (100k rows)",
+		       elapsed / runs,
+		       elapsed / 1000.0,
+		       runs,
+		       rows_per_sec / 1e6);
+
+		cdsl_columnar_free(cctx);
+		free(ages);
+		free(matches);
 	}
 
 	/* ---- Cleanup ---- */

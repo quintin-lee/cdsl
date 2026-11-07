@@ -135,6 +135,17 @@ cdsl_bytecode_compile(const cdsl_rule_t* rule, const cdsl_schema_t* schema, cdsl
 cdsl_value_t cdsl_bytecode_execute(cdsl_vm_t* vm, const cdsl_bytecode_t* bc, cdsl_context_t* ctx);
 
 /**
+ * @brief Execute compiled bytecode using direct-threaded code dispatch where supported.
+ *
+ * @param vm VM instance
+ * @param bc Compiled bytecode chunk
+ * @param ctx Execution context
+ * @return Evaluated value
+ */
+cdsl_value_t
+cdsl_bytecode_execute_threaded(cdsl_vm_t* vm, const cdsl_bytecode_t* bc, cdsl_context_t* ctx);
+
+/**
  * @brief Execute bytecode to produce a full rule report.
  *
  * This function handles the logic for both Simple Rules and Metric Rules,
