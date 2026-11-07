@@ -28,11 +28,20 @@ copy_expr(const cdsl_expr_node_t* expr)
 		return cdsl_create_expr_float(expr->data.float_val, expr->line, expr->column);
 	case CDSL_EXPR_BOOL:
 		return cdsl_create_expr_bool(expr->data.bool_val, expr->line, expr->column);
-	case CDSL_EXPR_ID:
-		return cdsl_create_expr_id(strdup(expr->data.id_val), expr->line, expr->column);
-	case CDSL_EXPR_STRING:
-		return cdsl_create_expr_string(
-		    strdup(expr->data.string_val), expr->line, expr->column);
+	case CDSL_EXPR_ID: {
+		char* id = cdsl_strdup(expr->data.id_val);
+		if (!id) {
+			return NULL;
+		}
+		return cdsl_create_expr_id(id, expr->line, expr->column);
+	}
+	case CDSL_EXPR_STRING: {
+		char* str = cdsl_strdup(expr->data.string_val);
+		if (!str) {
+			return NULL;
+		}
+		return cdsl_create_expr_string(str, expr->line, expr->column);
+	}
 	case CDSL_EXPR_DATE:
 		return cdsl_create_expr_date(expr->data.date_val, expr->line, expr->column);
 	case CDSL_EXPR_LONG:
@@ -40,28 +49,49 @@ copy_expr(const cdsl_expr_node_t* expr)
 	case CDSL_EXPR_ARRAY: {
 		cdsl_arg_node_t* elems = NULL;
 		for (cdsl_arg_node_t* a = expr->data.array.elements; a; a = a->next) {
-			elems = cdsl_append_arg(elems, copy_expr(a->expr));
+			cdsl_expr_node_t* sub = copy_expr(a->expr);
+			if (!sub && a->expr) {
+				cdsl_free_arg(elems);
+				return NULL;
+			}
+			elems = cdsl_append_arg(elems, sub);
 		}
 		return cdsl_create_expr_array(elems, expr->line, expr->column);
 	}
-	case CDSL_EXPR_UNARY:
-		return cdsl_create_expr_unary(expr->data.unary.op,
-					      copy_expr(expr->data.unary.expr),
-					      expr->line,
-					      expr->column);
-	case CDSL_EXPR_BINARY:
-		return cdsl_create_expr_binary(expr->data.binary.op,
-					       copy_expr(expr->data.binary.left),
-					       copy_expr(expr->data.binary.right),
-					       expr->line,
-					       expr->column);
+	case CDSL_EXPR_UNARY: {
+		cdsl_expr_node_t* sub = copy_expr(expr->data.unary.expr);
+		if (!sub && expr->data.unary.expr) {
+			return NULL;
+		}
+		return cdsl_create_expr_unary(expr->data.unary.op, sub, expr->line, expr->column);
+	}
+	case CDSL_EXPR_BINARY: {
+		cdsl_expr_node_t* left = copy_expr(expr->data.binary.left);
+		cdsl_expr_node_t* right = copy_expr(expr->data.binary.right);
+		if ((!left && expr->data.binary.left) || (!right && expr->data.binary.right)) {
+			cdsl_free_expr(left);
+			cdsl_free_expr(right);
+			return NULL;
+		}
+		return cdsl_create_expr_binary(
+		    expr->data.binary.op, left, right, expr->line, expr->column);
+	}
 	case CDSL_EXPR_CALL: {
+		char* fname = cdsl_strdup(expr->data.call.func_name);
+		if (!fname) {
+			return NULL;
+		}
 		cdsl_arg_node_t* args = NULL;
 		for (cdsl_arg_node_t* a = expr->data.call.args; a; a = a->next) {
-			args = cdsl_append_arg(args, copy_expr(a->expr));
+			cdsl_expr_node_t* sub = copy_expr(a->expr);
+			if (!sub && a->expr) {
+				free(fname);
+				cdsl_free_arg(args);
+				return NULL;
+			}
+			args = cdsl_append_arg(args, sub);
 		}
-		return cdsl_create_expr_call(
-		    strdup(expr->data.call.func_name), args, expr->line, expr->column);
+		return cdsl_create_expr_call(fname, args, expr->line, expr->column);
 	}
 	default:
 		return NULL;
@@ -74,11 +104,21 @@ copy_action(const cdsl_action_node_t* action)
 	if (!action) {
 		return NULL;
 	}
+	char* aname = cdsl_strdup(action->action_name);
+	if (!aname) {
+		return NULL;
+	}
 	cdsl_arg_node_t* args = NULL;
 	for (cdsl_arg_node_t* a = action->args; a; a = a->next) {
-		args = cdsl_append_arg(args, copy_expr(a->expr));
+		cdsl_expr_node_t* sub = copy_expr(a->expr);
+		if (!sub && a->expr) {
+			free(aname);
+			cdsl_free_arg(args);
+			return NULL;
+		}
+		args = cdsl_append_arg(args, sub);
 	}
-	return cdsl_create_action(strdup(action->action_name), args, action->line, action->column);
+	return cdsl_create_action(aname, args, action->line, action->column);
 }
 
 cdsl_metric_node_t*
@@ -90,6 +130,11 @@ copy_metric_list(const cdsl_metric_node_t* src)
 	cdsl_metric_node_t* head = NULL;
 	cdsl_metric_node_t* tail = NULL;
 	for (const cdsl_metric_node_t* m = src; m; m = m->next) {
+		char* mname = cdsl_strdup(m->name);
+		if (!mname) {
+			cdsl_free_metric(head);
+			return NULL;
+		}
 		cdsl_meta_item_t* meta = NULL;
 		for (cdsl_meta_item_t* mi = m->meta_list; mi; mi = mi->next) {
 			meta = cdsl_append_meta_kv(meta, mi->key, mi->value);
@@ -102,8 +147,15 @@ copy_metric_list(const cdsl_metric_node_t* src)
 			    cdsl_create_case(copy_expr(c->condition), copy_action(c->action)));
 		}
 
-		cdsl_metric_node_t* nm = cdsl_create_metric(
-		    strdup(m->name), meta, cases, copy_action(m->default_action));
+		cdsl_metric_node_t* nm =
+		    cdsl_create_metric(mname, meta, cases, copy_action(m->default_action));
+		if (!nm) {
+			free(mname);
+			cdsl_free_meta(meta);
+			cdsl_free_case(cases);
+			cdsl_free_metric(head);
+			return NULL;
+		}
 		if (!head) {
 			head = nm;
 			tail = nm;
@@ -136,7 +188,7 @@ cdsl_template_register(cdsl_rule_t* template_rule)
 	if (!e) {
 		return;
 	}
-	e->name = strdup(template_rule->name);
+	e->name = cdsl_strdup(template_rule->name);
 	if (!e->name) {
 		free(e);
 		return;

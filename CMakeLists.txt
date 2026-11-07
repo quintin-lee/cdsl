@@ -204,6 +204,7 @@ endif()
 
 # 13. Tests
 enable_testing()
+target_compile_definitions(cdsl_objects PRIVATE CDSL_TESTING)
 file(GLOB TEST_SOURCES CONFIGURE_DEPENDS "tests/test_*.c")
 foreach(test_src ${TEST_SOURCES})
     get_filename_component(test_name ${test_src} NAME_WE)
