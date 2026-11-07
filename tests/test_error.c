@@ -7,6 +7,7 @@
  */
 
 #include <cdsl/util/error.h>
+#include <cdsl/util/portability.h>
 #include <cdsl/schema.h>
 #include <cdsl/ast.h>
 #include <string.h>
@@ -357,11 +358,30 @@ test_error_performance()
 	TEST_ERROR_END();
 }
 
+static void
+test_error_create_oom_fallback(void)
+{
+	TEST_ERROR_BEGIN("error_create fallback on strdup OOM");
+
+	cdsl_test_set_oom_countdown(0);
+	cdsl_error_t* err =
+	    cdsl_error_create(CDSL_ERR_RUNTIME, 10, 5, "My error message", "My hint");
+	TEST_ASSERT_NOT_NULL(err, "error object created despite countdown=0");
+	if (err) {
+		TEST_ASSERT_NOT_NULL(err->message, "Emergency message is present");
+		cdsl_error_free(err);
+	}
+
+	cdsl_test_set_oom_countdown(-1);
+	TEST_ERROR_END();
+}
+
 int
 main()
 {
 	printf("Running error handling tests...\n");
 
+	test_error_create_oom_fallback();
 	// Run all error handling tests
 	test_error_creation();
 	test_error_list_management();

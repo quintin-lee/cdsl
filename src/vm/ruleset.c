@@ -174,7 +174,7 @@ cdsl_vm_execute_ruleset(cdsl_vm_t* vm, cdsl_ruleset_t* set, cdsl_context_t* ctx)
 	    batch->total_error,
 	    batch->aggregate_score,
 	    batch->aggregate_max);
-	batch->summary = strdup(buf);
+	batch->summary = cdsl_strdup(buf);
 	return batch;
 }
 
@@ -288,7 +288,11 @@ cdsl_vm_execute_ruleset_parallel(cdsl_vm_t* vm,
 		if (!entry) {
 			break;
 		}
-		entry->action_name = strdup(cb->action_name);
+		entry->action_name = cdsl_strdup(cb->action_name);
+		if (!entry->action_name) {
+			free(entry);
+			break;
+		}
 		entry->cb = cb->cb;
 		entry->next = NULL;
 		if (!cb_snapshot) {
@@ -303,7 +307,11 @@ cdsl_vm_execute_ruleset_parallel(cdsl_vm_t* vm,
 		if (!entry) {
 			break;
 		}
-		entry->func_name = strdup(fn->func_name);
+		entry->func_name = cdsl_strdup(fn->func_name);
+		if (!entry->func_name) {
+			free(entry);
+			break;
+		}
 		entry->cb = fn->cb;
 		entry->next = NULL;
 		if (!fn_snapshot) {
@@ -434,7 +442,7 @@ cdsl_vm_execute_ruleset_parallel(cdsl_vm_t* vm,
 		 batch->total_error,
 		 batch->aggregate_score,
 		 batch->aggregate_max);
-	batch->summary = strdup(buf);
+	batch->summary = cdsl_strdup(buf);
 	return batch;
 }
 
@@ -593,7 +601,14 @@ validate_deps_recursive(cdsl_ruleset_t* set,
 	states[idx] = 1;
 	char* deps = cdsl_meta_get(entry->rule->meta_list, "depends_on");
 	if (deps) {
-		char* dep_buf = strdup(deps);
+		char* dep_buf = cdsl_strdup(deps);
+		if (!dep_buf) {
+			if (err_buf) {
+				snprintf(
+				    err_buf, err_buf_sz, "Out of memory processing dependencies");
+			}
+			return 0;
+		}
 		char* token = strtok(dep_buf, ",");
 		while (token) {
 			while (*token == ' ') {
@@ -685,20 +700,22 @@ topo_sort_recursive(cdsl_ruleset_t* set,
 
 	char* deps = cdsl_meta_get(entry->rule->meta_list, "depends_on");
 	if (deps) {
-		char* dep_buf = strdup(deps);
-		char* token = strtok(dep_buf, ",");
-		while (token) {
-			while (*token == ' ') {
-				token++;
+		char* dep_buf = cdsl_strdup(deps);
+		if (dep_buf) {
+			char* token = strtok(dep_buf, ",");
+			while (token) {
+				while (*token == ' ') {
+					token++;
+				}
+				cdsl_ruleset_entry_t* dep_entry = find_entry_by_name(set, token);
+				if (dep_entry) {
+					topo_sort_recursive(
+					    set, dep_entry, visited, entries_arr, output_ptr);
+				}
+				token = strtok(NULL, ",");
 			}
-			cdsl_ruleset_entry_t* dep_entry = find_entry_by_name(set, token);
-			if (dep_entry) {
-				topo_sort_recursive(
-				    set, dep_entry, visited, entries_arr, output_ptr);
-			}
-			token = strtok(NULL, ",");
+			free(dep_buf);
 		}
-		free(dep_buf);
 	}
 
 	**output_ptr = entry;

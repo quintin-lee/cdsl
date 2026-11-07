@@ -12,6 +12,7 @@
 #include <cdsl/ast.h>
 #include <cdsl/execution.h>
 #include <cdsl/util/error.h>
+#include <cdsl/util/portability.h>
 #include <string.h>
 #include <stdlib.h>
 #include <stdio.h>
@@ -508,11 +509,46 @@ test_ruleset_performance()
 	TEST_RULESET_END();
 }
 
+static void
+test_ruleset_oom_safety(void)
+{
+	TEST_RULESET_BEGIN("ruleset batch report and dependency OOM safety");
+
+	cdsl_ruleset_t* ruleset = cdsl_ruleset_create();
+	cdsl_schema_t* schema = cdsl_schema_create();
+	cdsl_vm_t* vm = cdsl_vm_create(schema);
+	cdsl_context_t* ctx = cdsl_context_create(schema);
+
+	cdsl_rule_t* rule = cdsl_parse_string(
+	    "RULE r1 { META { depends_on = \"r2\" } WHEN true THEN block(\"ok\") }", NULL);
+	cdsl_ruleset_add(ruleset, rule, 10);
+
+	/* Topological sort under OOM */
+	cdsl_test_set_oom_countdown(0);
+	int sorted = cdsl_ruleset_topo_sort(ruleset);
+	(void)sorted;
+
+	/* Batch execution under OOM */
+	cdsl_test_set_oom_countdown(0);
+	cdsl_ruleset_report_t* rpt = cdsl_vm_execute_ruleset(vm, ruleset, ctx);
+	if (rpt) {
+		cdsl_ruleset_report_free(rpt);
+	}
+
+	cdsl_test_set_oom_countdown(-1);
+	cdsl_context_free(ctx);
+	cdsl_vm_free(vm);
+	cdsl_schema_free(schema);
+	cdsl_ruleset_free(ruleset);
+	TEST_RULESET_END();
+}
+
 int
 main()
 {
 	printf("Running ruleset management tests...\n");
 
+	test_ruleset_oom_safety();
 	// Run all ruleset management tests
 	test_ruleset_basic_creation();
 	test_ruleset_add_remove();
