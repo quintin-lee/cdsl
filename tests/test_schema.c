@@ -9,6 +9,7 @@
 #include <cdsl/schema.h>
 #include <cdsl/ast.h>
 #include <cdsl/util/error.h>
+#include <cdsl/util/portability.h>
 #include <cdsl/execution.h>
 #include <string.h>
 #include <stdlib.h>
@@ -479,11 +480,35 @@ test_schema_performance()
 	TEST_SCHEMA_END();
 }
 
+static void
+test_schema_registration_oom(void)
+{
+	TEST_BEGIN("schema register var and action OOM safety");
+
+	cdsl_schema_t* s = cdsl_schema_create();
+
+	/* Simulate OOM during register_var */
+	cdsl_test_set_oom_countdown(0);
+	cdsl_schema_register_var(s, "user.age", CDSL_TYPE_INT);
+	TEST_ASSERT_NULL(s->vars, "No half-allocated var node in schema");
+
+	/* Simulate OOM during register_action */
+	cdsl_test_set_oom_countdown(-1);
+	cdsl_test_set_oom_countdown(0);
+	cdsl_schema_register_action(s, "block", CDSL_TYPE_VOID, 1, CDSL_TYPE_STRING);
+	TEST_ASSERT_NULL(s->actions, "No half-allocated action node in schema");
+
+	cdsl_test_set_oom_countdown(-1);
+	cdsl_schema_free(s);
+	TEST_END();
+}
+
 int
 main()
 {
 	printf("Running schema validation tests...\n");
 
+	test_schema_registration_oom();
 	// Run all schema tests
 	test_schema_creation();
 	test_action_registration();

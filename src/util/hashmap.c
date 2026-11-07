@@ -126,7 +126,7 @@ cdsl_hashmap_put(cdsl_hashmap_t* map, const char* key, void* value)
 	if (!e) {
 		return false;
 	}
-	e->key = strdup(key);
+	e->key = cdsl_strdup(key);
 	if (!e->key) {
 		free(e);
 		return false;
@@ -233,7 +233,15 @@ cdsl_hashmap_keys(const cdsl_hashmap_t* map, int* count)
 	for (int i = 0; i < map->bucket_count; i++) {
 		const cdsl_hashmap_entry_t* e = map->buckets[i];
 		while (e) {
-			keys[idx++] = strdup(e->key);
+			keys[idx] = cdsl_strdup(e->key);
+			if (!keys[idx]) {
+				for (int j = 0; j < idx; j++) {
+					free(keys[j]);
+				}
+				free(keys);
+				return NULL;
+			}
+			idx++;
 			e = e->next;
 		}
 	}

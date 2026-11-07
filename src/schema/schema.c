@@ -8,6 +8,7 @@
  */
 
 #include "cdsl/schema.h"
+#include "cdsl/util/portability.h"
 #include <stdlib.h>
 #include <string.h>
 #include <stdio.h>
@@ -69,20 +70,25 @@ cdsl_schema_register_var_rw(cdsl_schema_t* schema, const char* name, cdsl_type_t
 		cur->is_readonly = readonly;
 		return;
 	}
-	cdsl_var_schema_t* v = calloc(1, sizeof(*v));
-	if (!v) {
+	char* vname = cdsl_strdup(name);
+	if (!vname) {
 		return;
 	}
-	v->name = strdup(name);
-	if (!v->name) {
+	cdsl_var_schema_t* v = calloc(1, sizeof(*v));
+	if (!v) {
+		free(vname);
+		return;
+	}
+	v->name = vname;
+	v->type = type;
+	v->is_readonly = readonly;
+	if (!cdsl_hashmap_put(schema->var_map, name, v)) {
+		free(v->name);
 		free(v);
 		return;
 	}
-	v->type = type;
-	v->is_readonly = readonly;
 	v->next = schema->vars;
 	schema->vars = v;
-	cdsl_hashmap_put(schema->var_map, name, v);
 }
 void
 cdsl_schema_register_var(cdsl_schema_t* schema, const char* name, cdsl_type_t type)
@@ -94,15 +100,19 @@ void
 cdsl_schema_register_action(
     cdsl_schema_t* schema, const char* name, cdsl_type_t ret_type, int arg_count, ...)
 {
+	if (!schema || !name) {
+		return;
+	}
+	char* aname = cdsl_strdup(name);
+	if (!aname) {
+		return;
+	}
 	cdsl_action_schema_t* a = calloc(1, sizeof(*a));
 	if (!a) {
+		free(aname);
 		return;
 	}
-	a->name = strdup(name);
-	if (!a->name) {
-		free(a);
-		return;
-	}
+	a->name = aname;
 	a->return_type = ret_type;
 	a->arg_count = arg_count;
 	if (arg_count > 0) {
@@ -119,9 +129,14 @@ cdsl_schema_register_action(
 		}
 		va_end(ap);
 	}
+	if (!cdsl_hashmap_put(schema->action_map, name, a)) {
+		free(a->arg_types);
+		free(a->name);
+		free(a);
+		return;
+	}
 	a->next = schema->actions;
 	schema->actions = a;
-	cdsl_hashmap_put(schema->action_map, name, a);
 }
 
 static cdsl_var_schema_t*
