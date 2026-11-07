@@ -387,6 +387,8 @@ call_llm_api(const char* prompt, const cdsl_ai_config_t* config)
 		}
 	}
 
+	char* result = NULL;
+
 #ifdef CDSL_USE_CURL
 	CURL* curl = curl_easy_init();
 	if (!curl) {
@@ -437,7 +439,6 @@ call_llm_api(const char* prompt, const cdsl_ai_config_t* config)
 	curl_easy_setopt(curl, CURLOPT_TIMEOUT, 30L);
 
 	CURLcode res = curl_easy_perform(curl);
-	char* result = NULL;
 	if (res == CURLE_OK) {
 		result = chunk.data;
 	} else {
@@ -475,7 +476,7 @@ call_llm_api(const char* prompt, const cdsl_ai_config_t* config)
 	}
 
 	size_t cap = 8192;
-	char* result = malloc(cap);
+	result = malloc(cap);
 	if (!result) {
 		pclose(fp);
 		return NULL;
