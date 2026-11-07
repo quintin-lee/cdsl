@@ -416,9 +416,9 @@ if(CDSL_BUILD_COVERAGE_REPORT)
         add_custom_target(cdsl_coverage
             COMMAND ${CMAKE_COMMAND} --build . --config Debug -j${CMAKE_BUILD_PARALLEL_LEVEL}
             COMMAND ${CMAKE_COMMAND} --test build --output-on-failure --timeout 60
-            COMMAND ${LCOV} --capture --directory . --output-file coverage.info --no-external
-            COMMAND ${LCOV} --remove coverage.info '/usr/*' '*/build/*' '*/tests/*' --output-file coverage.filtered.info
-            COMMAND ${LCOV} --list coverage.filtered.info
+            COMMAND ${LCOV} --capture --directory . --output-file coverage.info --no-external --rc branch_coverage=1 --rc check_data_consistency=0 --ignore-errors inconsistent,inconsistent,negative,unused,deprecated
+            COMMAND ${LCOV} --remove coverage.info '/usr/*' '*/build/*' '*/tests/*' --output-file coverage.filtered.info --ignore-errors inconsistent,negative,unused,deprecated
+            COMMAND ${LCOV} --list coverage.filtered.info --ignore-errors inconsistent,unused,deprecated
             COMMAND ${GCOV} ${CMAKE_SOURCE_DIR}/src/*.c ${CMAKE_SOURCE_DIR}/src/**/*.c 2>/dev/null || true
             WORKING_DIRECTORY ${CMAKE_BINARY_DIR}
             COMMENT "Generating code coverage report (lcov + gcov)"
