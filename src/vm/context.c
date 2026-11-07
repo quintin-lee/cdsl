@@ -190,15 +190,16 @@ cdsl_context_set_int(cdsl_context_t* ctx, const char* name, int val)
 		e->value.type = CDSL_TYPE_INT;
 		e->value.data.int_val = val;
 	} else {
+		char* new_name = cdsl_strdup(name);
+		if (!new_name) {
+			return;
+		}
 		cdsl_context_entry_t* ne = calloc(1, sizeof(*ne));
 		if (!ne) {
+			free(new_name);
 			return;
 		}
-		ne->name = strdup(name);
-		if (!ne->name) {
-			free(ne);
-			return;
-		}
+		ne->name = new_name;
 		ne->value.type = CDSL_TYPE_INT;
 		ne->value.data.int_val = val;
 		ne->next = ctx->entries;
@@ -223,15 +224,16 @@ cdsl_context_set_float(cdsl_context_t* ctx, const char* name, double val)
 		e->value.type = CDSL_TYPE_FLOAT;
 		e->value.data.float_val = val;
 	} else {
+		char* new_name = cdsl_strdup(name);
+		if (!new_name) {
+			return;
+		}
 		cdsl_context_entry_t* ne = calloc(1, sizeof(*ne));
 		if (!ne) {
+			free(new_name);
 			return;
 		}
-		ne->name = strdup(name);
-		if (!ne->name) {
-			free(ne);
-			return;
-		}
+		ne->name = new_name;
 		ne->value.type = CDSL_TYPE_FLOAT;
 		ne->value.data.float_val = val;
 		ne->next = ctx->entries;
@@ -256,15 +258,16 @@ cdsl_context_set_bool(cdsl_context_t* ctx, const char* name, int val)
 		e->value.type = CDSL_TYPE_BOOL;
 		e->value.data.bool_val = val;
 	} else {
+		char* new_name = cdsl_strdup(name);
+		if (!new_name) {
+			return;
+		}
 		cdsl_context_entry_t* ne = calloc(1, sizeof(*ne));
 		if (!ne) {
+			free(new_name);
 			return;
 		}
-		ne->name = strdup(name);
-		if (!ne->name) {
-			free(ne);
-			return;
-		}
+		ne->name = new_name;
 		ne->value.type = CDSL_TYPE_BOOL;
 		ne->value.data.bool_val = val;
 		ne->next = ctx->entries;
@@ -284,29 +287,31 @@ cdsl_context_set_string(cdsl_context_t* ctx, const char* name, const char* val)
 	if (e && context_var_is_readonly(ctx, name)) {
 		return;
 	}
+	char* new_str = val ? cdsl_strdup(val) : NULL;
+	if (val && !new_str) {
+		return;
+	}
 	if (e) {
 		cdsl_value_free(&e->value);
 		e->value.type = CDSL_TYPE_STRING;
-		e->value.data.string_val = strdup(val);
+		e->value.data.string_val = new_str;
 		e->value.owned_string = 1;
 	} else {
+		char* new_name = cdsl_strdup(name);
+		if (!new_name) {
+			free(new_str);
+			return;
+		}
 		cdsl_context_entry_t* ne = calloc(1, sizeof(*ne));
 		if (!ne) {
+			free(new_name);
+			free(new_str);
 			return;
 		}
-		ne->name = strdup(name);
-		if (!ne->name) {
-			free(ne);
-			return;
-		}
+		ne->name = new_name;
 		ne->value.type = CDSL_TYPE_STRING;
-		ne->value.data.string_val = strdup(val);
+		ne->value.data.string_val = new_str;
 		ne->value.owned_string = 1;
-		if (!ne->value.data.string_val) {
-			free(ne->name);
-			free(ne);
-			return;
-		}
 		ne->next = ctx->entries;
 		ctx->entries = ne;
 		cdsl_hashmap_put(ctx->map, name, ne);
@@ -329,15 +334,16 @@ cdsl_context_set_date(cdsl_context_t* ctx, const char* name, time_t val)
 		e->value.type = CDSL_TYPE_DATE;
 		e->value.data.date_val = val;
 	} else {
+		char* new_name = cdsl_strdup(name);
+		if (!new_name) {
+			return;
+		}
 		cdsl_context_entry_t* ne = calloc(1, sizeof(*ne));
 		if (!ne) {
+			free(new_name);
 			return;
 		}
-		ne->name = strdup(name);
-		if (!ne->name) {
-			free(ne);
-			return;
-		}
+		ne->name = new_name;
 		ne->value.type = CDSL_TYPE_DATE;
 		ne->value.data.date_val = val;
 		ne->next = ctx->entries;
@@ -362,15 +368,16 @@ cdsl_context_set_long(cdsl_context_t* ctx, const char* name, int64_t val)
 		e->value.type = CDSL_TYPE_LONG;
 		e->value.data.long_val = val;
 	} else {
+		char* new_name = cdsl_strdup(name);
+		if (!new_name) {
+			return;
+		}
 		cdsl_context_entry_t* ne = calloc(1, sizeof(*ne));
 		if (!ne) {
+			free(new_name);
 			return;
 		}
-		ne->name = strdup(name);
-		if (!ne->name) {
-			free(ne);
-			return;
-		}
+		ne->name = new_name;
 		ne->value.type = CDSL_TYPE_LONG;
 		ne->value.data.long_val = val;
 		ne->next = ctx->entries;
@@ -507,7 +514,7 @@ load_json_recursive(cdsl_context_t* ctx, cdsl_json_value_t* obj, const char* pre
 			}
 			snprintf(key, klen, "%s.%s", prefix, child->key);
 		} else {
-			key = strdup(child->key);
+			key = cdsl_strdup(child->key);
 			if (!key) {
 				return;
 			}
@@ -556,8 +563,15 @@ load_json_recursive(cdsl_context_t* ctx, cdsl_json_value_t* obj, const char* pre
 						   elem->value.string_val) {
 						arr->items[idx].type = CDSL_TYPE_STRING;
 						arr->items[idx].data.string_val =
-						    strdup(elem->value.string_val);
+						    cdsl_strdup(elem->value.string_val);
 						arr->items[idx].owned_string = 1;
+						if (!arr->items[idx].data.string_val) {
+							cdsl_value_t tv = {.type = CDSL_TYPE_ARRAY,
+									   .data.array_val = arr};
+							cdsl_value_free(&tv);
+							free(key);
+							return;
+						}
 					}
 				}
 				cdsl_context_entry_t* e = cdsl_context_get_entry_internal(ctx, key);
@@ -568,7 +582,7 @@ load_json_recursive(cdsl_context_t* ctx, cdsl_json_value_t* obj, const char* pre
 				} else if (!e) {
 					cdsl_context_entry_t* ne = calloc(1, sizeof(*ne));
 					if (ne) {
-						ne->name = strdup(key);
+						ne->name = cdsl_strdup(key);
 						if (ne->name) {
 							ne->value.type = CDSL_TYPE_ARRAY;
 							ne->value.data.array_val = arr;

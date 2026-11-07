@@ -9,6 +9,7 @@
 #include <cdsl/context.h>
 #include <cdsl/schema.h>
 #include <cdsl/util/error.h>
+#include <cdsl/util/portability.h>
 #include <string.h>
 #include <stdlib.h>
 #include <stdio.h>
@@ -238,6 +239,40 @@ test_context_remove_array(void)
 	TEST_CONTEXT_END();
 }
 
+static void
+test_context_set_string_oom_rollback(void)
+{
+	TEST_CONTEXT_BEGIN("Context set string OOM transactional rollback");
+
+	cdsl_schema_t* s = cdsl_schema_create();
+	cdsl_schema_register_var(s, "user.name", CDSL_TYPE_STRING);
+	cdsl_context_t* ctx = cdsl_context_create(s);
+
+	/* Set initial value */
+	cdsl_context_set_string(ctx, "user.name", "Initial");
+	TEST_ASSERT_STR(
+	    cdsl_context_get_string(ctx, "user.name", ""), "Initial", "Initial value matches");
+
+	/* Simulate OOM when modifying existing value: old value must be preserved */
+	cdsl_test_set_oom_countdown(0); /* force next allocation to fail */
+	cdsl_context_set_string(ctx, "user.name", "Modified");
+	TEST_ASSERT_STR(
+	    cdsl_context_get_string(ctx, "user.name", ""), "Initial", "Old value preserved on OOM");
+
+	/* Reset hook and add new key under OOM */
+	cdsl_test_set_oom_countdown(-1);
+	cdsl_test_set_oom_countdown(0);
+	cdsl_context_set_string(ctx, "user.new_key", "NewVal");
+	TEST_ASSERT_STR(cdsl_context_get_string(ctx, "user.new_key", "missing"),
+			"missing",
+			"No corrupted node inserted");
+
+	cdsl_test_set_oom_countdown(-1);
+	cdsl_context_free(ctx);
+	cdsl_schema_free(s);
+	TEST_CONTEXT_END();
+}
+
 int
 main(void)
 {
@@ -253,6 +288,7 @@ main(void)
 	test_context_null_safe();
 	test_context_schema_bound();
 	test_context_remove_array();
+	test_context_set_string_oom_rollback();
 
 	TEST_SUMMARY();
 	TEST_EXIT();

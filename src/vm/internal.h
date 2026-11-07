@@ -15,6 +15,7 @@
 #ifndef CDSL_EXECUTION_INTERNAL_H
 #define CDSL_EXECUTION_INTERNAL_H
 
+#include "cdsl/util/portability.h"
 #include "cdsl/context.h"
 #include "cdsl/vm.h"
 #include "cdsl/report.h"
