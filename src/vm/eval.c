@@ -698,6 +698,7 @@ cdsl_trigger_action_internal(cdsl_vm_t* vm, cdsl_action_node_t* action)
 	}
 	CDSL_RWLOCK_UNLOCK_RD(&vm->rwlock);
 	if (target_cb) {
+		CDSL_ATOMIC_FETCH_ADD(&vm->stats.total_actions_triggered, 1);
 		target_cb(action->action_name, action->args, vm->user_data);
 	}
 }
@@ -1012,10 +1013,7 @@ cdsl_vm_execute_compiled(cdsl_vm_t* vm, cdsl_compiled_rule_t* compiled, cdsl_con
 	if (compiled->bc.code) {
 		return cdsl_bytecode_execute_rule(vm, &compiled->bc, ctx);
 	}
-	if (compiled->rule->metrics) {
-		return execute_metric_rule(vm, compiled->rule, ctx);
-	}
-	return execute_simple_rule(vm, compiled->rule, ctx, &compiled->bc);
+	return cdsl_vm_execute(vm, compiled->rule, ctx);
 }
 
 cdsl_rule_report_t*

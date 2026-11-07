@@ -42,6 +42,40 @@ sanitize_identifier(char* buf, size_t bufsize, const char* src)
 	buf[j] = '\0';
 }
 
+static cdsl_type_t
+expr_get_type(const cdsl_expr_node_t* expr, const cdsl_schema_t* schema)
+{
+	if (!expr) {
+		return CDSL_TYPE_VOID;
+	}
+	switch (expr->type) {
+	case CDSL_EXPR_INT:
+		return CDSL_TYPE_INT;
+	case CDSL_EXPR_FLOAT:
+		return CDSL_TYPE_FLOAT;
+	case CDSL_EXPR_BOOL:
+		return CDSL_TYPE_BOOL;
+	case CDSL_EXPR_STRING:
+		return CDSL_TYPE_STRING;
+	case CDSL_EXPR_DATE:
+		return CDSL_TYPE_DATE;
+	case CDSL_EXPR_LONG:
+		return CDSL_TYPE_LONG;
+	case CDSL_EXPR_ID: {
+		if (schema) {
+			for (cdsl_var_schema_t* v = schema->vars; v; v = v->next) {
+				if (strcmp(v->name, expr->data.id_val) == 0) {
+					return v->type;
+				}
+			}
+		}
+		return CDSL_TYPE_INT;
+	}
+	default:
+		return CDSL_TYPE_VOID;
+	}
+}
+
 static void
 codegen_expr(cdsl_strbuf_t* sb,
 	     cdsl_expr_node_t* expr,
@@ -95,6 +129,19 @@ codegen_expr(cdsl_strbuf_t* sb,
 	case CDSL_EXPR_LONG:
 		cdsl_strbuf_printf(sb, "%ldL", (long)expr->data.long_val);
 		break;
+	case CDSL_EXPR_ARRAY: {
+		cdsl_strbuf_printf(sb, "{");
+		int first = 1;
+		for (cdsl_arg_node_t* a = expr->data.array.elements; a; a = a->next) {
+			if (!first) {
+				cdsl_strbuf_printf(sb, ", ");
+			}
+			first = 0;
+			codegen_expr(sb, a->expr, schema, indent);
+		}
+		cdsl_strbuf_printf(sb, "}");
+		break;
+	}
 	case CDSL_EXPR_ID: {
 		cdsl_type_t t = CDSL_TYPE_INT;
 		if (schema) {
@@ -115,11 +162,30 @@ codegen_expr(cdsl_strbuf_t* sb,
 		break;
 	}
 	case CDSL_EXPR_BINARY: {
+		cdsl_type_t lt = expr_get_type(expr->data.binary.left, schema);
+		cdsl_type_t rt = expr_get_type(expr->data.binary.right, schema);
+		int is_str = (lt == CDSL_TYPE_STRING || rt == CDSL_TYPE_STRING);
+		cdsl_op_t op = expr->data.binary.op;
+		if (is_str && (op == CDSL_OP_EQ || op == CDSL_OP_NE || op == CDSL_OP_LT ||
+			       op == CDSL_OP_GT || op == CDSL_OP_LE || op == CDSL_OP_GE)) {
+			const char* cmp_op = (op == CDSL_OP_EQ)	  ? "=="
+					     : (op == CDSL_OP_NE) ? "!="
+					     : (op == CDSL_OP_LT) ? "<"
+					     : (op == CDSL_OP_GT) ? ">"
+					     : (op == CDSL_OP_LE) ? "<="
+								  : ">=";
+			cdsl_strbuf_printf(sb, "(strcmp(");
+			codegen_expr(sb, expr->data.binary.left, schema, indent);
+			cdsl_strbuf_printf(sb, ", ");
+			codegen_expr(sb, expr->data.binary.right, schema, indent);
+			cdsl_strbuf_printf(sb, ") %s 0)", cmp_op);
+			break;
+		}
 		cdsl_strbuf_printf(sb, "(");
 		codegen_expr(sb, expr->data.binary.left, schema, indent);
 		const char* ops[] = {
 		    "==", "!=", "<", ">", "<=", ">=", "&&", "||", "!", "+", "-", "*", "/", "-"};
-		int op_idx = (int)expr->data.binary.op;
+		int op_idx = (int)op;
 		const char* op_str =
 		    (op_idx >= 0 && op_idx <= (int)CDSL_OP_NEG) ? ops[op_idx] : "?";
 		cdsl_strbuf_printf(sb, " %s ", op_str);
@@ -145,24 +211,50 @@ codegen_expr(cdsl_strbuf_t* sb,
 }
 
 static void
-codegen_action(cdsl_strbuf_t* sb,
-	       cdsl_action_node_t* action,
-	       const cdsl_schema_t* schema,
-	       const char* indent)
+codegen_simple_action(cdsl_strbuf_t* sb,
+		      cdsl_action_node_t* action,
+		      const cdsl_schema_t* schema,
+		      const char* indent)
 {
 	if (!action) {
 		return;
 	}
-	cdsl_strbuf_printf(sb, "%saction_%s(", indent, action->action_name);
-	int first = 1;
-	for (cdsl_arg_node_t* a = action->args; a; a = a->next) {
-		if (!first) {
-			cdsl_strbuf_printf(sb, ", ");
+	if (action->args) {
+		cdsl_strbuf_printf(sb, "%s/* action %s(", indent, action->action_name);
+		int first = 1;
+		for (cdsl_arg_node_t* a = action->args; a; a = a->next) {
+			if (!first) {
+				cdsl_strbuf_printf(sb, ", ");
+			}
+			first = 0;
+			codegen_expr(sb, a->expr, schema, indent);
 		}
-		first = 0;
-		codegen_expr(sb, a->expr, schema, indent);
+		cdsl_strbuf_printf(sb, ") */\n");
 	}
-	cdsl_strbuf_printf(sb, ");\n");
+	cdsl_strbuf_printf(sb, "%sif (action) action(\"%s\", ud);\n", indent, action->action_name);
+}
+
+static void
+codegen_metric_action(cdsl_strbuf_t* sb, cdsl_action_node_t* action, const char* indent)
+{
+	if (!action) {
+		return;
+	}
+	const char* reason = "";
+	if (action->args && action->args->next && action->args->next->expr &&
+	    action->args->next->expr->type == CDSL_EXPR_STRING &&
+	    action->args->next->expr->data.string_val) {
+		reason = action->args->next->expr->data.string_val;
+	} else if (action->args && action->args->expr &&
+		   action->args->expr->type == CDSL_EXPR_STRING &&
+		   action->args->expr->data.string_val) {
+		reason = action->args->expr->data.string_val;
+	}
+	cdsl_strbuf_printf(sb,
+			   "%sif (action) action(\"%s\", 0, \"%s\", ud);\n",
+			   indent,
+			   action->action_name,
+			   reason);
 }
 
 char*
@@ -174,8 +266,19 @@ cdsl_codegen_rule_to_c(const cdsl_rule_t* rule, const cdsl_schema_t* schema)
 	cdsl_strbuf_t sb;
 	cdsl_strbuf_init(&sb, 4096);
 	const char* rname = rule->name ? rule->name : "unnamed_rule";
+	char safe_rname[256];
+	sanitize_identifier(safe_rname, sizeof(safe_rname), rname);
 	cdsl_strbuf_printf(&sb, "/* Auto-generated C code from DSL rule: %s */\n", rname);
-	cdsl_strbuf_printf(&sb, "#include <stdio.h>\n#include <string.h>\n\n");
+	cdsl_strbuf_printf(&sb,
+			   "#include <stdio.h>\n#include <string.h>\n\n"
+			   "#ifndef CDSL_GETTER_DECLS\n"
+			   "#define CDSL_GETTER_DECLS\n"
+			   "extern double get_float(void* ctx, const char* name);\n"
+			   "extern int get_bool(void* ctx, const char* name);\n"
+			   "extern const char* get_string(void* ctx, const char* name);\n"
+			   "extern long get_date(void* ctx, const char* name);\n"
+			   "extern long get_long(void* ctx, const char* name);\n"
+			   "#endif\n\n");
 	if (rule->metrics) {
 		const char* p_thresh = cdsl_meta_get(rule->meta_list, "pass_threshold");
 		const char* pa_thresh = cdsl_meta_get(rule->meta_list, "partial_threshold");
@@ -187,13 +290,16 @@ cdsl_codegen_rule_to_c(const cdsl_rule_t* rule, const cdsl_schema_t* schema)
 				   "int cdsl_eval_rule_%s(int (*get_int)(void* ctx, const char* "
 				   "name), void (*action)(const char* name, int score, const char* "
 				   "reason, void* ud), void* ctx, void* ud) {\n",
-				   rule->name);
+				   safe_rname);
 		cdsl_strbuf_printf(&sb, "    int total_score = 0;\n");
 		for (cdsl_metric_node_t* m = rule->metrics; m; m = m->next) {
 			const char* w_meta = cdsl_meta_get(m->meta_list, "weight");
 			int weight = safe_atoi(w_meta, 0);
 			const char* c_meta = cdsl_meta_get(m->meta_list, "is_critical");
 			int critical = (strcmp(c_meta ? c_meta : "false", "true") == 0);
+			char safe_mname[256];
+			sanitize_identifier(
+			    safe_mname, sizeof(safe_mname), m->name ? m->name : "unnamed_metric");
 			cdsl_strbuf_printf(&sb,
 					   "    /* Metric: %s (weight=%d%s) */\n",
 					   m->name,
@@ -212,26 +318,60 @@ cdsl_codegen_rule_to_c(const cdsl_rule_t* rule, const cdsl_schema_t* schema)
 							     schema,
 							     "            ");
 						cdsl_strbuf_printf(&sb, ";\n");
+					} else if (strcmp(c->action->action_name, "fail_metric") ==
+						   0) {
+						const char* reason = "default";
+						if (c->action->args && c->action->args->next &&
+						    c->action->args->next->expr &&
+						    c->action->args->next->expr->type ==
+							CDSL_EXPR_STRING &&
+						    c->action->args->next->expr->data.string_val) {
+							reason = c->action->args->next->expr->data
+								     .string_val;
+						}
+						cdsl_strbuf_printf(
+						    &sb,
+						    "        if (action) action(\"fail_metric\", "
+						    "0, \"%s\", ud);\n",
+						    reason);
 					} else {
-						codegen_action(&sb, c->action, schema, "        ");
+						codegen_metric_action(&sb, c->action, "        ");
 					}
 				}
 				cdsl_strbuf_printf(
-				    &sb, "        goto next_metric_%s;\n    }\n", m->name);
+				    &sb, "        goto next_metric_%s;\n    }\n", safe_mname);
 			}
 			if (m->default_action) {
 				if (strcmp(m->default_action->action_name, "fail_metric") == 0) {
+					const char* reason = "default";
+					if (m->default_action->args &&
+					    m->default_action->args->next &&
+					    m->default_action->args->next->expr &&
+					    m->default_action->args->next->expr->type ==
+						CDSL_EXPR_STRING &&
+					    m->default_action->args->next->expr->data.string_val) {
+						reason = m->default_action->args->next->expr->data
+							     .string_val;
+					}
 					cdsl_strbuf_printf(
 					    &sb,
-					    "    action(\"fail_metric\", 0, \"default\", ud);\n");
+					    "    if (action) action(\"fail_metric\", 0, \"%s\", "
+					    "ud);\n",
+					    reason);
 					if (critical) {
 						cdsl_strbuf_printf(&sb, "    return -1;\n");
 					}
+				} else if (strcmp(m->default_action->action_name, "score") == 0 &&
+					   m->default_action->args) {
+					cdsl_strbuf_printf(&sb, "    total_score += ");
+					codegen_expr(
+					    &sb, m->default_action->args->expr, schema, "    ");
+					cdsl_strbuf_printf(&sb, ";\n");
 				} else {
-					codegen_action(&sb, m->default_action, schema, "    ");
+					codegen_metric_action(&sb, m->default_action, "    ");
 				}
 			}
-			cdsl_strbuf_printf(&sb, "    next_metric_%s: ;\n", m->name);
+			cdsl_strbuf_printf(&sb, "    next_metric_%s: ;\n", safe_mname);
 		}
 		cdsl_strbuf_printf(&sb, "    return total_score;\n}\n");
 	} else {
@@ -239,11 +379,11 @@ cdsl_codegen_rule_to_c(const cdsl_rule_t* rule, const cdsl_schema_t* schema)
 		    &sb,
 		    "int cdsl_eval_rule_%s(int (*get_int)(void* ctx, const char* name), void "
 		    "(*action)(const char* name, void* ud), void* ctx, void* ud) {\n",
-		    rule->name);
+		    safe_rname);
 		cdsl_strbuf_printf(&sb, "    if (");
 		codegen_expr(&sb, rule->when_expr, schema, "        ");
 		cdsl_strbuf_printf(&sb, ") {\n");
-		codegen_action(&sb, rule->then_action, schema, "        ");
+		codegen_simple_action(&sb, rule->then_action, schema, "        ");
 		cdsl_strbuf_printf(&sb, "        return 0;\n    }\n    return 1;\n}\n");
 	}
 	char* result = sb.buf;
@@ -289,19 +429,22 @@ cdsl_codegen_ruleset_to_h(const cdsl_ruleset_t* set,
 	}
 	cdsl_strbuf_printf(&sb, "#ifndef %s\n#define %s\n\n", guard, guard);
 	for (cdsl_ruleset_entry_t* e = set->entries; e; e = e->next) {
+		char safe_rname[256];
+		sanitize_identifier(
+		    safe_rname, sizeof(safe_rname), e->rule->name ? e->rule->name : "unnamed_rule");
 		if (e->rule->metrics) {
 			cdsl_strbuf_printf(
 			    &sb,
 			    "int cdsl_eval_rule_%s(int (*get_int)(void* ctx, const char* name), "
 			    "void (*action)(const char* name, int score, const char* reason, void* "
 			    "ud), void* ctx, void* ud);\n\n",
-			    e->rule->name);
+			    safe_rname);
 		} else {
 			cdsl_strbuf_printf(
 			    &sb,
 			    "int cdsl_eval_rule_%s(int (*get_int)(void* ctx, const char* name), "
 			    "void (*action)(const char* name, void* ud), void* ctx, void* ud);\n\n",
-			    e->rule->name);
+			    safe_rname);
 		}
 	}
 	cdsl_strbuf_printf(&sb,
@@ -321,8 +464,17 @@ cdsl_codegen_ruleset_to_c(const cdsl_ruleset_t* set,
 	}
 	cdsl_strbuf_t sb;
 	cdsl_strbuf_init(&sb, 8192);
-	cdsl_strbuf_printf(
-	    &sb, "#include \"%s.h\"\n#include <stdio.h>\n#include <string.h>\n\n", module_name);
+	cdsl_strbuf_printf(&sb,
+			   "#include \"%s.h\"\n#include <stdio.h>\n#include <string.h>\n\n"
+			   "#ifndef CDSL_GETTER_DECLS\n"
+			   "#define CDSL_GETTER_DECLS\n"
+			   "extern double get_float(void* ctx, const char* name);\n"
+			   "extern int get_bool(void* ctx, const char* name);\n"
+			   "extern const char* get_string(void* ctx, const char* name);\n"
+			   "extern long get_date(void* ctx, const char* name);\n"
+			   "extern long get_long(void* ctx, const char* name);\n"
+			   "#endif\n\n",
+			   module_name);
 	for (cdsl_ruleset_entry_t* e = set->entries; e; e = e->next) {
 		char* rule_c = cdsl_codegen_rule_to_c(e->rule, schema);
 		if (rule_c) {
@@ -338,16 +490,19 @@ cdsl_codegen_ruleset_to_c(const cdsl_ruleset_t* set,
 			   "void* ctx, void* ud) {\n    int total_score = 0, res;\n",
 			   module_name);
 	for (cdsl_ruleset_entry_t* e = set->entries; e; e = e->next) {
+		char safe_rname[256];
+		sanitize_identifier(
+		    safe_rname, sizeof(safe_rname), e->rule->name ? e->rule->name : "unnamed_rule");
 		if (e->rule->metrics) {
 			cdsl_strbuf_printf(&sb,
 					   "    res = cdsl_eval_rule_%s(get_int, NULL, ctx, ud);\n "
 					   "   if (res < 0) return -1;\n    total_score += res;\n",
-					   e->rule->name);
+					   safe_rname);
 		} else {
 			cdsl_strbuf_printf(&sb,
 					   "    res = cdsl_eval_rule_%s(get_int, NULL, ctx, ud);\n "
 					   "   if (res == 0) return -1;\n",
-					   e->rule->name);
+					   safe_rname);
 		}
 	}
 	cdsl_strbuf_printf(&sb, "    return total_score;\n}\n");

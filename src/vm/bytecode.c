@@ -1347,6 +1347,7 @@ bc_run_instructions(cdsl_vm_t* vm,
 			CDSL_RWLOCK_UNLOCK_RD(&vm->rwlock);
 
 			if (target_cb) {
+				CDSL_ATOMIC_FETCH_ADD(&vm->stats.total_actions_triggered, 1);
 				target_cb(act_name, arg_list, vm->user_data);
 			}
 
@@ -1499,10 +1500,8 @@ bc_finalize_simple_rule_report(cdsl_rule_report_t* report, const cdsl_bytecode_t
 		return;
 	}
 	cdsl_metric_result_t* m = &report->metrics[0];
-	m->metric_name =
-	    strdup(bc && bc->rule_name && bc->rule_name[0] ? bc->rule_name : "condition");
-	m->description = strdup(bc && bc->description && bc->description[0] ? bc->description
-									    : "WHEN condition");
+	m->metric_name = strdup(bc && bc->rule_name ? bc->rule_name : "");
+	m->description = strdup(bc && bc->description ? bc->description : "");
 	m->max_weight = 100;
 	m->score_obtained = when_true ? 0 : 100;
 	m->is_passed = when_true ? 0 : 1;
@@ -1589,9 +1588,12 @@ bc_rule_metric_handler(bc_metric_event_t event,
 cdsl_rule_report_t*
 cdsl_bytecode_execute_rule(cdsl_vm_t* vm, const cdsl_bytecode_t* bc, cdsl_context_t* ctx)
 {
-	if (!vm || !bc || !bc->code) {
+	if (!vm || !bc || !bc->code || !ctx) {
 		return NULL;
 	}
+
+	double t0 = cdsl_get_time_us_internal();
+	CDSL_ATOMIC_STORE(&vm->error_state, 0);
 
 	cdsl_rule_report_t* report = calloc(1, sizeof(*report));
 	if (!report) {
@@ -1605,23 +1607,35 @@ cdsl_bytecode_execute_rule(cdsl_vm_t* vm, const cdsl_bytecode_t* bc, cdsl_contex
 	cdsl_value_t out_result = {.type = CDSL_TYPE_VOID};
 	bc_run_instructions(vm, bc, ctx, bc_rule_metric_handler, &state, &out_result);
 
-	/* For simple (WHEN/THEN) rules, no metric instruction is emitted and
-	   the final BC_RET value is the WHEN condition result. Build a report
-	   from it when no metric was recorded. */
-	if (report->metric_count == 0 && out_result.type == CDSL_TYPE_BOOL) {
+	/* Check if aborted (instruction quota, timeout, etc.) */
+	if (CDSL_ATOMIC_LOAD(&vm->error_state)) {
+		report->status = CDSL_STATUS_ERROR;
+		if (vm->last_error) {
+			report->error = cdsl_error_create(vm->last_error->kind,
+							  vm->last_error->line,
+							  vm->last_error->column,
+							  vm->last_error->message,
+							  vm->last_error->hint);
+			cdsl_error_free(vm->last_error);
+			vm->last_error = NULL;
+		}
+		cdsl_value_free(&out_result);
+	} else if (report->metric_count == 0 && out_result.type == CDSL_TYPE_BOOL) {
+		/* For simple (WHEN/THEN) rules, no metric instruction is emitted and
+		   the final BC_RET value is the WHEN condition result. Build a report
+		   from it when no metric was recorded. */
 		int when_true = out_result.data.bool_val;
 		bc_finalize_simple_rule_report(report, bc, when_true);
 		cdsl_value_free(&out_result);
-		return report;
 	} else if (report->metric_count == 0) {
 		/* No metric and no boolean WHEN result (should not happen for
 		   well-formed rules); mark as ERROR. */
 		report->status = CDSL_STATUS_ERROR;
-	}
-	cdsl_value_free(&out_result);
+		cdsl_value_free(&out_result);
+	} else {
+		cdsl_value_free(&out_result);
 
-	/* Finalize metric rule report status */
-	if (report->metric_count > 0 && report->status != CDSL_STATUS_ERROR) {
+		/* Finalize metric rule report status */
 		int total_max = 0, total_obtained = 0;
 		int any_critical_failed = 0;
 		for (int i = 0; i < report->metric_count; i++) {
@@ -1677,6 +1691,17 @@ cdsl_bytecode_execute_rule(cdsl_vm_t* vm, const cdsl_bytecode_t* bc, cdsl_contex
 		}
 		report->decision_summary = strdup(buf);
 	}
+
+	double elapsed = cdsl_get_time_us_internal() - t0;
+	CDSL_RWLOCK_WRLOCK(&vm->rwlock);
+	vm->stats.total_executions++;
+	vm->stats.total_rules_executed++;
+	vm->stats.total_time_us += elapsed;
+	if (report) {
+		vm->stats.total_metrics_evaluated += report->metric_count;
+	}
+	CDSL_RWLOCK_UNLOCK_WR(&vm->rwlock);
+
 	return report;
 }
 

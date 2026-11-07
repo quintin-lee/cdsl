@@ -519,6 +519,77 @@ test_codegen_arithmetic_and_escapes(void)
 	TEST_CODEGEN_END();
 }
 
+// Test 13: Verify generated C code compiles cleanly with system C compiler
+static void
+test_codegen_compilation(void)
+{
+	TEST_CODEGEN_BEGIN("Codegen output compiles cleanly with C compiler");
+
+#if defined(__unix__) || defined(__APPLE__)
+	cdsl_schema_t* schema = cdsl_schema_create();
+	cdsl_schema_register_var(schema, "user.age", CDSL_TYPE_INT);
+	cdsl_schema_register_var(schema, "user.name", CDSL_TYPE_STRING);
+	cdsl_schema_register_var(schema, "user.score", CDSL_TYPE_FLOAT);
+	cdsl_schema_register_action(schema, "block", CDSL_TYPE_VOID, 1, CDSL_TYPE_STRING);
+	cdsl_schema_register_action(schema, "score", CDSL_TYPE_VOID, 1, CDSL_TYPE_INT);
+	cdsl_schema_register_action(
+	    schema, "fail_metric", CDSL_TYPE_VOID, 2, CDSL_TYPE_INT, CDSL_TYPE_STRING);
+
+	// 1. Simple rule with string comparison and action
+	const char* dsl1 = "RULE check_user_age { WHEN user.age >= 18 && user.name == \"Alice\" "
+			   "THEN block(\"adult\") }";
+	cdsl_rule_t* r1 = cdsl_parse_string(dsl1, NULL);
+	TEST_ASSERT_NOT_NULL(r1, "Rule 1 should parse");
+
+	// 2. Metric rule with critical metric and fail_metric
+	const char* dsl2 = "RULE scoring_audit {"
+			   "  META { pass_threshold = \"80\" partial_threshold = \"50\" }"
+			   "  METRIC age_metric {"
+			   "    META { weight = \"50\" is_critical = \"true\" }"
+			   "    CASE user.age >= 18 THEN score(50)"
+			   "    DEFAULT fail_metric(0, \"too_young\")"
+			   "  }"
+			   "  METRIC score_metric {"
+			   "    META { weight = \"50\" }"
+			   "    CASE user.score >= 80.0 THEN score(50)"
+			   "    DEFAULT score(0)"
+			   "  }"
+			   "}";
+	cdsl_rule_t* r2 = cdsl_parse_string(dsl2, NULL);
+	TEST_ASSERT_NOT_NULL(r2, "Rule 2 should parse");
+
+	cdsl_ruleset_t* set = cdsl_ruleset_create();
+	cdsl_ruleset_add(set, r1, 1);
+	cdsl_ruleset_add(set, r2, 2);
+
+	const char* base_path = "/tmp/test_codegen_full";
+	int ok = cdsl_codegen_ruleset_to_files(set, schema, base_path);
+	TEST_ASSERT(ok == 1, "Ruleset files should be generated");
+
+	char compile_cmd[512];
+	snprintf(compile_cmd,
+		 sizeof(compile_cmd),
+		 "cc -Wall -Wextra -Werror -I/tmp -c %s.c -o %s.o >/dev/null 2>&1",
+		 base_path,
+		 base_path);
+	int status = system(compile_cmd);
+	TEST_ASSERT_INT(status, 0, "Generated C code must compile cleanly with -Werror");
+
+	char file_h[512], file_c[512], file_o[512];
+	snprintf(file_h, sizeof(file_h), "%s.h", base_path);
+	snprintf(file_c, sizeof(file_c), "%s.c", base_path);
+	snprintf(file_o, sizeof(file_o), "%s.o", base_path);
+	remove(file_h);
+	remove(file_c);
+	remove(file_o);
+
+	cdsl_ruleset_free(set);
+	cdsl_schema_free(schema);
+#endif
+
+	TEST_CODEGEN_END();
+}
+
 int
 main()
 {
@@ -537,6 +608,7 @@ main()
 	test_codegen_complex_expressions();
 	test_ruleset_codegen();
 	test_codegen_arithmetic_and_escapes();
+	test_codegen_compilation();
 
 	TEST_SUMMARY();
 	TEST_EXIT();
