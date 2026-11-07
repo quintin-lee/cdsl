@@ -81,8 +81,8 @@ void
 test_ast_create_meta(void)
 {
 	TEST_BEGIN("create meta list");
-	cdsl_meta_item_t* m1 = cdsl_create_meta_item(strdup("key1"), strdup("val1"));
-	cdsl_meta_item_t* m2 = cdsl_create_meta_item(strdup("key2"), strdup("val2"));
+	cdsl_meta_item_t* m1 = cdsl_create_meta_item("key1", "val1");
+	cdsl_meta_item_t* m2 = cdsl_create_meta_item("key2", "val2");
 	cdsl_meta_item_t* list = cdsl_append_meta(m1, m2);
 	TEST_ASSERT_NOT_NULL(list, "list not null");
 	TEST_ASSERT_STR(cdsl_meta_get(list, "key1"), "val1", "find key1");
@@ -99,7 +99,7 @@ void
 test_ast_create_rule(void)
 {
 	TEST_BEGIN("create simple rule");
-	cdsl_meta_item_t* meta = cdsl_create_meta_item(strdup("description"), strdup("test rule"));
+	cdsl_meta_item_t* meta = cdsl_create_meta_item("description", "test rule");
 	cdsl_expr_node_t* when = cdsl_create_expr_bool(1, 0, 0);
 	cdsl_action_node_t* then = cdsl_create_action(strdup("block"), NULL, 0, 0);
 	cdsl_rule_t* rule = cdsl_create_simple_rule(strdup("test_rule"), meta, when, then, 0, 0);
@@ -191,6 +191,78 @@ test_ast_operator_and_type_contracts(void)
 	TEST_ASSERT_STR(cdsl_type_name(CDSL_TYPE_VOID), "VOID", "type VOID");
 	TEST_ASSERT_STR(cdsl_type_name((cdsl_type_t)999), "UNKNOWN", "invalid type UNKNOWN");
 
+	/* Unified operator descriptor table */
+	const cdsl_op_desc_t* desc_eq = cdsl_op_get_desc(CDSL_OP_EQ);
+	TEST_ASSERT(desc_eq != NULL, "desc EQ exists");
+	TEST_ASSERT_INT(desc_eq->op, CDSL_OP_EQ, "desc EQ op matches");
+	TEST_ASSERT_STR(desc_eq->c_symbol, "==", "desc EQ c_symbol");
+	TEST_ASSERT_STR(desc_eq->name, "==", "desc EQ name");
+	TEST_ASSERT_INT(desc_eq->arity, 2, "desc EQ arity");
+	TEST_ASSERT_INT(desc_eq->is_relational, 1, "desc EQ is_relational");
+	TEST_ASSERT_INT(desc_eq->is_arithmetic, 0, "desc EQ is_arithmetic");
+	TEST_ASSERT_INT(desc_eq->is_logical, 0, "desc EQ is_logical");
+
+	const cdsl_op_desc_t* desc_not = cdsl_op_get_desc(CDSL_OP_NOT);
+	TEST_ASSERT(desc_not != NULL, "desc NOT exists");
+	TEST_ASSERT_STR(desc_not->c_symbol, "!", "desc NOT c_symbol");
+	TEST_ASSERT_STR(desc_not->name, "NOT", "desc NOT name");
+	TEST_ASSERT_INT(desc_not->arity, 1, "desc NOT arity");
+	TEST_ASSERT_INT(desc_not->is_logical, 1, "desc NOT is_logical");
+
+	const cdsl_op_desc_t* desc_add = cdsl_op_get_desc(CDSL_OP_ADD);
+	TEST_ASSERT(desc_add != NULL, "desc ADD exists");
+	TEST_ASSERT_STR(desc_add->c_symbol, "+", "desc ADD c_symbol");
+	TEST_ASSERT_INT(desc_add->arity, 2, "desc ADD arity");
+	TEST_ASSERT_INT(desc_add->is_arithmetic, 1, "desc ADD is_arithmetic");
+
+	/* Out-of-bounds operator query */
+	TEST_ASSERT(cdsl_op_get_desc((cdsl_op_t)-1) == NULL, "negative op returns NULL");
+	TEST_ASSERT(cdsl_op_get_desc((cdsl_op_t)CDSL_OP_COUNT) == NULL,
+		    "CDSL_OP_COUNT returns NULL");
+	TEST_ASSERT(cdsl_op_get_desc((cdsl_op_t)999) == NULL, "invalid op 999 returns NULL");
+
+	TEST_END();
+}
+
+/**
+ * @brief Test metadata value semantics and append convenience helper.
+ */
+static void
+test_meta_value_semantics(void)
+{
+	TEST_BEGIN("meta value semantics and append helper");
+
+	/* Test 1: string literal safety with cdsl_create_meta_item and cdsl_free_meta */
+	cdsl_meta_item_t* item = cdsl_create_meta_item("version", "1.0.0");
+	TEST_ASSERT(item != NULL, "item created from literals");
+	TEST_ASSERT_STR(item->key, "version", "item key matches");
+	TEST_ASSERT_STR(item->value, "1.0.0", "item value matches");
+	TEST_ASSERT(item->next == NULL, "item next is NULL");
+	cdsl_free_meta(item);
+
+	/* Test 2: NULL safety */
+	TEST_ASSERT(cdsl_create_meta_item(NULL, "val") == NULL, "NULL key returns NULL");
+	TEST_ASSERT(cdsl_create_meta_item("key", NULL) == NULL, "NULL value returns NULL");
+	TEST_ASSERT(cdsl_create_meta_item(NULL, NULL) == NULL, "both NULL returns NULL");
+
+	/* Test 3: cdsl_append_meta_kv convenience helper */
+	cdsl_meta_item_t* list = NULL;
+	list = cdsl_append_meta_kv(list, "k1", "v1");
+	TEST_ASSERT(list != NULL, "list created by helper");
+	TEST_ASSERT_STR(list->key, "k1", "first item key");
+	TEST_ASSERT_STR(list->value, "v1", "first item value");
+
+	list = cdsl_append_meta_kv(list, "k2", "v2");
+	TEST_ASSERT(list->next != NULL, "second item appended");
+	TEST_ASSERT_STR(list->next->key, "k2", "second item key");
+	TEST_ASSERT_STR(list->next->value, "v2", "second item value");
+
+	/* Appending with invalid params does not break list */
+	list = cdsl_append_meta_kv(list, NULL, "v3");
+	TEST_ASSERT(list->next->next == NULL, "invalid append preserves list");
+
+	cdsl_free_meta(list);
+
 	TEST_END();
 }
 
@@ -213,6 +285,7 @@ main(void)
 	test_ast_create_rule();
 	test_ast_parse_limit();
 	test_ast_operator_and_type_contracts();
+	test_meta_value_semantics();
 
 	TEST_SUMMARY();
 	TEST_EXIT();

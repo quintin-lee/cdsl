@@ -63,6 +63,21 @@ typedef enum {
 	CDSL_OP_NEG  /**< Unary negation (-expr) */
 } cdsl_op_t;
 
+#define CDSL_OP_COUNT 14
+
+/**
+ * @brief 算子元数据集中描述符结构体
+ */
+typedef struct cdsl_op_desc {
+	cdsl_op_t op;	      /**< 算子枚举常量 */
+	const char* c_symbol; /**< 对应的 C 代码运算符（如 "==", "&&", "!", "+", "-"） */
+	const char* name;     /**< 算子友好名称（如 "==", "AND", "OR", "NOT", "NEG"） */
+	int arity;	      /**< 算子目数：1 为一元算子，2 为二元算子 */
+	bool is_relational;   /**< 是否为关系比较算子 (==, !=, <, >, <=, >=) */
+	bool is_arithmetic;   /**< 是否为二元算术算子 (+, -, *, /) */
+	bool is_logical;      /**< 是否为逻辑算子 (AND, OR, NOT) */
+} cdsl_op_desc_t;
+
 /**
  * @brief Expression node types in the AST.
  *
@@ -386,12 +401,21 @@ cdsl_action_node_t* cdsl_create_action(char* name, cdsl_arg_node_t* args, int li
 /** @{ */
 
 /**
- * @brief Create a single metadata key-value item.
- * @param key Metadata key (ownership transferred)
- * @param value Metadata value (ownership transferred)
- * @return Newly allocated metadata item
+ * @brief 创建元数据项（内部始终执行深拷贝，调用方保留入参所有权）
+ * @param key 键名字符串（支持字面量或堆内存，允许只读）
+ * @param value 键值字符串（支持字面量或堆内存，允许只读）
+ * @return 新分配的元数据项指针，入参非法或 OOM 时返回 NULL
  */
-cdsl_meta_item_t* cdsl_create_meta_item(char* key, char* value);
+cdsl_meta_item_t* cdsl_create_meta_item(const char* key, const char* value);
+
+/**
+ * @brief 创建元数据项并直接追加至列表末尾的便捷助手函数
+ * @param list 现有元数据链表头指针（允许为 NULL）
+ * @param key 键名
+ * @param value 键值
+ * @return 更新后的元数据链表头指针
+ */
+cdsl_meta_item_t* cdsl_append_meta_kv(cdsl_meta_item_t* list, const char* key, const char* value);
 
 /**
  * @brief Append a metadata item to a list.
@@ -579,6 +603,13 @@ void cdsl_template_clear(void);
 
 /** @name Operator and Type Queries */
 /** @{ */
+/**
+ * @brief 获取算子对应的只读描述符
+ * @param op 算子枚举
+ * @return 描述符常量指针；若枚举非法越界则返回 NULL
+ */
+const cdsl_op_desc_t* cdsl_op_get_desc(cdsl_op_t op);
+
 /**
  * @brief 判断算子是否为关系/比较算子 (==, !=, <, >, <=, >=)
  */

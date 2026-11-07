@@ -283,24 +283,42 @@ cdsl_create_action(char* name, cdsl_arg_node_t* args, int line, int column)
 }
 
 cdsl_meta_item_t*
-cdsl_create_meta_item(char* key, char* value)
+cdsl_create_meta_item(const char* key, const char* value)
 {
+	if (!key || !value) {
+		return NULL;
+	}
 	cdsl_meta_item_t* m = ast_alloc(sizeof(*m));
 	if (!m) {
-		free(key);
-		free(value);
 		return NULL;
 	}
 	if (current_ast_arena) {
 		m->key = cdsl_arena_strdup(current_ast_arena, key);
 		m->value = cdsl_arena_strdup(current_ast_arena, value);
-		free(key);
-		free(value);
 	} else {
-		m->key = key;
-		m->value = value;
+		m->key = strdup(key);
+		m->value = strdup(value);
 	}
+	if (!m->key || !m->value) {
+		if (!current_ast_arena) {
+			free(m->key);
+			free(m->value);
+			free(m);
+		}
+		return NULL;
+	}
+	m->next = NULL;
 	return m;
+}
+
+cdsl_meta_item_t*
+cdsl_append_meta_kv(cdsl_meta_item_t* list, const char* key, const char* value)
+{
+	cdsl_meta_item_t* item = cdsl_create_meta_item(key, value);
+	if (!item) {
+		return list;
+	}
+	return cdsl_append_meta(list, item);
 }
 
 cdsl_meta_item_t*
@@ -605,174 +623,75 @@ cdsl_free_rule(cdsl_rule_t* rule)
 	free(rule);
 }
 
+static const cdsl_op_desc_t s_op_table[] = {
+    [CDSL_OP_EQ] = {CDSL_OP_EQ, "==", "==", 2, true, false, false},
+    [CDSL_OP_NE] = {CDSL_OP_NE, "!=", "!=", 2, true, false, false},
+    [CDSL_OP_LT] = {CDSL_OP_LT, "<", "<", 2, true, false, false},
+    [CDSL_OP_GT] = {CDSL_OP_GT, ">", ">", 2, true, false, false},
+    [CDSL_OP_LE] = {CDSL_OP_LE, "<=", "<=", 2, true, false, false},
+    [CDSL_OP_GE] = {CDSL_OP_GE, ">=", ">=", 2, true, false, false},
+    [CDSL_OP_AND] = {CDSL_OP_AND, "&&", "AND", 2, false, false, true},
+    [CDSL_OP_OR] = {CDSL_OP_OR, "||", "OR", 2, false, false, true},
+    [CDSL_OP_NOT] = {CDSL_OP_NOT, "!", "NOT", 1, false, false, true},
+    [CDSL_OP_ADD] = {CDSL_OP_ADD, "+", "+", 2, false, true, false},
+    [CDSL_OP_SUB] = {CDSL_OP_SUB, "-", "-", 2, false, true, false},
+    [CDSL_OP_MUL] = {CDSL_OP_MUL, "*", "*", 2, false, true, false},
+    [CDSL_OP_DIV] = {CDSL_OP_DIV, "/", "/", 2, false, true, false},
+    [CDSL_OP_NEG] = {CDSL_OP_NEG, "-", "NEG", 1, false, false, false},
+};
+
+_Static_assert(sizeof(s_op_table) / sizeof(s_op_table[0]) == CDSL_OP_COUNT,
+	       "Operator table size must match CDSL_OP_COUNT");
+
+const cdsl_op_desc_t*
+cdsl_op_get_desc(cdsl_op_t op)
+{
+	if ((int)op >= 0 && (int)op < CDSL_OP_COUNT) {
+		return &s_op_table[op];
+	}
+	return NULL;
+}
+
 bool
 cdsl_op_is_relational(cdsl_op_t op)
 {
-	switch (op) {
-	case CDSL_OP_EQ:
-	case CDSL_OP_NE:
-	case CDSL_OP_LT:
-	case CDSL_OP_GT:
-	case CDSL_OP_LE:
-	case CDSL_OP_GE:
-		return true;
-	case CDSL_OP_AND:
-	case CDSL_OP_OR:
-	case CDSL_OP_NOT:
-	case CDSL_OP_ADD:
-	case CDSL_OP_SUB:
-	case CDSL_OP_MUL:
-	case CDSL_OP_DIV:
-	case CDSL_OP_NEG:
-	default:
-		return false;
-	}
+	const cdsl_op_desc_t* d = cdsl_op_get_desc(op);
+	return d ? d->is_relational : false;
 }
 
 bool
 cdsl_op_is_arithmetic(cdsl_op_t op)
 {
-	switch (op) {
-	case CDSL_OP_ADD:
-	case CDSL_OP_SUB:
-	case CDSL_OP_MUL:
-	case CDSL_OP_DIV:
-		return true;
-	case CDSL_OP_EQ:
-	case CDSL_OP_NE:
-	case CDSL_OP_LT:
-	case CDSL_OP_GT:
-	case CDSL_OP_LE:
-	case CDSL_OP_GE:
-	case CDSL_OP_AND:
-	case CDSL_OP_OR:
-	case CDSL_OP_NOT:
-	case CDSL_OP_NEG:
-	default:
-		return false;
-	}
+	const cdsl_op_desc_t* d = cdsl_op_get_desc(op);
+	return d ? d->is_arithmetic : false;
 }
 
 bool
 cdsl_op_is_logical_binary(cdsl_op_t op)
 {
-	switch (op) {
-	case CDSL_OP_AND:
-	case CDSL_OP_OR:
-		return true;
-	case CDSL_OP_EQ:
-	case CDSL_OP_NE:
-	case CDSL_OP_LT:
-	case CDSL_OP_GT:
-	case CDSL_OP_LE:
-	case CDSL_OP_GE:
-	case CDSL_OP_NOT:
-	case CDSL_OP_ADD:
-	case CDSL_OP_SUB:
-	case CDSL_OP_MUL:
-	case CDSL_OP_DIV:
-	case CDSL_OP_NEG:
-	default:
-		return false;
-	}
+	const cdsl_op_desc_t* d = cdsl_op_get_desc(op);
+	return d ? (d->is_logical && d->arity == 2) : false;
 }
 
 bool
 cdsl_op_is_unary(cdsl_op_t op)
 {
-	switch (op) {
-	case CDSL_OP_NOT:
-	case CDSL_OP_NEG:
-		return true;
-	case CDSL_OP_EQ:
-	case CDSL_OP_NE:
-	case CDSL_OP_LT:
-	case CDSL_OP_GT:
-	case CDSL_OP_LE:
-	case CDSL_OP_GE:
-	case CDSL_OP_AND:
-	case CDSL_OP_OR:
-	case CDSL_OP_ADD:
-	case CDSL_OP_SUB:
-	case CDSL_OP_MUL:
-	case CDSL_OP_DIV:
-	default:
-		return false;
-	}
+	const cdsl_op_desc_t* d = cdsl_op_get_desc(op);
+	return d ? (d->arity == 1) : false;
 }
 
 const char*
 cdsl_op_c_symbol(cdsl_op_t op)
 {
-	switch (op) {
-	case CDSL_OP_EQ:
-		return "==";
-	case CDSL_OP_NE:
-		return "!=";
-	case CDSL_OP_LT:
-		return "<";
-	case CDSL_OP_GT:
-		return ">";
-	case CDSL_OP_LE:
-		return "<=";
-	case CDSL_OP_GE:
-		return ">=";
-	case CDSL_OP_AND:
-		return "&&";
-	case CDSL_OP_OR:
-		return "||";
-	case CDSL_OP_NOT:
-		return "!";
-	case CDSL_OP_ADD:
-		return "+";
-	case CDSL_OP_SUB:
-		return "-";
-	case CDSL_OP_MUL:
-		return "*";
-	case CDSL_OP_DIV:
-		return "/";
-	case CDSL_OP_NEG:
-		return "-";
-	default:
-		return "?";
-	}
+	const cdsl_op_desc_t* d = cdsl_op_get_desc(op);
+	return d ? d->c_symbol : "?";
 }
 
 const char*
 cdsl_op_name(cdsl_op_t op)
 {
-	switch (op) {
-	case CDSL_OP_EQ:
-		return "==";
-	case CDSL_OP_NE:
-		return "!=";
-	case CDSL_OP_LT:
-		return "<";
-	case CDSL_OP_GT:
-		return ">";
-	case CDSL_OP_LE:
-		return "<=";
-	case CDSL_OP_GE:
-		return ">=";
-	case CDSL_OP_AND:
-		return "AND";
-	case CDSL_OP_OR:
-		return "OR";
-	case CDSL_OP_NOT:
-		return "NOT";
-	case CDSL_OP_ADD:
-		return "+";
-	case CDSL_OP_SUB:
-		return "-";
-	case CDSL_OP_MUL:
-		return "*";
-	case CDSL_OP_DIV:
-		return "/";
-	case CDSL_OP_NEG:
-		return "NEG";
-	default:
-		return "?";
-	}
+	const cdsl_op_desc_t* d = cdsl_op_get_desc(op);
+	return d ? d->name : "?";
 }
 
 const char*
