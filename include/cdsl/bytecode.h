@@ -144,6 +144,20 @@ cdsl_rule_report_t*
 cdsl_bytecode_execute_rule(cdsl_vm_t* vm, const cdsl_bytecode_t* bc, cdsl_context_t* ctx);
 
 /**
+ * @brief Map AST operator to bytecode opcode.
+ * @param op AST operator enum
+ * @return Corresponding bytecode opcode, or (bc_op_t)-1 if not directly mappable
+ */
+bc_op_t cdsl_op_to_bc(cdsl_op_t op);
+
+/**
+ * @brief Map bytecode opcode to AST operator.
+ * @param bc Bytecode opcode enum
+ * @return Corresponding AST operator enum, or (cdsl_op_t)-1 if not an operator opcode
+ */
+cdsl_op_t cdsl_bc_to_op(bc_op_t bc);
+
+/**
  * @brief Free a bytecode chunk.
  * @param bc Bytecode chunk to free (NULL-safe)
  */

@@ -534,6 +534,58 @@ test_bytecode_compile_and_execute_oom(void)
 	TEST_END();
 }
 
+static void
+test_bytecode_op_bidirectional_mapping(void)
+{
+	TEST_BEGIN("bytecode bidirectional operator mapping");
+
+	/* Binary arithmetic */
+	TEST_ASSERT_INT(cdsl_op_to_bc(CDSL_OP_ADD), BC_ADD, "op_to_bc ADD");
+	TEST_ASSERT_INT(cdsl_op_to_bc(CDSL_OP_SUB), BC_SUB, "op_to_bc SUB");
+	TEST_ASSERT_INT(cdsl_op_to_bc(CDSL_OP_MUL), BC_MUL, "op_to_bc MUL");
+	TEST_ASSERT_INT(cdsl_op_to_bc(CDSL_OP_DIV), BC_DIV, "op_to_bc DIV");
+
+	/* Relational comparison */
+	TEST_ASSERT_INT(cdsl_op_to_bc(CDSL_OP_EQ), BC_EQ, "op_to_bc EQ");
+	TEST_ASSERT_INT(cdsl_op_to_bc(CDSL_OP_NE), BC_NE, "op_to_bc NE");
+	TEST_ASSERT_INT(cdsl_op_to_bc(CDSL_OP_LT), BC_LT, "op_to_bc LT");
+	TEST_ASSERT_INT(cdsl_op_to_bc(CDSL_OP_GT), BC_GT, "op_to_bc GT");
+	TEST_ASSERT_INT(cdsl_op_to_bc(CDSL_OP_LE), BC_LE, "op_to_bc LE");
+	TEST_ASSERT_INT(cdsl_op_to_bc(CDSL_OP_GE), BC_GE, "op_to_bc GE");
+
+	/* Unary */
+	TEST_ASSERT_INT(cdsl_op_to_bc(CDSL_OP_NOT), BC_NOT, "op_to_bc NOT");
+	TEST_ASSERT_INT(cdsl_op_to_bc(CDSL_OP_NEG), BC_NEG, "op_to_bc NEG");
+
+	/* Non-direct mapping */
+	TEST_ASSERT_INT(cdsl_op_to_bc(CDSL_OP_AND), (bc_op_t)-1, "op_to_bc AND");
+	TEST_ASSERT_INT(cdsl_op_to_bc(CDSL_OP_OR), (bc_op_t)-1, "op_to_bc OR");
+	TEST_ASSERT_INT(cdsl_op_to_bc((cdsl_op_t)999), (bc_op_t)-1, "op_to_bc invalid");
+
+	/* Reverse mapping: BC to OP */
+	TEST_ASSERT_INT(cdsl_bc_to_op(BC_ADD), CDSL_OP_ADD, "bc_to_op ADD");
+	TEST_ASSERT_INT(cdsl_bc_to_op(BC_SUB), CDSL_OP_SUB, "bc_to_op SUB");
+	TEST_ASSERT_INT(cdsl_bc_to_op(BC_MUL), CDSL_OP_MUL, "bc_to_op MUL");
+	TEST_ASSERT_INT(cdsl_bc_to_op(BC_DIV), CDSL_OP_DIV, "bc_to_op DIV");
+
+	TEST_ASSERT_INT(cdsl_bc_to_op(BC_EQ), CDSL_OP_EQ, "bc_to_op EQ");
+	TEST_ASSERT_INT(cdsl_bc_to_op(BC_NE), CDSL_OP_NE, "bc_to_op NE");
+	TEST_ASSERT_INT(cdsl_bc_to_op(BC_LT), CDSL_OP_LT, "bc_to_op LT");
+	TEST_ASSERT_INT(cdsl_bc_to_op(BC_GT), CDSL_OP_GT, "bc_to_op GT");
+	TEST_ASSERT_INT(cdsl_bc_to_op(BC_LE), CDSL_OP_LE, "bc_to_op LE");
+	TEST_ASSERT_INT(cdsl_bc_to_op(BC_GE), CDSL_OP_GE, "bc_to_op GE");
+
+	TEST_ASSERT_INT(cdsl_bc_to_op(BC_NOT), CDSL_OP_NOT, "bc_to_op NOT");
+	TEST_ASSERT_INT(cdsl_bc_to_op(BC_NEG), CDSL_OP_NEG, "bc_to_op NEG");
+
+	/* Non-op bytecode instructions */
+	TEST_ASSERT_INT(cdsl_bc_to_op(BC_PUSH_INT), (cdsl_op_t)-1, "bc_to_op PUSH_INT");
+	TEST_ASSERT_INT(cdsl_bc_to_op(BC_RET), (cdsl_op_t)-1, "bc_to_op RET");
+	TEST_ASSERT_INT(cdsl_bc_to_op((bc_op_t)999), (cdsl_op_t)-1, "bc_to_op invalid");
+
+	TEST_END();
+}
+
 int
 main(void)
 {
@@ -552,6 +604,7 @@ main(void)
 	test_bytecode_rule_metric();
 	test_bytecode_long_literal();
 	test_bytecode_action_and_critical_metric();
+	test_bytecode_op_bidirectional_mapping();
 
 	TEST_SUMMARY();
 	TEST_EXIT();
