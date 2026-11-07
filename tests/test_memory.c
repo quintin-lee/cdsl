@@ -584,6 +584,170 @@ test_cdsl_strdup_and_oom_hook(void)
 	TEST_END();
 }
 
+static void
+test_context_deep_oom(void)
+{
+	TEST_BEGIN("context deep OOM fault injection");
+
+	cdsl_schema_t* schema = cdsl_schema_create();
+	cdsl_schema_register_var(schema, "user.name", CDSL_TYPE_STRING);
+	cdsl_schema_register_var(schema, "user.bio", CDSL_TYPE_STRING);
+	cdsl_schema_register_var(schema, "user.city", CDSL_TYPE_STRING);
+
+	/* Iterate countdowns from 0 to 5 */
+	for (int cd = 0; cd <= 5; cd++) {
+		cdsl_context_t* ctx = cdsl_context_create(schema);
+
+		cdsl_test_set_oom_countdown(cd);
+		/* Attempt setting multiple string keys */
+		cdsl_context_set_string(ctx, "user.name", "Alice");
+		cdsl_context_set_string(ctx, "user.bio", "Software Engineer");
+		cdsl_context_set_string(ctx, "user.city", "San Francisco");
+
+		/* Attempt JSON load under OOM */
+		const char* json_str = "{\"user.name\": \"Bob\", \"user.bio\": \"Architect\"}";
+		cdsl_context_load_json(ctx, json_str);
+
+		cdsl_test_set_oom_countdown(-1);
+		cdsl_context_free(ctx);
+	}
+
+	cdsl_schema_free(schema);
+	TEST_END();
+}
+
+static void
+test_schema_deep_oom(void)
+{
+	TEST_BEGIN("schema deep OOM fault injection");
+
+	for (int cd = 0; cd <= 5; cd++) {
+		cdsl_schema_t* s = cdsl_schema_create();
+
+		cdsl_test_set_oom_countdown(cd);
+		for (int i = 0; i < 10; i++) {
+			char vname[32];
+			snprintf(vname, sizeof(vname), "var_%d", i);
+			cdsl_schema_register_var_rw(s, vname, CDSL_TYPE_INT, 0);
+
+			char aname[32];
+			snprintf(aname, sizeof(aname), "act_%d", i);
+			cdsl_schema_register_action(s, aname, CDSL_TYPE_VOID, 0);
+		}
+
+		cdsl_test_set_oom_countdown(-1);
+		cdsl_schema_free(s);
+	}
+
+	TEST_END();
+}
+
+static void
+test_eval_deep_oom(void)
+{
+	TEST_BEGIN("eval deep OOM fault injection");
+
+	cdsl_schema_t* s = cdsl_schema_create();
+	cdsl_schema_register_var(s, "age", CDSL_TYPE_INT);
+	cdsl_schema_register_var(s, "score", CDSL_TYPE_INT);
+	cdsl_schema_register_action(s, "score", CDSL_TYPE_VOID, 1, CDSL_TYPE_INT);
+
+	cdsl_vm_t* vm = cdsl_vm_create(s);
+	cdsl_context_t* ctx = cdsl_context_create(s);
+	cdsl_context_set_int(ctx, "age", 25);
+	cdsl_context_set_int(ctx, "score", 90);
+
+	const char* dsl = "RULE metric_check {\n"
+			  "  META { description = \"eval metric check\" }\n"
+			  "  METRIC m1 {\n"
+			  "    META { description = \"m1\" weight = \"60\" }\n"
+			  "    CASE age >= 18 THEN score(60)\n"
+			  "    DEFAULT score(0)\n"
+			  "  }\n"
+			  "  METRIC m2 {\n"
+			  "    META { description = \"m2\" weight = \"40\" }\n"
+			  "    CASE score >= 80 THEN score(40)\n"
+			  "    DEFAULT score(0)\n"
+			  "  }\n"
+			  "}";
+
+	cdsl_rule_t* rule = cdsl_parse_string(dsl, NULL);
+	TEST_ASSERT_NOT_NULL(rule, "Metric rule parsed successfully");
+
+	for (int cd = 0; cd <= 10; cd++) {
+		cdsl_test_set_oom_countdown(cd);
+		cdsl_rule_report_t* rpt = cdsl_vm_execute(vm, rule, ctx);
+		if (rpt) {
+			cdsl_report_free(rpt);
+		}
+	}
+
+	cdsl_test_set_oom_countdown(-1);
+	cdsl_free_rule(rule);
+	cdsl_context_free(ctx);
+	cdsl_vm_free(vm);
+	cdsl_schema_free(s);
+
+	TEST_END();
+}
+
+static void
+test_bytecode_deep_oom(void)
+{
+	TEST_BEGIN("bytecode deep OOM fault injection");
+
+	cdsl_schema_t* s = cdsl_schema_create();
+	cdsl_schema_register_var(s, "user.name", CDSL_TYPE_STRING);
+	cdsl_schema_register_var(s, "user.status", CDSL_TYPE_STRING);
+	cdsl_schema_register_action(s, "alert", CDSL_TYPE_VOID, 1, CDSL_TYPE_STRING);
+
+	cdsl_vm_t* vm = cdsl_vm_create(s);
+	cdsl_context_t* ctx = cdsl_context_create(s);
+	cdsl_context_set_string(ctx, "user.name", "Bob");
+	cdsl_context_set_string(ctx, "user.status", "active");
+
+	const char* dsl = "RULE bc_stress {\n"
+			  "  META { description = \"bytecode stress test\" }\n"
+			  "  WHEN user.name == \"Bob\" THEN alert(\"matched\")\n"
+			  "}";
+
+	cdsl_rule_t* rule = cdsl_parse_string(dsl, NULL);
+	TEST_ASSERT_NOT_NULL(rule, "Bytecode rule parsed");
+
+	/* Test compilation under countdowns 0..6 */
+	for (int cd = 0; cd <= 6; cd++) {
+		cdsl_bytecode_t bc = {0};
+		cdsl_test_set_oom_countdown(cd);
+		int ok = cdsl_bytecode_compile(rule, s, &bc);
+		if (ok) {
+			cdsl_bytecode_free(&bc);
+		}
+	}
+
+	/* Compile successfully, then test execution under countdowns 0..6 */
+	cdsl_test_set_oom_countdown(-1);
+	cdsl_bytecode_t bc = {0};
+	int ok = cdsl_bytecode_compile(rule, s, &bc);
+	TEST_ASSERT_INT(ok, 1, "Compile succeeded cleanly");
+
+	for (int cd = 0; cd <= 6; cd++) {
+		cdsl_test_set_oom_countdown(cd);
+		cdsl_rule_report_t* rpt = cdsl_bytecode_execute_rule(vm, &bc, ctx);
+		if (rpt) {
+			cdsl_report_free(rpt);
+		}
+	}
+
+	cdsl_test_set_oom_countdown(-1);
+	cdsl_bytecode_free(&bc);
+	cdsl_free_rule(rule);
+	cdsl_context_free(ctx);
+	cdsl_vm_free(vm);
+	cdsl_schema_free(s);
+
+	TEST_END();
+}
+
 int
 main()
 {
@@ -591,6 +755,10 @@ main()
 
 	// Run all memory management tests
 	test_cdsl_strdup_and_oom_hook();
+	test_context_deep_oom();
+	test_schema_deep_oom();
+	test_eval_deep_oom();
+	test_bytecode_deep_oom();
 	test_arena_allocator();
 	test_arena_large_allocations();
 	test_arena_boundary_conditions();
