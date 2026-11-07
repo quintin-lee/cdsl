@@ -1,8 +1,18 @@
 # Changelog
 
-## [Unreleased] - 2026-11-07
+## [1.1.0] - 2026-11-07
 
 ### Added
+- **Exact Floating-Point Equality & Approximate Matching**:
+  - Restored IEEE 754 strict equality comparison (`==` and `!=`) for floating-point values in both AST tree-walk and bytecode VM execution engines.
+  - Added built-in function `approx_eq(a, b, [epsilon])` with default tolerance $10^{-6}$ for business rules requiring fuzzy float comparisons.
+  - Added cross-engine differential tests in `tests/test_differential.c` and Python test coverage.
+- **Thorough OOM & Exception Safety Closure**:
+  - Replaced all unchecked raw `strdup`, `malloc`, and `calloc` calls across all non-demo C modules with safe wrappers (`cdsl_strdup`, `cdsl_vm_strdup`, `cdsl_vm_calloc`).
+  - Implemented transactional unwinding in AST node creation (`src/ast/ast.c`): child nodes are recursively freed on intermediate allocation failures.
+  - Added cascading deallocation and NULL guards in template copy functions (`src/ast/template.c`) and safe error list ownership transfer (`src/util/error.c`).
+  - Hardened string buffer dynamic re-allocation (`cdsl/util/strbuf.h`) and arena duplication against OOM.
+  - Added 5 comprehensive OOM fault-injection tests in `tests/test_memory.c` verifying zero memory leaks under AddressSanitizer/LeakSanitizer.
 - **Unified evaluation semantics (`src/vm/value_ops.{c,h}`)**:
   - Unified binary and unary operator evaluation between AST tree-walk (`eval.c`), bytecode execution (`bytecode.c`), and compile-time constant folding (`fold_const_expr`).
   - Checked arithmetic for 32-bit `INT` and 64-bit `LONG` with overflow detection.
@@ -42,7 +52,7 @@
   - User-guide section numbering fixed (was jumping 12 → 15; now continuous 1–21) and table of contents aligned
   - `CDSL_GENERATE_DOCS` default corrected ON → **OFF** in `docs/architecture.md`
 
-## [1.1.0] - 2026-06-13
+## [1.0.1] - 2026-06-13
 
 ### Added
 - **Compiler hardening**: 10+ GCC/Clang warning flags promoted to errors (`-Wshadow`, `-Wformat=2`, `-Wnull-dereference`, `-Wdouble-promotion`, `-Wundef`, etc.)
