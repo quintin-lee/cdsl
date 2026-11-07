@@ -142,7 +142,27 @@ cdsl_schema_register_action(
 static cdsl_var_schema_t*
 find_var(const cdsl_schema_t* schema, const char* name)
 {
-	return cdsl_hashmap_get(schema->var_map, name);
+	if (!schema || !name) {
+		return NULL;
+	}
+	cdsl_var_schema_t* v = cdsl_hashmap_get(schema->var_map, name);
+	if (v) {
+		return v;
+	}
+	const char* dot = strchr(name, '.');
+	if (dot) {
+		size_t rlen = (size_t)(dot - name);
+		char rname[128];
+		if (rlen < sizeof(rname)) {
+			memcpy(rname, name, rlen);
+			rname[rlen] = '\0';
+			cdsl_var_schema_t* root_v = cdsl_hashmap_get(schema->var_map, rname);
+			if (root_v && root_v->type == CDSL_TYPE_MAP) {
+				return root_v;
+			}
+		}
+	}
+	return NULL;
 }
 
 static cdsl_action_schema_t*
@@ -159,6 +179,34 @@ count_args(cdsl_arg_node_t* args)
 		c++;
 	}
 	return c;
+}
+
+static int
+is_dynamic_map_prop(cdsl_expr_node_t* expr, const cdsl_schema_t* schema)
+{
+	if (!expr) {
+		return 0;
+	}
+	if (expr->type == CDSL_EXPR_SUBSCRIPT) {
+		return 1;
+	}
+	if (expr->type == CDSL_EXPR_ID && expr->data.id_val) {
+		const char* dot = strchr(expr->data.id_val, '.');
+		if (dot && schema && schema->var_map) {
+			size_t rlen = (size_t)(dot - expr->data.id_val);
+			char rname[128];
+			if (rlen < sizeof(rname)) {
+				memcpy(rname, expr->data.id_val, rlen);
+				rname[rlen] = '\0';
+				cdsl_var_schema_t* root_v =
+				    cdsl_hashmap_get(schema->var_map, rname);
+				if (root_v && root_v->type == CDSL_TYPE_MAP) {
+					return 1;
+				}
+			}
+		}
+	}
+	return 0;
 }
 
 static cdsl_type_t
@@ -259,6 +307,21 @@ resolve_expr_type(cdsl_expr_node_t* expr,
 
 		cdsl_op_t op = expr->data.binary.op;
 
+		/* Inclusion / membership operator */
+		if (op == CDSL_OP_IN) {
+			if (rt != CDSL_TYPE_ARRAY && rt != CDSL_TYPE_MAP &&
+			    rt != CDSL_TYPE_STRING) {
+				REPORT_ERR(CDSL_ERR_TYPE,
+					   "'in' operator right operand must be a Collection "
+					   "(Array, Map, String) or Range",
+					   NULL,
+					   expr->line,
+					   expr->column);
+				return CDSL_TYPE_VOID;
+			}
+			return CDSL_TYPE_BOOL;
+		}
+
 		/* Logical operators (AND, OR) */
 		if (cdsl_op_is_logical_binary(op)) {
 			if (lt != CDSL_TYPE_BOOL || rt != CDSL_TYPE_BOOL) {
@@ -324,6 +387,10 @@ resolve_expr_type(cdsl_expr_node_t* expr,
 		}
 
 		/* Comparison operators (==, !=, <, >, <=, >=) */
+		if (is_dynamic_map_prop(expr->data.binary.left, schema) ||
+		    is_dynamic_map_prop(expr->data.binary.right, schema)) {
+			return CDSL_TYPE_BOOL;
+		}
 		/* Allow mixing INT, FLOAT, LONG for numeric comparisons */
 		if (lt != rt && !(lt == CDSL_TYPE_INT && rt == CDSL_TYPE_FLOAT) &&
 		    !(lt == CDSL_TYPE_FLOAT && rt == CDSL_TYPE_INT) &&
@@ -397,6 +464,78 @@ resolve_expr_type(cdsl_expr_node_t* expr,
 		}
 		return a->return_type;
 	}
+	case CDSL_EXPR_MAP: {
+		for (cdsl_map_ast_entry_t* me = expr->data.map.entries; me; me = me->next) {
+			if (resolve_expr_type(me->value, schema, err, errsz, error_list) ==
+			    CDSL_TYPE_VOID) {
+				return CDSL_TYPE_VOID;
+			}
+		}
+		return CDSL_TYPE_MAP;
+	}
+	case CDSL_EXPR_SUBSCRIPT: {
+		cdsl_type_t tt =
+		    resolve_expr_type(expr->data.subscript.target, schema, err, errsz, error_list);
+		cdsl_type_t it =
+		    resolve_expr_type(expr->data.subscript.index, schema, err, errsz, error_list);
+		if (tt == CDSL_TYPE_VOID || it == CDSL_TYPE_VOID) {
+			return CDSL_TYPE_VOID;
+		}
+		if (tt == CDSL_TYPE_ARRAY) {
+			if (it != CDSL_TYPE_INT && it != CDSL_TYPE_LONG) {
+				REPORT_ERR(CDSL_ERR_TYPE,
+					   "Array index must be an integer",
+					   NULL,
+					   expr->line,
+					   expr->column);
+				return CDSL_TYPE_VOID;
+			}
+			return CDSL_TYPE_INT;
+		}
+		if (tt == CDSL_TYPE_MAP) {
+			if (it != CDSL_TYPE_STRING) {
+				REPORT_ERR(CDSL_ERR_TYPE,
+					   "Map key must be a string",
+					   NULL,
+					   expr->line,
+					   expr->column);
+				return CDSL_TYPE_VOID;
+			}
+			return CDSL_TYPE_INT;
+		}
+		REPORT_ERR(CDSL_ERR_TYPE,
+			   "Subscript target must be an Array or Map",
+			   NULL,
+			   expr->line,
+			   expr->column);
+		return CDSL_TYPE_VOID;
+	}
+	case CDSL_EXPR_RANGE: {
+		cdsl_type_t min_t =
+		    resolve_expr_type(expr->data.range.min_expr, schema, err, errsz, error_list);
+		cdsl_type_t max_t =
+		    resolve_expr_type(expr->data.range.max_expr, schema, err, errsz, error_list);
+		if (min_t == CDSL_TYPE_VOID || max_t == CDSL_TYPE_VOID) {
+			return CDSL_TYPE_VOID;
+		}
+		if (expr->data.range.min_expr->type == CDSL_EXPR_INT &&
+		    expr->data.range.max_expr->type == CDSL_EXPR_INT) {
+			if (expr->data.range.min_expr->data.int_val >
+			    expr->data.range.max_expr->data.int_val) {
+				REPORT_ERR(
+				    CDSL_ERR_SEMANTIC,
+				    "Contradictory range: minimum bound exceeds maximum bound",
+				    "Ensure range [min..max] has min <= max",
+				    expr->line,
+				    expr->column);
+				return CDSL_TYPE_VOID;
+			}
+		}
+		return CDSL_TYPE_ARRAY;
+	}
+	case CDSL_EXPR_LAMBDA:
+	case CDSL_EXPR_ERROR:
+		return CDSL_TYPE_VOID;
 	default:
 		return CDSL_TYPE_VOID;
 	}

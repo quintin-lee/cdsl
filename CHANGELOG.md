@@ -1,5 +1,25 @@
 # Changelog
 
+## [1.2.0] - 2026-11-07
+
+### Added
+- **Language Expressiveness & Collections**:
+  - **Map Literals & Types (`CDSL_TYPE_MAP`)**: Added native map literal syntax `{ key: expr, ... }`, runtime hash-bucket based map data structure (`cdsl_map_t`), deep-copying, and memory-safe lifetime management.
+  - **Property & Subscript Access**: Supported unified indexing `expr[index]` and dot access `expr.prop` for maps and arrays across AST tree-walk and bytecode VM execution paths.
+  - **Interval & Membership Operators (`in`)**: Added `expr in [min..max]` closed interval operator and `expr in container` membership testing for arrays, map keys, and substring containment.
+  - **Higher-Order Stream Predicates**: Implemented lambda expressions `IDENTIFIER -> expr` and higher-order built-in predicates `any(list, lambda)`, `all(list, lambda)`, and `filter(list, lambda)` with short-circuit evaluation.
+- **Static Type Inference & Analysis**:
+  - Enhanced schema validator (`resolve_expr_type`) to perform compile-time interval contradiction detection (e.g., rejecting dead-code ranges `[20..10]`).
+  - Added compile-time validation for collection membership types and subscript target constraints.
+  - Permissive dynamic type checking for nested Map properties, ensuring full compatibility between static schemas and dynamic JSON/Map data models.
+- **Bytecode VM Extensions**:
+  - Added new instructions `BC_BUILD_MAP`, `BC_GET_PROP`, `BC_GET_INDEX`, `BC_IN`, and `BC_IN_RANGE`.
+  - Added bytecode disassembly and graph visualization support for the new AST and bytecode instructions.
+- **Test Coverage**:
+  - Added unit test suites `tests/test_map.c`, `tests/test_collection_ops.c`, and `tests/test_type_inference.c`.
+  - Verified 100% clean memory safety under AddressSanitizer, LeakSanitizer, and UndefinedBehaviorSanitizer.
+  - Updated Python bindings and test suite for `Type.MAP` and `Type.VOID`.
+
 ## [1.1.0] - 2026-11-07
 
 ### Added

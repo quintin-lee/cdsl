@@ -93,6 +93,62 @@ copy_expr(const cdsl_expr_node_t* expr)
 		}
 		return cdsl_create_expr_call(fname, args, expr->line, expr->column);
 	}
+	case CDSL_EXPR_MAP: {
+		cdsl_map_ast_entry_t* entries = NULL;
+		for (cdsl_map_ast_entry_t* e = expr->data.map.entries; e; e = e->next) {
+			char* k = cdsl_strdup(e->key);
+			cdsl_expr_node_t* val = copy_expr(e->value);
+			if (!k || (!val && e->value)) {
+				free(k);
+				cdsl_free_expr(val);
+				cdsl_free_map_ast_entry(entries);
+				return NULL;
+			}
+			cdsl_map_ast_entry_t* item = cdsl_create_map_ast_entry(k, val);
+			if (!item) {
+				cdsl_free_map_ast_entry(entries);
+				return NULL;
+			}
+			entries = cdsl_append_map_ast_entry(entries, item);
+		}
+		return cdsl_create_expr_map(entries, expr->line, expr->column);
+	}
+	case CDSL_EXPR_SUBSCRIPT: {
+		cdsl_expr_node_t* target = copy_expr(expr->data.subscript.target);
+		cdsl_expr_node_t* index = copy_expr(expr->data.subscript.index);
+		if ((!target && expr->data.subscript.target) ||
+		    (!index && expr->data.subscript.index)) {
+			cdsl_free_expr(target);
+			cdsl_free_expr(index);
+			return NULL;
+		}
+		return cdsl_create_expr_subscript(target, index, expr->line, expr->column);
+	}
+	case CDSL_EXPR_RANGE: {
+		cdsl_expr_node_t* min_e = copy_expr(expr->data.range.min_expr);
+		cdsl_expr_node_t* max_e = copy_expr(expr->data.range.max_expr);
+		if ((!min_e && expr->data.range.min_expr) ||
+		    (!max_e && expr->data.range.max_expr)) {
+			cdsl_free_expr(min_e);
+			cdsl_free_expr(max_e);
+			return NULL;
+		}
+		return cdsl_create_expr_range(min_e, max_e, expr->line, expr->column);
+	}
+	case CDSL_EXPR_LAMBDA: {
+		char* param = cdsl_strdup(expr->data.lambda.param_name);
+		if (!param) {
+			return NULL;
+		}
+		cdsl_expr_node_t* body = copy_expr(expr->data.lambda.body);
+		if (!body && expr->data.lambda.body) {
+			free(param);
+			return NULL;
+		}
+		return cdsl_create_expr_lambda(param, body, expr->line, expr->column);
+	}
+	case CDSL_EXPR_ERROR:
+		return cdsl_create_expr_error(expr->line, expr->column);
 	default:
 		return NULL;
 	}

@@ -56,7 +56,12 @@ typedef enum {
 	BC_FAIL_METRIC,	 /**< Fail metric with reason [operand: const_idx (reason)] */
 	BC_RULE_END,	 /**< Finalize rule report [operand: none] */
 	BC_RET,		 /**< Return (top of stack is result) */
-	BC_ACTION /**< Trigger action callback [operand: const_idx (name), pops nargs & args] */
+	BC_ACTION,    /**< Trigger action callback [operand: const_idx (name), pops nargs & args] */
+	BC_BUILD_MAP, /**< Pop count key-value pairs, push Map [operand: int_val (count)] */
+	BC_GET_PROP,  /**< Pop target, push target.prop [operand: const_idx (property name)] */
+	BC_GET_INDEX, /**< Pop index, pop target, push target[index] */
+	BC_IN,	      /**< Pop container, pop val, push val IN container */
+	BC_IN_RANGE   /**< Pop max, pop min, pop val, push val >= min && val <= max */
 } bc_op_t;
 
 /**

@@ -46,6 +46,8 @@ cdsl_op_to_bc(cdsl_op_t op)
 		return BC_NOT;
 	case CDSL_OP_NEG:
 		return BC_NEG;
+	case CDSL_OP_IN:
+		return BC_IN;
 	default:
 		return (bc_op_t)-1;
 	}
@@ -79,6 +81,8 @@ cdsl_bc_to_op(bc_op_t bc)
 		return CDSL_OP_NOT;
 	case BC_NEG:
 		return CDSL_OP_NEG;
+	case BC_IN:
+		return CDSL_OP_IN;
 	default:
 		return (cdsl_op_t)-1;
 	}
@@ -577,6 +581,32 @@ compile_expr(cdsl_expr_node_t* expr,
 			break;
 		}
 
+		/* Range inclusion check: left IN [min..max] */
+		if (op == CDSL_OP_IN && expr->data.binary.right->type == CDSL_EXPR_RANGE) {
+			int l_stack = 0, min_stack = 0, max_stack_val = 0;
+			if (!compile_expr(expr->data.binary.left, schema, bc, &l_stack)) {
+				return 0;
+			}
+			cdsl_expr_node_t* rng = expr->data.binary.right;
+			if (!compile_expr(rng->data.range.min_expr, schema, bc, &min_stack)) {
+				return 0;
+			}
+			if (!compile_expr(rng->data.range.max_expr, schema, bc, &max_stack_val)) {
+				return 0;
+			}
+			if (!bc_ensure_cap(bc)) {
+				return 0;
+			}
+			bc_inst_t* inst = &bc->code[bc->count++];
+			memset(inst, 0, sizeof(*inst));
+			inst->op = BC_IN_RANGE;
+			max_stack = l_stack > min_stack + 1 ? l_stack : min_stack + 1;
+			if (max_stack_val + 2 > max_stack) {
+				max_stack = max_stack_val + 2;
+			}
+			break;
+		}
+
 		/* Regular binary: compile left, compile right, apply operator */
 		int l_stack = 0, r_stack = 0;
 		if (!compile_expr(expr->data.binary.left, schema, bc, &l_stack)) {
@@ -592,6 +622,54 @@ compile_expr(cdsl_expr_node_t* expr,
 		max_stack = l_stack > r_stack + 1 ? l_stack : r_stack + 1;
 		break;
 	}
+
+	case CDSL_EXPR_MAP: {
+		int arg_stack = 0;
+		int count = 0;
+		for (cdsl_map_ast_entry_t* me = expr->data.map.entries; me; me = me->next) {
+			bc_emit_string(bc, me->key);
+			int val_stack = 0;
+			if (!compile_expr(me->value, schema, bc, &val_stack)) {
+				return 0;
+			}
+			if (val_stack + 1 > arg_stack) {
+				arg_stack = val_stack + 1;
+			}
+			count++;
+		}
+		if (!bc_ensure_cap(bc)) {
+			return 0;
+		}
+		bc_inst_t* inst = &bc->code[bc->count++];
+		memset(inst, 0, sizeof(*inst));
+		inst->op = BC_BUILD_MAP;
+		inst->operand.int_val = count;
+		max_stack = arg_stack + count * 2;
+		break;
+	}
+
+	case CDSL_EXPR_SUBSCRIPT: {
+		int target_stack = 0, index_stack = 0;
+		if (!compile_expr(expr->data.subscript.target, schema, bc, &target_stack)) {
+			return 0;
+		}
+		if (!compile_expr(expr->data.subscript.index, schema, bc, &index_stack)) {
+			return 0;
+		}
+		if (!bc_ensure_cap(bc)) {
+			return 0;
+		}
+		bc_inst_t* inst = &bc->code[bc->count++];
+		memset(inst, 0, sizeof(*inst));
+		inst->op = BC_GET_INDEX;
+		max_stack = target_stack > index_stack + 1 ? target_stack : index_stack + 1;
+		break;
+	}
+
+	case CDSL_EXPR_RANGE:
+	case CDSL_EXPR_LAMBDA:
+	case CDSL_EXPR_ERROR:
+		return 0;
 
 	case CDSL_EXPR_CALL: {
 		int arg_stack = 0;
@@ -1057,10 +1135,10 @@ bc_run_instructions(cdsl_vm_t* vm,
 			break;
 		}
 		case BC_PUSH_VAR: {
-			cdsl_context_entry_t* e = cdsl_context_get_entry_internal(
-			    ctx, bc->constants[ip->operand.const_idx].data.string_val);
-			if (e) {
-				cdsl_value_t v = e->value;
+			const char* var_name = bc->constants[ip->operand.const_idx].data.string_val;
+			const cdsl_value_t* val_ptr = cdsl_context_lookup_value(ctx, var_name);
+			if (val_ptr) {
+				cdsl_value_t v = *val_ptr;
 				if (v.type == CDSL_TYPE_STRING && v.data.string_val) {
 					v.data.string_val = cdsl_vm_strdup(vm, v.data.string_val);
 					v.owned_string = 1;
@@ -1080,6 +1158,8 @@ bc_run_instructions(cdsl_vm_t* vm,
 						}
 						goto done;
 					}
+				} else if (v.type == CDSL_TYPE_ARRAY || v.type == CDSL_TYPE_MAP) {
+					v = cdsl_value_copy(val_ptr);
 				}
 				PUSH(v);
 			} else {
@@ -1108,7 +1188,8 @@ bc_run_instructions(cdsl_vm_t* vm,
 		case BC_LT:
 		case BC_GT:
 		case BC_LE:
-		case BC_GE: {
+		case BC_GE:
+		case BC_IN: {
 			cdsl_value_t b = POP();
 			cdsl_value_t a = POP();
 			if (CDSL_ATOMIC_LOAD(&vm->error_state)) {
@@ -1134,6 +1215,106 @@ bc_run_instructions(cdsl_vm_t* vm,
 				result.type = CDSL_TYPE_VOID;
 				goto done;
 			}
+			PUSH(result);
+			ip++;
+			break;
+		}
+
+		case BC_IN_RANGE: {
+			cdsl_value_t max_v = POP();
+			cdsl_value_t min_v = POP();
+			cdsl_value_t val = POP();
+			if (CDSL_ATOMIC_LOAD(&vm->error_state)) {
+				cdsl_value_free(&val);
+				cdsl_value_free(&min_v);
+				cdsl_value_free(&max_v);
+				result.type = CDSL_TYPE_VOID;
+				goto done;
+			}
+			cdsl_value_t ge_res, le_res;
+			cdsl_valop_status_t st1 =
+			    cdsl_value_binop(CDSL_OP_GE, &val, &min_v, &ge_res);
+			cdsl_valop_status_t st2 =
+			    cdsl_value_binop(CDSL_OP_LE, &val, &max_v, &le_res);
+			result.type = CDSL_TYPE_BOOL;
+			if (st1 == CDSL_VALOP_OK && st2 == CDSL_VALOP_OK) {
+				result.data.bool_val =
+				    (ge_res.data.bool_val && le_res.data.bool_val);
+			} else {
+				result.data.bool_val = 0;
+			}
+			cdsl_value_free(&val);
+			cdsl_value_free(&min_v);
+			cdsl_value_free(&max_v);
+			PUSH(result);
+			ip++;
+			break;
+		}
+
+		case BC_BUILD_MAP: {
+			int count = ip->operand.int_val;
+			cdsl_map_t* m = cdsl_map_create(count > 0 ? count * 2 : 16);
+			if (!m) {
+				result.type = CDSL_TYPE_VOID;
+				CDSL_ATOMIC_STORE(&vm->error_state, 1);
+				goto done;
+			}
+			for (int i = count - 1; i >= 0; i--) {
+				cdsl_value_t item_val = POP();
+				cdsl_value_t key_val = POP();
+				if (key_val.type == CDSL_TYPE_STRING && key_val.data.string_val) {
+					cdsl_map_set(m, key_val.data.string_val, &item_val);
+				}
+				cdsl_value_free(&key_val);
+				cdsl_value_free(&item_val);
+			}
+			result.type = CDSL_TYPE_MAP;
+			result.data.map_val = m;
+			PUSH(result);
+			ip++;
+			break;
+		}
+
+		case BC_GET_INDEX: {
+			cdsl_value_t idx = POP();
+			cdsl_value_t target = POP();
+			result.type = CDSL_TYPE_VOID;
+			if (target.type == CDSL_TYPE_MAP && target.data.map_val) {
+				const char* k =
+				    (idx.type == CDSL_TYPE_STRING) ? idx.data.string_val : NULL;
+				if (k) {
+					const cdsl_value_t* found =
+					    cdsl_map_get(target.data.map_val, k);
+					if (found) {
+						result = cdsl_value_copy(found);
+					}
+				}
+			} else if (target.type == CDSL_TYPE_ARRAY && target.data.array_val) {
+				int i = (idx.type == CDSL_TYPE_INT)    ? idx.data.int_val
+					: (idx.type == CDSL_TYPE_LONG) ? (int)idx.data.long_val
+								       : -1;
+				if (i >= 0 && i < target.data.array_val->count) {
+					result = cdsl_value_copy(&target.data.array_val->items[i]);
+				}
+			}
+			cdsl_value_free(&target);
+			cdsl_value_free(&idx);
+			PUSH(result);
+			ip++;
+			break;
+		}
+
+		case BC_GET_PROP: {
+			const char* prop = bc->constants[ip->operand.const_idx].data.string_val;
+			cdsl_value_t target = POP();
+			result.type = CDSL_TYPE_VOID;
+			if (target.type == CDSL_TYPE_MAP && target.data.map_val && prop) {
+				const cdsl_value_t* found = cdsl_map_get(target.data.map_val, prop);
+				if (found) {
+					result = cdsl_value_copy(found);
+				}
+			}
+			cdsl_value_free(&target);
 			PUSH(result);
 			ip++;
 			break;

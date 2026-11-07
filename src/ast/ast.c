@@ -241,6 +241,131 @@ cdsl_create_expr_error(int line, int column)
 	return n;
 }
 
+cdsl_map_ast_entry_t*
+cdsl_create_map_ast_entry(char* key, cdsl_expr_node_t* value)
+{
+	cdsl_map_ast_entry_t* e = ast_alloc(sizeof(*e));
+	if (!e) {
+		free(key);
+		cdsl_free_expr(value);
+		return NULL;
+	}
+	if (current_ast_arena) {
+		e->key = cdsl_arena_strdup(current_ast_arena, key);
+		free(key);
+	} else {
+		e->key = key;
+	}
+	e->value = value;
+	e->next = NULL;
+	return e;
+}
+
+cdsl_map_ast_entry_t*
+cdsl_append_map_ast_entry(cdsl_map_ast_entry_t* list, cdsl_map_ast_entry_t* item)
+{
+	if (!list) {
+		return item;
+	}
+	cdsl_map_ast_entry_t* cur = list;
+	while (cur->next) {
+		cur = cur->next;
+	}
+	cur->next = item;
+	return list;
+}
+
+void
+cdsl_free_map_ast_entry(cdsl_map_ast_entry_t* entry)
+{
+	if (current_ast_arena) {
+		return;
+	}
+	while (entry) {
+		cdsl_map_ast_entry_t* next = entry->next;
+		free(entry->key);
+		cdsl_free_expr(entry->value);
+		free(entry);
+		entry = next;
+	}
+}
+
+cdsl_expr_node_t*
+cdsl_create_expr_map(cdsl_map_ast_entry_t* entries, int line, int column)
+{
+	cdsl_expr_node_t* n = ast_alloc(sizeof(*n));
+	if (!n) {
+		cdsl_free_map_ast_entry(entries);
+		return NULL;
+	}
+	n->type = CDSL_EXPR_MAP;
+	n->line = line;
+	n->column = column;
+	n->data.map.entries = entries;
+	int cnt = 0;
+	for (cdsl_map_ast_entry_t* e = entries; e; e = e->next) {
+		cnt++;
+	}
+	n->data.map.count = cnt;
+	return n;
+}
+
+cdsl_expr_node_t*
+cdsl_create_expr_subscript(cdsl_expr_node_t* target, cdsl_expr_node_t* index, int line, int column)
+{
+	cdsl_expr_node_t* n = ast_alloc(sizeof(*n));
+	if (!n) {
+		cdsl_free_expr(target);
+		cdsl_free_expr(index);
+		return NULL;
+	}
+	n->type = CDSL_EXPR_SUBSCRIPT;
+	n->line = line;
+	n->column = column;
+	n->data.subscript.target = target;
+	n->data.subscript.index = index;
+	return n;
+}
+
+cdsl_expr_node_t*
+cdsl_create_expr_range(cdsl_expr_node_t* min_expr, cdsl_expr_node_t* max_expr, int line, int column)
+{
+	cdsl_expr_node_t* n = ast_alloc(sizeof(*n));
+	if (!n) {
+		cdsl_free_expr(min_expr);
+		cdsl_free_expr(max_expr);
+		return NULL;
+	}
+	n->type = CDSL_EXPR_RANGE;
+	n->line = line;
+	n->column = column;
+	n->data.range.min_expr = min_expr;
+	n->data.range.max_expr = max_expr;
+	return n;
+}
+
+cdsl_expr_node_t*
+cdsl_create_expr_lambda(char* param_name, cdsl_expr_node_t* body, int line, int column)
+{
+	cdsl_expr_node_t* n = ast_alloc(sizeof(*n));
+	if (!n) {
+		free(param_name);
+		cdsl_free_expr(body);
+		return NULL;
+	}
+	n->type = CDSL_EXPR_LAMBDA;
+	n->line = line;
+	n->column = column;
+	if (current_ast_arena) {
+		n->data.lambda.param_name = cdsl_arena_strdup(current_ast_arena, param_name);
+		free(param_name);
+	} else {
+		n->data.lambda.param_name = param_name;
+	}
+	n->data.lambda.body = body;
+	return n;
+}
+
 cdsl_arg_node_t*
 cdsl_create_arg(cdsl_expr_node_t* expr)
 {
@@ -557,6 +682,21 @@ cdsl_free_expr(cdsl_expr_node_t* expr)
 		free(expr->data.call.func_name);
 		cdsl_free_arg(expr->data.call.args);
 		break;
+	case CDSL_EXPR_MAP:
+		cdsl_free_map_ast_entry(expr->data.map.entries);
+		break;
+	case CDSL_EXPR_SUBSCRIPT:
+		cdsl_free_expr(expr->data.subscript.target);
+		cdsl_free_expr(expr->data.subscript.index);
+		break;
+	case CDSL_EXPR_RANGE:
+		cdsl_free_expr(expr->data.range.min_expr);
+		cdsl_free_expr(expr->data.range.max_expr);
+		break;
+	case CDSL_EXPR_LAMBDA:
+		free(expr->data.lambda.param_name);
+		cdsl_free_expr(expr->data.lambda.body);
+		break;
 	case CDSL_EXPR_ERROR:
 		/* No owned resources to free */
 		break;
@@ -671,6 +811,7 @@ static const cdsl_op_desc_t s_op_table[] = {
     [CDSL_OP_MUL] = {CDSL_OP_MUL, "*", "*", 2, false, true, false},
     [CDSL_OP_DIV] = {CDSL_OP_DIV, "/", "/", 2, false, true, false},
     [CDSL_OP_NEG] = {CDSL_OP_NEG, "-", "NEG", 1, false, false, false},
+    [CDSL_OP_IN] = {CDSL_OP_IN, "in", "IN", 2, true, false, false},
 };
 
 _Static_assert(sizeof(s_op_table) / sizeof(s_op_table[0]) == CDSL_OP_COUNT,

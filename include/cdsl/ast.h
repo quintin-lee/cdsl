@@ -38,6 +38,7 @@ typedef enum {
 	CDSL_TYPE_DATE,	  /**< Date/Time value (ISO 8601) */
 	CDSL_TYPE_LONG,	  /**< 64-bit signed integer (int64_t) */
 	CDSL_TYPE_ARRAY,  /**< Array of values */
+	CDSL_TYPE_MAP,	  /**< Map/Object of key-value pairs (v1.2.0) */
 	CDSL_TYPE_VOID	  /**< Void / no value */
 } cdsl_type_t;
 
@@ -60,10 +61,11 @@ typedef enum {
 	CDSL_OP_SUB, /**< Subtraction (-) */
 	CDSL_OP_MUL, /**< Multiplication (*) */
 	CDSL_OP_DIV, /**< Division (/) */
-	CDSL_OP_NEG  /**< Unary negation (-expr) */
+	CDSL_OP_NEG, /**< Unary negation (-expr) */
+	CDSL_OP_IN   /**< Inclusion / membership check (in) */
 } cdsl_op_t;
 
-#define CDSL_OP_COUNT 14
+#define CDSL_OP_COUNT 15
 
 /**
  * @brief 算子元数据集中描述符结构体
@@ -85,19 +87,35 @@ typedef struct cdsl_op_desc {
  * corresponding union member of ::cdsl_expr_node_t.
  */
 typedef enum {
-	CDSL_EXPR_ID,	  /**< Identifier (variable reference, e.g. "user.age") */
-	CDSL_EXPR_INT,	  /**< Integer literal */
-	CDSL_EXPR_FLOAT,  /**< Float literal */
-	CDSL_EXPR_BOOL,	  /**< Boolean literal (true/false) */
-	CDSL_EXPR_STRING, /**< String literal ("...") */
-	CDSL_EXPR_DATE,	  /**< Date literal (@2026-05-30) */
-	CDSL_EXPR_LONG,	  /**< Long integer literal (123L) */
-	CDSL_EXPR_ARRAY,  /**< Array literal ([...]) */
-	CDSL_EXPR_BINARY, /**< Binary operation (e.g. a + b, x == y) */
-	CDSL_EXPR_UNARY,  /**< Unary operation (e.g. !expr) */
-	CDSL_EXPR_CALL,	  /**< Function call (e.g. strlen("hello")) */
-	CDSL_EXPR_ERROR	  /**< Error placeholder (recovery from parse error) */
+	CDSL_EXPR_ID,	     /**< Identifier (variable reference, e.g. "user.age") */
+	CDSL_EXPR_INT,	     /**< Integer literal */
+	CDSL_EXPR_FLOAT,     /**< Float literal */
+	CDSL_EXPR_BOOL,	     /**< Boolean literal (true/false) */
+	CDSL_EXPR_STRING,    /**< String literal ("...") */
+	CDSL_EXPR_DATE,	     /**< Date literal (@2026-05-30) */
+	CDSL_EXPR_LONG,	     /**< Long integer literal (123L) */
+	CDSL_EXPR_ARRAY,     /**< Array literal ([...]) */
+	CDSL_EXPR_BINARY,    /**< Binary operation (e.g. a + b, x == y) */
+	CDSL_EXPR_UNARY,     /**< Unary operation (e.g. !expr) */
+	CDSL_EXPR_CALL,	     /**< Function call (e.g. strlen("hello")) */
+	CDSL_EXPR_ERROR,     /**< Error placeholder (recovery from parse error) */
+	CDSL_EXPR_MAP,	     /**< Map literal ({ key: expr, ... }) */
+	CDSL_EXPR_SUBSCRIPT, /**< Subscript / property access (expr[expr] or expr.id) */
+	CDSL_EXPR_RANGE,     /**< Interval range ([min..max]) */
+	CDSL_EXPR_LAMBDA     /**< Lambda expression (param -> expr) */
 } cdsl_expr_type_t;
+
+struct cdsl_arg_node;
+struct cdsl_expr_node;
+
+/**
+ * @brief Linked list node for AST Map entries ({ key: expr }).
+ */
+typedef struct cdsl_map_ast_entry {
+	char* key;			 /**< Map key name */
+	struct cdsl_expr_node* value;	 /**< Map value expression */
+	struct cdsl_map_ast_entry* next; /**< Next entry in map literal */
+} cdsl_map_ast_entry_t;
 
 /**
  * @brief AST expression node.
@@ -136,6 +154,22 @@ typedef struct cdsl_expr_node {
 			char* func_name;	    /**< Function name */
 			struct cdsl_arg_node* args; /**< Argument list */
 		} call;				    /**< Function call data (CDSL_EXPR_CALL) */
+		struct {
+			cdsl_map_ast_entry_t* entries; /**< Map entries linked list */
+			int count;		       /**< Number of entries */
+		} map; /**< Map literal expression data (CDSL_EXPR_MAP) */
+		struct {
+			struct cdsl_expr_node* target; /**< Target object/array being indexed */
+			struct cdsl_expr_node* index;  /**< Index or property expression */
+		} subscript; /**< Subscript expression data (CDSL_EXPR_SUBSCRIPT) */
+		struct {
+			struct cdsl_expr_node* min_expr; /**< Min bound */
+			struct cdsl_expr_node* max_expr; /**< Max bound */
+		} range; /**< Interval range data (CDSL_EXPR_RANGE) */
+		struct {
+			char* param_name;	     /**< Lambda parameter name */
+			struct cdsl_expr_node* body; /**< Lambda body expression */
+		} lambda; /**< Lambda expression data (CDSL_EXPR_LAMBDA) */
 	} data;
 	int line;   /**< Source line number (0 if unknown) */
 	int column; /**< Source column number (0 if unknown) */
@@ -362,6 +396,73 @@ cdsl_create_expr_call(char* func_name, cdsl_arg_node_t* args, int line, int colu
  */
 CDSL_NODISCARD
 cdsl_expr_node_t* cdsl_create_expr_error(int line, int column);
+
+/**
+ * @brief Create a Map entry list node.
+ * @param key Entry key (ownership transferred)
+ * @param value Entry value expression (ownership transferred)
+ * @return Newly allocated map entry node
+ */
+cdsl_map_ast_entry_t* cdsl_create_map_ast_entry(char* key, cdsl_expr_node_t* value);
+
+/**
+ * @brief Append a Map entry to an existing list.
+ * @param list Map entry list head (can be NULL)
+ * @param item Entry item to append (ownership transferred)
+ * @return Updated list head
+ */
+cdsl_map_ast_entry_t* cdsl_append_map_ast_entry(cdsl_map_ast_entry_t* list,
+						cdsl_map_ast_entry_t* item);
+
+/**
+ * @brief Free a Map AST entry list.
+ * @param entry Map entry list head (NULL-safe)
+ */
+void cdsl_free_map_ast_entry(cdsl_map_ast_entry_t* entry);
+
+/**
+ * @brief Create a Map literal expression node.
+ * @param entries Map entries list (ownership transferred)
+ * @param line Source line number
+ * @param column Source column number
+ * @return Newly allocated expression node
+ */
+cdsl_expr_node_t* cdsl_create_expr_map(cdsl_map_ast_entry_t* entries, int line, int column);
+
+/**
+ * @brief Create a subscript / property access expression node (target[index]).
+ * @param target Target expression (ownership transferred)
+ * @param index Index or property expression (ownership transferred)
+ * @param line Source line number
+ * @param column Source column number
+ * @return Newly allocated expression node
+ */
+cdsl_expr_node_t*
+cdsl_create_expr_subscript(cdsl_expr_node_t* target, cdsl_expr_node_t* index, int line, int column);
+
+/**
+ * @brief Create an interval range expression node ([min..max]).
+ * @param min_expr Minimum bound expression (ownership transferred)
+ * @param max_expr Maximum bound expression (ownership transferred)
+ * @param line Source line number
+ * @param column Source column number
+ * @return Newly allocated expression node
+ */
+cdsl_expr_node_t* cdsl_create_expr_range(cdsl_expr_node_t* min_expr,
+					 cdsl_expr_node_t* max_expr,
+					 int line,
+					 int column);
+
+/**
+ * @brief Create a Lambda expression node (param -> body).
+ * @param param_name Parameter identifier name (ownership transferred)
+ * @param body Lambda body expression (ownership transferred)
+ * @param line Source line number
+ * @param column Source column number
+ * @return Newly allocated expression node
+ */
+cdsl_expr_node_t*
+cdsl_create_expr_lambda(char* param_name, cdsl_expr_node_t* body, int line, int column);
 /** @} */
 
 /** @name Argument List Functions */

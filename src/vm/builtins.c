@@ -17,6 +17,7 @@
 
 #include "cdsl/execution.h"
 #include "internal.h"
+#include "value_ops.h"
 #include <string.h>
 #include <stdlib.h>
 #include <stdio.h>
@@ -74,6 +75,23 @@ builtin_contains(const char* name, cdsl_arg_node_t* args, cdsl_context_t* ctx, c
 	    haystack.data.string_val && needle.data.string_val) {
 		res.data.bool_val =
 		    (strstr(haystack.data.string_val, needle.data.string_val) != NULL);
+	} else if (haystack.type == CDSL_TYPE_ARRAY && haystack.data.array_val) {
+		cdsl_array_t* arr = haystack.data.array_val;
+		for (int i = 0; i < arr->count; i++) {
+			cdsl_value_t eq;
+			if (cdsl_value_binop(CDSL_OP_EQ, &arr->items[i], &needle, &eq) ==
+			    CDSL_VALOP_OK) {
+				if (eq.data.bool_val) {
+					res.data.bool_val = 1;
+					break;
+				}
+			}
+		}
+	} else if (haystack.type == CDSL_TYPE_MAP && haystack.data.map_val) {
+		if (needle.type == CDSL_TYPE_STRING && needle.data.string_val) {
+			res.data.bool_val =
+			    cdsl_map_has(haystack.data.map_val, needle.data.string_val);
+		}
 	}
 	cdsl_value_free(&haystack);
 	cdsl_value_free(&needle);
@@ -603,6 +621,9 @@ builtin_typeof(const char* name, cdsl_arg_node_t* args, cdsl_context_t* ctx, cds
 	case CDSL_TYPE_ARRAY:
 		res.data.string_val = "ARRAY";
 		break;
+	case CDSL_TYPE_MAP:
+		res.data.string_val = "MAP";
+		break;
 	default:
 		res.data.string_val = "VOID";
 		break;
@@ -612,7 +633,7 @@ builtin_typeof(const char* name, cdsl_arg_node_t* args, cdsl_context_t* ctx, cds
 }
 
 /**
- * @brief built-in count(array): returns the number of elements in an array.
+ * @brief built-in count(array_or_map): returns element count.
  */
 static cdsl_value_t
 builtin_count(const char* name, cdsl_arg_node_t* args, cdsl_context_t* ctx, cdsl_vm_t* vm)
@@ -625,6 +646,8 @@ builtin_count(const char* name, cdsl_arg_node_t* args, cdsl_context_t* ctx, cdsl
 	cdsl_value_t v = cdsl_eval_expr_internal(args->expr, ctx, vm, 0, 0);
 	if (v.type == CDSL_TYPE_ARRAY && v.data.array_val) {
 		res.data.int_val = v.data.array_val->count;
+	} else if (v.type == CDSL_TYPE_MAP && v.data.map_val) {
+		res.data.int_val = v.data.map_val->count;
 	}
 	cdsl_value_free(&v);
 	return res;
@@ -772,6 +795,182 @@ builtin_approx_eq(const char* name, cdsl_arg_node_t* args, cdsl_context_t* ctx, 
 	return res;
 }
 
+/**
+ * @brief built-in any(collection, [predicate]): returns true if any element satisfies the predicate.
+ */
+static cdsl_value_t
+builtin_any(const char* name, cdsl_arg_node_t* args, cdsl_context_t* ctx, cdsl_vm_t* vm)
+{
+	(void)name;
+	cdsl_value_t res = {.type = CDSL_TYPE_BOOL, .data = {.bool_val = 0}};
+	if (!args || !args->expr) {
+		return res;
+	}
+	cdsl_value_t col = cdsl_eval_expr_internal(args->expr, ctx, vm, 0, 0);
+	if (col.type != CDSL_TYPE_ARRAY || !col.data.array_val) {
+		cdsl_value_free(&col);
+		return res;
+	}
+	cdsl_array_t* arr = col.data.array_val;
+	if (!args->next || !args->next->expr) {
+		for (int i = 0; i < arr->count; i++) {
+			cdsl_value_t* item = &arr->items[i];
+			int truthy = (item->type == CDSL_TYPE_BOOL && item->data.bool_val) ||
+				     (item->type == CDSL_TYPE_INT && item->data.int_val != 0) ||
+				     (item->type == CDSL_TYPE_LONG && item->data.long_val != 0) ||
+				     (item->type == CDSL_TYPE_FLOAT && item->data.float_val != 0.0);
+			if (truthy) {
+				res.data.bool_val = 1;
+				break;
+			}
+		}
+		cdsl_value_free(&col);
+		return res;
+	}
+
+	cdsl_expr_node_t* lambda = args->next->expr;
+	if (lambda->type != CDSL_EXPR_LAMBDA) {
+		cdsl_value_free(&col);
+		return res;
+	}
+	const char* param = lambda->data.lambda.param_name;
+	cdsl_expr_node_t* body = lambda->data.lambda.body;
+
+	for (int i = 0; i < arr->count; i++) {
+		cdsl_value_t item_val = cdsl_value_copy(&arr->items[i]);
+		cdsl_context_push_var(ctx, param, item_val);
+		cdsl_value_t bres = cdsl_eval_expr_internal(body, ctx, vm, 0, 0);
+		cdsl_context_pop_var(ctx, param);
+		int is_true = (bres.type == CDSL_TYPE_BOOL && bres.data.bool_val) ||
+			      (bres.type == CDSL_TYPE_INT && bres.data.int_val != 0);
+		cdsl_value_free(&bres);
+		if (is_true) {
+			res.data.bool_val = 1;
+			break;
+		}
+	}
+	cdsl_value_free(&col);
+	return res;
+}
+
+/**
+ * @brief built-in all(collection, [predicate]): returns true if all elements satisfy the predicate.
+ */
+static cdsl_value_t
+builtin_all(const char* name, cdsl_arg_node_t* args, cdsl_context_t* ctx, cdsl_vm_t* vm)
+{
+	(void)name;
+	cdsl_value_t res = {.type = CDSL_TYPE_BOOL, .data = {.bool_val = 1}};
+	if (!args || !args->expr) {
+		res.data.bool_val = 0;
+		return res;
+	}
+	cdsl_value_t col = cdsl_eval_expr_internal(args->expr, ctx, vm, 0, 0);
+	if (col.type != CDSL_TYPE_ARRAY || !col.data.array_val) {
+		cdsl_value_free(&col);
+		res.data.bool_val = 0;
+		return res;
+	}
+	cdsl_array_t* arr = col.data.array_val;
+	if (!args->next || !args->next->expr) {
+		for (int i = 0; i < arr->count; i++) {
+			cdsl_value_t* item = &arr->items[i];
+			int truthy = (item->type == CDSL_TYPE_BOOL && item->data.bool_val) ||
+				     (item->type == CDSL_TYPE_INT && item->data.int_val != 0) ||
+				     (item->type == CDSL_TYPE_LONG && item->data.long_val != 0) ||
+				     (item->type == CDSL_TYPE_FLOAT && item->data.float_val != 0.0);
+			if (!truthy) {
+				res.data.bool_val = 0;
+				break;
+			}
+		}
+		cdsl_value_free(&col);
+		return res;
+	}
+
+	cdsl_expr_node_t* lambda = args->next->expr;
+	if (lambda->type != CDSL_EXPR_LAMBDA) {
+		cdsl_value_free(&col);
+		res.data.bool_val = 0;
+		return res;
+	}
+	const char* param = lambda->data.lambda.param_name;
+	cdsl_expr_node_t* body = lambda->data.lambda.body;
+
+	for (int i = 0; i < arr->count; i++) {
+		cdsl_value_t item_val = cdsl_value_copy(&arr->items[i]);
+		cdsl_context_push_var(ctx, param, item_val);
+		cdsl_value_t bres = cdsl_eval_expr_internal(body, ctx, vm, 0, 0);
+		cdsl_context_pop_var(ctx, param);
+		int is_true = (bres.type == CDSL_TYPE_BOOL && bres.data.bool_val) ||
+			      (bres.type == CDSL_TYPE_INT && bres.data.int_val != 0);
+		cdsl_value_free(&bres);
+		if (!is_true) {
+			res.data.bool_val = 0;
+			break;
+		}
+	}
+	cdsl_value_free(&col);
+	return res;
+}
+
+/**
+ * @brief built-in filter(collection, predicate): returns filtered sub-array.
+ */
+static cdsl_value_t
+builtin_filter(const char* name, cdsl_arg_node_t* args, cdsl_context_t* ctx, cdsl_vm_t* vm)
+{
+	(void)name;
+	cdsl_value_t res = {.type = CDSL_TYPE_ARRAY, .data = {.array_val = NULL}};
+	if (!args || !args->next || !args->expr || !args->next->expr) {
+		return res;
+	}
+	cdsl_value_t col = cdsl_eval_expr_internal(args->expr, ctx, vm, 0, 0);
+	if (col.type != CDSL_TYPE_ARRAY || !col.data.array_val) {
+		cdsl_value_free(&col);
+		return res;
+	}
+	cdsl_expr_node_t* lambda = args->next->expr;
+	if (lambda->type != CDSL_EXPR_LAMBDA) {
+		cdsl_value_free(&col);
+		return res;
+	}
+	const char* param = lambda->data.lambda.param_name;
+	cdsl_expr_node_t* body = lambda->data.lambda.body;
+	cdsl_array_t* arr = col.data.array_val;
+
+	cdsl_array_t* out_arr = calloc(1, sizeof(*out_arr));
+	if (!out_arr) {
+		cdsl_value_free(&col);
+		return res;
+	}
+	out_arr->items =
+	    calloc((size_t)arr->count > 0 ? (size_t)arr->count : 1, sizeof(cdsl_value_t));
+	if (!out_arr->items) {
+		free(out_arr);
+		cdsl_value_free(&col);
+		return res;
+	}
+	out_arr->capacity = arr->count;
+	out_arr->count = 0;
+
+	for (int i = 0; i < arr->count; i++) {
+		cdsl_value_t item_val = cdsl_value_copy(&arr->items[i]);
+		cdsl_context_push_var(ctx, param, item_val);
+		cdsl_value_t bres = cdsl_eval_expr_internal(body, ctx, vm, 0, 0);
+		cdsl_context_pop_var(ctx, param);
+		int is_true = (bres.type == CDSL_TYPE_BOOL && bres.data.bool_val) ||
+			      (bres.type == CDSL_TYPE_INT && bres.data.int_val != 0);
+		cdsl_value_free(&bres);
+		if (is_true) {
+			out_arr->items[out_arr->count++] = cdsl_value_copy(&arr->items[i]);
+		}
+	}
+	cdsl_value_free(&col);
+	res.data.array_val = out_arr;
+	return res;
+}
+
 void
 cdsl_vm_register_builtins(cdsl_vm_t* vm)
 {
@@ -795,5 +994,8 @@ cdsl_vm_register_builtins(cdsl_vm_t* vm)
 	cdsl_vm_register_function(vm, "sum", builtin_sum);
 	cdsl_vm_register_function(vm, "date_add", builtin_date_add);
 	cdsl_vm_register_function(vm, "approx_eq", builtin_approx_eq);
+	cdsl_vm_register_function(vm, "any", builtin_any);
+	cdsl_vm_register_function(vm, "all", builtin_all);
+	cdsl_vm_register_function(vm, "filter", builtin_filter);
 }
 /** @} */

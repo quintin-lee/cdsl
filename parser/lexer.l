@@ -103,10 +103,12 @@ void cdsl_lexer_reset_column(void) {
 "DEFAULT"               { return DEFAULT; }
 "TEMPLATE"              { return TEMPLATE; }
 "EXTENDS"               { return EXTENDS; }
+"IN"|"in"               { return IN; }
 
 "AND"|&&                { return AND; }
 "OR"|\|\|               { return OR; }
 "NOT"|"!"               { return NOT; }
+"->"                    { return ARROW; }
 
 "true"                  { yylval->bool_val = 1; return BOOL_LIT; }
 "false"                 { yylval->bool_val = 0; return BOOL_LIT; }
@@ -168,6 +170,9 @@ void cdsl_lexer_reset_column(void) {
 ")"                      { return RPAREN; }
 "="                      { return ASSIGN; }
 ","                      { return COMMA; }
+":"                      { return COLON; }
+".."                     { return DOUBLE_DOT; }
+"."                      { return DOT; }
 
 [ \t\n\r]+              ;
 .                       {

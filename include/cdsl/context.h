@@ -19,6 +19,8 @@
  * @brief Runtime value wrapper.
  */
 
+struct cdsl_map;
+
 typedef struct cdsl_array {
 	struct cdsl_value* items;
 	int count;
@@ -35,9 +37,28 @@ typedef struct cdsl_value {
 		time_t date_val;
 		int64_t long_val;
 		cdsl_array_t* array_val;
+		struct cdsl_map* map_val;
 	} data;
 	int owned_string; /**< 1 if data.string_val is heap-owned and must be freed by cdsl_value_free; 0 if borrowed from AST/context/bytecode */
 } cdsl_value_t;
+
+/**
+ * @brief Map entry for CDSL_TYPE_MAP.
+ */
+typedef struct cdsl_map_entry {
+	char* key;
+	cdsl_value_t value;
+	struct cdsl_map_entry* next;
+} cdsl_map_entry_t;
+
+/**
+ * @brief Map / Object data structure.
+ */
+typedef struct cdsl_map {
+	cdsl_map_entry_t** buckets;
+	int bucket_count;
+	int count;
+} cdsl_map_t;
 
 /**
  * @brief Context variable entry (linked list node).
@@ -120,6 +141,22 @@ void cdsl_context_set_date(cdsl_context_t* ctx, const char* name, time_t val);
 void cdsl_context_set_long(cdsl_context_t* ctx, const char* name, int64_t val);
 
 /**
+ * @brief Set a Map variable in the context (takes ownership of val).
+ * @param ctx  Context
+ * @param name Variable name
+ * @param val  Map pointer
+ */
+void cdsl_context_set_map(cdsl_context_t* ctx, const char* name, cdsl_map_t* val);
+
+/**
+ * @brief Get a Map variable from the context.
+ * @param ctx  Context
+ * @param name Variable name
+ * @return Stored Map pointer or NULL
+ */
+cdsl_map_t* cdsl_context_get_map(const cdsl_context_t* ctx, const char* name);
+
+/**
  * @brief Get an integer variable, or default if missing.
  * @param ctx         Context
  * @param name        Variable name
@@ -191,7 +228,61 @@ int cdsl_context_remove(cdsl_context_t* ctx, const char* name);
 int cdsl_context_load_json(cdsl_context_t* ctx, const char* json_str);
 
 /**
- * @brief Free memory held by a value (e.g. array, string).
+ * @brief Create a new runtime Map.
+ * @param bucket_count Initial bucket count (0 for default 16)
+ * @return Newly allocated Map, or NULL on error
+ */
+CDSL_NODISCARD
+cdsl_map_t* cdsl_map_create(int bucket_count);
+
+/**
+ * @brief Free a Map and all contained values.
+ * @param map Map to free (NULL-safe)
+ */
+void cdsl_map_free(cdsl_map_t* map);
+
+/**
+ * @brief Set or update a key in the Map (deep-copies the value).
+ * @param map Target Map
+ * @param key Key string
+ * @param val Value to store
+ * @return 1 on success, 0 on failure
+ */
+int cdsl_map_set(cdsl_map_t* map, const char* key, const cdsl_value_t* val);
+
+/**
+ * @brief Get a value pointer from the Map by key.
+ * @param map Target Map
+ * @param key Key string
+ * @return Pointer to value, or NULL if not found
+ */
+const cdsl_value_t* cdsl_map_get(const cdsl_map_t* map, const char* key);
+
+/**
+ * @brief Check if a key exists in the Map.
+ * @param map Target Map
+ * @param key Key string
+ * @return 1 if exists, 0 otherwise
+ */
+int cdsl_map_has(const cdsl_map_t* map, const char* key);
+
+/**
+ * @brief Deep copy a Map.
+ * @param map Source map
+ * @return Newly allocated copy of Map, or NULL on error
+ */
+CDSL_NODISCARD
+cdsl_map_t* cdsl_map_copy(const cdsl_map_t* map);
+
+/**
+ * @brief Deep copy a runtime value.
+ * @param src Source value
+ * @return Cloned value
+ */
+cdsl_value_t cdsl_value_copy(const cdsl_value_t* src);
+
+/**
+ * @brief Free memory held by a value (e.g. array, map, string).
  * @param val Value to free
  */
 void cdsl_value_free(cdsl_value_t* val);

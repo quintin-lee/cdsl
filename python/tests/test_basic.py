@@ -77,7 +77,8 @@ class TestEnums:
     def test_type_values(self):
         assert cdsl.Type.INT == 0
         assert cdsl.Type.BOOL == 2
-        assert cdsl.Type.VOID == 7
+        assert cdsl.Type.MAP == 7
+        assert cdsl.Type.VOID == 8
 
     def test_status_values(self):
         assert cdsl.Status.PASSED == 0

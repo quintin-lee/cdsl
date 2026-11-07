@@ -145,6 +145,44 @@ cdsl_value_binop(cdsl_op_t op, const cdsl_value_t* a, const cdsl_value_t* b, cds
 		return CDSL_VALOP_VOID_OPERAND;
 	}
 
+	/* Inclusion / membership operator: expr IN container */
+	if (op == CDSL_OP_IN) {
+		out->type = CDSL_TYPE_BOOL;
+		out->data.bool_val = 0;
+		if (b->type == CDSL_TYPE_ARRAY && b->data.array_val) {
+			cdsl_array_t* arr = b->data.array_val;
+			for (int i = 0; i < arr->count; i++) {
+				cdsl_value_t eq_res;
+				if (cdsl_value_binop(CDSL_OP_EQ, a, &arr->items[i], &eq_res) ==
+				    CDSL_VALOP_OK) {
+					if (eq_res.data.bool_val) {
+						out->data.bool_val = 1;
+						return CDSL_VALOP_OK;
+					}
+				}
+			}
+			return CDSL_VALOP_OK;
+		}
+		if (b->type == CDSL_TYPE_MAP && b->data.map_val) {
+			const char* key_str = NULL;
+			if (a->type == CDSL_TYPE_STRING) {
+				key_str = a->data.string_val;
+			}
+			if (key_str && cdsl_map_has(b->data.map_val, key_str)) {
+				out->data.bool_val = 1;
+			}
+			return CDSL_VALOP_OK;
+		}
+		if (b->type == CDSL_TYPE_STRING && a->type == CDSL_TYPE_STRING) {
+			if (a->data.string_val && b->data.string_val) {
+				out->data.bool_val =
+				    (strstr(b->data.string_val, a->data.string_val) != NULL);
+			}
+			return CDSL_VALOP_OK;
+		}
+		return CDSL_VALOP_TYPE_ERROR;
+	}
+
 	/* STRING: equality / inequality only */
 	if (a->type == CDSL_TYPE_STRING || b->type == CDSL_TYPE_STRING) {
 		if (a->type != CDSL_TYPE_STRING || b->type != CDSL_TYPE_STRING) {

@@ -76,7 +76,7 @@ __all__ = [
     "codegen_ruleset_to_files", "codegen_ruleset_to_h", "codegen_ruleset_to_c",
     "to_dot", "to_dot_file", "ruleset_to_dot", "ruleset_to_dot_file",
 ]
-__version__ = "1.1.0"
+__version__ = "1.2.0"
 
 # ---- Locate the shared library ------------------------------------------------
 
@@ -127,11 +127,12 @@ class Type:
     DATE = 4
     LONG = 5
     ARRAY = 6
-    VOID = 7
+    MAP = 7
+    VOID = 8
 
     _names = {
         0: "INT", 1: "FLOAT", 2: "BOOL", 3: "STRING",
-        4: "DATE", 5: "LONG", 6: "ARRAY", 7: "VOID",
+        4: "DATE", 5: "LONG", 6: "ARRAY", 7: "MAP", 8: "VOID",
     }
 
 
@@ -151,6 +152,7 @@ class Op:
     MUL = 11
     DIV = 12
     NEG = 13
+    IN = 14
 
 
 class ExprType:
@@ -166,6 +168,10 @@ class ExprType:
     BINARY = 8
     UNARY = 9
     CALL = 10
+    MAP = 11
+    SUBSCRIPT = 12
+    RANGE = 13
+    LAMBDA = 14
 
 
 class Status:

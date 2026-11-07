@@ -86,6 +86,9 @@ cdsl_value_free(cdsl_value_t* val)
 		free(arr->items);
 		free(arr);
 		val->data.array_val = NULL;
+	} else if (val->type == CDSL_TYPE_MAP && val->data.map_val) {
+		cdsl_map_free(val->data.map_val);
+		val->data.map_val = NULL;
 	}
 }
 
@@ -224,6 +227,355 @@ cdsl_vm_check_abort(cdsl_vm_t* vm, double start_time_us)
 		}
 	}
 	return 0;
+}
+
+static unsigned int
+map_hash(const char* str)
+{
+	unsigned int hash = 5381;
+	int c;
+	while ((c = (unsigned char)*str++)) {
+		hash = ((hash << 5) + hash) + (unsigned int)c;
+	}
+	return hash;
+}
+
+cdsl_map_t*
+cdsl_map_create(int bucket_count)
+{
+	if (bucket_count <= 0) {
+		bucket_count = 16;
+	}
+	cdsl_map_t* m = calloc(1, sizeof(*m));
+	if (!m) {
+		return NULL;
+	}
+	m->buckets = calloc((size_t)bucket_count, sizeof(cdsl_map_entry_t*));
+	if (!m->buckets) {
+		free(m);
+		return NULL;
+	}
+	m->bucket_count = bucket_count;
+	m->count = 0;
+	return m;
+}
+
+void
+cdsl_map_free(cdsl_map_t* map)
+{
+	if (!map) {
+		return;
+	}
+	for (int i = 0; i < map->bucket_count; i++) {
+		cdsl_map_entry_t* e = map->buckets[i];
+		while (e) {
+			cdsl_map_entry_t* next = e->next;
+			free(e->key);
+			cdsl_value_free(&e->value);
+			free(e);
+			e = next;
+		}
+	}
+	free(map->buckets);
+	free(map);
+}
+
+const cdsl_value_t*
+cdsl_map_get(const cdsl_map_t* map, const char* key)
+{
+	if (!map || !map->buckets || !key) {
+		return NULL;
+	}
+	unsigned int h = map_hash(key) % (unsigned int)map->bucket_count;
+	for (cdsl_map_entry_t* e = map->buckets[h]; e; e = e->next) {
+		if (strcmp(e->key, key) == 0) {
+			return &e->value;
+		}
+	}
+	return NULL;
+}
+
+int
+cdsl_map_has(const cdsl_map_t* map, const char* key)
+{
+	return cdsl_map_get(map, key) != NULL;
+}
+
+cdsl_value_t
+cdsl_value_copy(const cdsl_value_t* src)
+{
+	cdsl_value_t v = {.type = CDSL_TYPE_VOID};
+	if (!src) {
+		return v;
+	}
+	v.type = src->type;
+	v.owned_string = 0;
+	switch (src->type) {
+	case CDSL_TYPE_INT:
+		v.data.int_val = src->data.int_val;
+		break;
+	case CDSL_TYPE_FLOAT:
+		v.data.float_val = src->data.float_val;
+		break;
+	case CDSL_TYPE_BOOL:
+		v.data.bool_val = src->data.bool_val;
+		break;
+	case CDSL_TYPE_LONG:
+		v.data.long_val = src->data.long_val;
+		break;
+	case CDSL_TYPE_DATE:
+		v.data.date_val = src->data.date_val;
+		break;
+	case CDSL_TYPE_STRING:
+		if (src->data.string_val) {
+			v.data.string_val = cdsl_strdup(src->data.string_val);
+			v.owned_string = 1;
+		} else {
+			v.data.string_val = NULL;
+		}
+		break;
+	case CDSL_TYPE_ARRAY:
+		if (src->data.array_val) {
+			cdsl_array_t* src_arr = src->data.array_val;
+			cdsl_array_t* arr = calloc(1, sizeof(*arr));
+			if (arr) {
+				arr->count = src_arr->count;
+				arr->capacity = src_arr->count;
+				if (arr->count > 0) {
+					arr->items =
+					    calloc((size_t)arr->count, sizeof(cdsl_value_t));
+					if (arr->items) {
+						for (int i = 0; i < arr->count; i++) {
+							arr->items[i] =
+							    cdsl_value_copy(&src_arr->items[i]);
+						}
+					} else {
+						arr->count = 0;
+					}
+				}
+			}
+			v.data.array_val = arr;
+		} else {
+			v.data.array_val = NULL;
+		}
+		break;
+	case CDSL_TYPE_MAP:
+		v.data.map_val = cdsl_map_copy(src->data.map_val);
+		break;
+	case CDSL_TYPE_VOID:
+	default:
+		break;
+	}
+	return v;
+}
+
+int
+cdsl_map_set(cdsl_map_t* map, const char* key, const cdsl_value_t* val)
+{
+	if (!map || !map->buckets || !key || !val) {
+		return 0;
+	}
+	unsigned int h = map_hash(key) % (unsigned int)map->bucket_count;
+	for (cdsl_map_entry_t* e = map->buckets[h]; e; e = e->next) {
+		if (strcmp(e->key, key) == 0) {
+			cdsl_value_free(&e->value);
+			e->value = cdsl_value_copy(val);
+			return 1;
+		}
+	}
+	cdsl_map_entry_t* entry = calloc(1, sizeof(*entry));
+	if (!entry) {
+		return 0;
+	}
+	entry->key = cdsl_strdup(key);
+	if (!entry->key) {
+		free(entry);
+		return 0;
+	}
+	entry->value = cdsl_value_copy(val);
+	entry->next = map->buckets[h];
+	map->buckets[h] = entry;
+	map->count++;
+	return 1;
+}
+
+cdsl_map_t*
+cdsl_map_copy(const cdsl_map_t* map)
+{
+	if (!map) {
+		return NULL;
+	}
+	cdsl_map_t* copy = cdsl_map_create(map->bucket_count);
+	if (!copy) {
+		return NULL;
+	}
+	for (int i = 0; i < map->bucket_count; i++) {
+		for (cdsl_map_entry_t* e = map->buckets[i]; e; e = e->next) {
+			if (!cdsl_map_set(copy, e->key, &e->value)) {
+				cdsl_map_free(copy);
+				return NULL;
+			}
+		}
+	}
+	return copy;
+}
+
+const cdsl_value_t*
+cdsl_context_lookup_value(const cdsl_context_t* ctx, const char* name)
+{
+	if (!ctx || !name) {
+		return NULL;
+	}
+	cdsl_context_entry_t* e = cdsl_context_get_entry_internal((cdsl_context_t*)ctx, name);
+	if (e) {
+		return &e->value;
+	}
+	const char* dot = strchr(name, '.');
+	if (!dot) {
+		return NULL;
+	}
+	size_t root_len = (size_t)(dot - name);
+	char root_name[128];
+	if (root_len >= sizeof(root_name)) {
+		return NULL;
+	}
+	memcpy(root_name, name, root_len);
+	root_name[root_len] = '\0';
+
+	cdsl_context_entry_t* root_entry =
+	    cdsl_context_get_entry_internal((cdsl_context_t*)ctx, root_name);
+	if (!root_entry || root_entry->value.type != CDSL_TYPE_MAP ||
+	    !root_entry->value.data.map_val) {
+		return NULL;
+	}
+
+	const cdsl_map_t* cur_map = root_entry->value.data.map_val;
+	const char* rem = dot + 1;
+	while (rem && *rem) {
+		const char* next_dot = strchr(rem, '.');
+		if (!next_dot) {
+			return cdsl_map_get(cur_map, rem);
+		}
+		size_t seg_len = (size_t)(next_dot - rem);
+		char seg[128];
+		if (seg_len >= sizeof(seg)) {
+			return NULL;
+		}
+		memcpy(seg, rem, seg_len);
+		seg[seg_len] = '\0';
+		const cdsl_value_t* sub_val = cdsl_map_get(cur_map, seg);
+		if (!sub_val || sub_val->type != CDSL_TYPE_MAP || !sub_val->data.map_val) {
+			return NULL;
+		}
+		cur_map = sub_val->data.map_val;
+		rem = next_dot + 1;
+	}
+	return NULL;
+}
+
+void
+cdsl_context_set_map(cdsl_context_t* ctx, const char* name, cdsl_map_t* val)
+{
+	if (!ctx || !name) {
+		return;
+	}
+	if (context_var_is_readonly(ctx, name)) {
+		return;
+	}
+	cdsl_context_entry_t* e = cdsl_context_get_entry_internal(ctx, name);
+	if (e) {
+		cdsl_value_free(&e->value);
+		e->value.type = CDSL_TYPE_MAP;
+		e->value.data.map_val = val;
+		e->value.owned_string = 0;
+	} else {
+		char* new_name = cdsl_strdup(name);
+		if (!new_name) {
+			return;
+		}
+		e = calloc(1, sizeof(*e));
+		if (!e) {
+			free(new_name);
+			return;
+		}
+		e->name = new_name;
+		e->value.type = CDSL_TYPE_MAP;
+		e->value.data.map_val = val;
+		e->value.owned_string = 0;
+		e->next = ctx->entries;
+		ctx->entries = e;
+		cdsl_hashmap_put(ctx->map, name, e);
+	}
+}
+
+cdsl_map_t*
+cdsl_context_get_map(const cdsl_context_t* ctx, const char* name)
+{
+	const cdsl_value_t* v = cdsl_context_lookup_value(ctx, name);
+	if (v && v->type == CDSL_TYPE_MAP) {
+		return v->data.map_val;
+	}
+	return NULL;
+}
+
+int
+cdsl_context_push_var(cdsl_context_t* ctx, const char* name, cdsl_value_t val)
+{
+	if (!ctx || !name) {
+		return 0;
+	}
+	cdsl_context_entry_t* e = calloc(1, sizeof(*e));
+	if (!e) {
+		return 0;
+	}
+	e->name = cdsl_strdup(name);
+	if (!e->name) {
+		free(e);
+		return 0;
+	}
+	e->value = val;
+	e->next = ctx->entries;
+	ctx->entries = e;
+	cdsl_hashmap_put(ctx->map, name, e);
+	return 1;
+}
+
+void
+cdsl_context_pop_var(cdsl_context_t* ctx, const char* name)
+{
+	if (!ctx || !name) {
+		return;
+	}
+	cdsl_context_entry_t* prev = NULL;
+	cdsl_context_entry_t* target = NULL;
+	for (cdsl_context_entry_t* e = ctx->entries; e; prev = e, e = e->next) {
+		if (strcmp(e->name, name) == 0) {
+			target = e;
+			if (prev) {
+				prev->next = e->next;
+			} else {
+				ctx->entries = e->next;
+			}
+			break;
+		}
+	}
+	if (target) {
+		cdsl_context_entry_t* shadowed = NULL;
+		for (cdsl_context_entry_t* e = ctx->entries; e; e = e->next) {
+			if (strcmp(e->name, name) == 0) {
+				shadowed = e;
+				break;
+			}
+		}
+		if (shadowed) {
+			cdsl_hashmap_put(ctx->map, name, shadowed);
+		} else {
+			cdsl_hashmap_remove(ctx->map, name, NULL);
+		}
+		free(target->name);
+		cdsl_value_free(&target->value);
+		free(target);
+	}
 }
 
 void
@@ -440,16 +792,19 @@ cdsl_context_set_long(cdsl_context_t* ctx, const char* name, int64_t val)
 int
 cdsl_context_get_int(const cdsl_context_t* ctx, const char* name, int default_val)
 {
-	cdsl_context_entry_t* e = cdsl_context_get_entry_internal((cdsl_context_t*)ctx, name);
-	if (e) {
-		if (e->value.type == CDSL_TYPE_INT) {
-			return e->value.data.int_val;
+	const cdsl_value_t* v = cdsl_context_lookup_value(ctx, name);
+	if (v) {
+		if (v->type == CDSL_TYPE_INT) {
+			return v->data.int_val;
 		}
-		if (e->value.type == CDSL_TYPE_FLOAT) {
-			return (int)e->value.data.float_val;
+		if (v->type == CDSL_TYPE_LONG) {
+			return (int)v->data.long_val;
 		}
-		if (e->value.type == CDSL_TYPE_BOOL) {
-			return e->value.data.bool_val;
+		if (v->type == CDSL_TYPE_FLOAT) {
+			return (int)v->data.float_val;
+		}
+		if (v->type == CDSL_TYPE_BOOL) {
+			return v->data.bool_val;
 		}
 	}
 	return default_val;
@@ -458,16 +813,19 @@ cdsl_context_get_int(const cdsl_context_t* ctx, const char* name, int default_va
 double
 cdsl_context_get_float(const cdsl_context_t* ctx, const char* name, double default_val)
 {
-	cdsl_context_entry_t* e = cdsl_context_get_entry_internal((cdsl_context_t*)ctx, name);
-	if (e) {
-		if (e->value.type == CDSL_TYPE_FLOAT) {
-			return e->value.data.float_val;
+	const cdsl_value_t* v = cdsl_context_lookup_value(ctx, name);
+	if (v) {
+		if (v->type == CDSL_TYPE_FLOAT) {
+			return v->data.float_val;
 		}
-		if (e->value.type == CDSL_TYPE_INT) {
-			return (double)e->value.data.int_val;
+		if (v->type == CDSL_TYPE_INT) {
+			return (double)v->data.int_val;
 		}
-		if (e->value.type == CDSL_TYPE_BOOL) {
-			return (double)e->value.data.bool_val;
+		if (v->type == CDSL_TYPE_LONG) {
+			return (double)v->data.long_val;
+		}
+		if (v->type == CDSL_TYPE_BOOL) {
+			return (double)v->data.bool_val;
 		}
 	}
 	return default_val;
@@ -476,16 +834,19 @@ cdsl_context_get_float(const cdsl_context_t* ctx, const char* name, double defau
 int
 cdsl_context_get_bool(const cdsl_context_t* ctx, const char* name, int default_val)
 {
-	cdsl_context_entry_t* e = cdsl_context_get_entry_internal((cdsl_context_t*)ctx, name);
-	if (e) {
-		if (e->value.type == CDSL_TYPE_BOOL) {
-			return e->value.data.bool_val;
+	const cdsl_value_t* v = cdsl_context_lookup_value(ctx, name);
+	if (v) {
+		if (v->type == CDSL_TYPE_BOOL) {
+			return v->data.bool_val;
 		}
-		if (e->value.type == CDSL_TYPE_INT) {
-			return e->value.data.int_val != 0;
+		if (v->type == CDSL_TYPE_INT) {
+			return v->data.int_val != 0;
 		}
-		if (e->value.type == CDSL_TYPE_FLOAT) {
-			return e->value.data.float_val != 0.0;
+		if (v->type == CDSL_TYPE_LONG) {
+			return v->data.long_val != 0;
+		}
+		if (v->type == CDSL_TYPE_FLOAT) {
+			return v->data.float_val != 0.0;
 		}
 	}
 	return default_val;
@@ -494,9 +855,9 @@ cdsl_context_get_bool(const cdsl_context_t* ctx, const char* name, int default_v
 const char*
 cdsl_context_get_string(const cdsl_context_t* ctx, const char* name, const char* default_val)
 {
-	cdsl_context_entry_t* e = cdsl_context_get_entry_internal((cdsl_context_t*)ctx, name);
-	if (e && e->value.type == CDSL_TYPE_STRING) {
-		return e->value.data.string_val;
+	const cdsl_value_t* v = cdsl_context_lookup_value(ctx, name);
+	if (v && v->type == CDSL_TYPE_STRING) {
+		return v->data.string_val;
 	}
 	return default_val;
 }
@@ -504,9 +865,9 @@ cdsl_context_get_string(const cdsl_context_t* ctx, const char* name, const char*
 time_t
 cdsl_context_get_date(const cdsl_context_t* ctx, const char* name, time_t default_val)
 {
-	cdsl_context_entry_t* e = cdsl_context_get_entry_internal((cdsl_context_t*)ctx, name);
-	if (e && e->value.type == CDSL_TYPE_DATE) {
-		return e->value.data.date_val;
+	const cdsl_value_t* v = cdsl_context_lookup_value(ctx, name);
+	if (v && v->type == CDSL_TYPE_DATE) {
+		return v->data.date_val;
 	}
 	return default_val;
 }
@@ -514,12 +875,17 @@ cdsl_context_get_date(const cdsl_context_t* ctx, const char* name, time_t defaul
 int64_t
 cdsl_context_get_long(const cdsl_context_t* ctx, const char* name, int64_t default_val)
 {
-	cdsl_context_entry_t* e = cdsl_context_get_entry_internal((cdsl_context_t*)ctx, name);
-	if (e && e->value.type == CDSL_TYPE_LONG) {
-		return e->value.data.long_val;
-	}
-	if (e && e->value.type == CDSL_TYPE_INT) {
-		return (int64_t)e->value.data.int_val;
+	const cdsl_value_t* v = cdsl_context_lookup_value(ctx, name);
+	if (v) {
+		if (v->type == CDSL_TYPE_LONG) {
+			return v->data.long_val;
+		}
+		if (v->type == CDSL_TYPE_INT) {
+			return (int64_t)v->data.int_val;
+		}
+		if (v->type == CDSL_TYPE_FLOAT) {
+			return (int64_t)v->data.float_val;
+		}
 	}
 	return default_val;
 }

@@ -96,11 +96,13 @@ parse_date_internal(const char* s)
     struct cdsl_case_node* case_list;
     struct cdsl_metric_node* metric_list;
     struct cdsl_rule* rule;
+    struct cdsl_map_ast_entry* map_entry_list;
 }
 
 %token RULE META WHEN THEN METRIC CASE DEFAULT TEMPLATE EXTENDS
 %token LBRACE RBRACE LBRACKET RBRACKET LPAREN RPAREN ASSIGN COMMA
 %token PLUS MINUS STAR SLASH
+%token IN DOUBLE_DOT ARROW COLON DOT
 %token <id_val> IDENTIFIER
 %token <int_val> INT_LIT
 %token <long_val> LONG_LIT
@@ -110,13 +112,16 @@ parse_date_internal(const char* s)
 
 %destructor { free($$); } IDENTIFIER STRING_LIT DATE_LIT
 
+%precedence ARROW
 %left OR
 %left AND
+%left IN
 %left EQ NE
 %left LT GT LE GE
 %left PLUS MINUS
 %left STAR SLASH
 %precedence NOT UMINUS
+%left LBRACKET DOT
 
 %type <rule> program rule_declaration template_declaration
 %type <meta_list> meta_block meta_list meta_item
@@ -125,6 +130,7 @@ parse_date_internal(const char* s)
 %type <action> action_statement
 %type <case_list> case_list case_item
 %type <metric_list> metric_list metric_item
+%type <map_entry_list> map_entry_list map_entry_list_nonempty map_entry
 
 %%
 
@@ -237,8 +243,29 @@ expression:
     | expression SLASH expression       { $$ = cdsl_create_expr_binary(CDSL_OP_DIV, $1, $3, @1.first_line, @1.first_column); }
     | NOT expression                    { $$ = cdsl_create_expr_unary(CDSL_OP_NOT, $2, @2.first_line, @2.first_column); }
     | MINUS expression %prec UMINUS     { $$ = cdsl_create_expr_unary(CDSL_OP_NEG, $2, @2.first_line, @2.first_column); }
+    | LBRACE map_entry_list RBRACE      { $$ = cdsl_create_expr_map($2, @1.first_line, @1.first_column); }
+    | LBRACKET expression DOUBLE_DOT expression RBRACKET { $$ = cdsl_create_expr_range($2, $4, @1.first_line, @1.first_column); }
+    | expression LBRACKET expression RBRACKET { $$ = cdsl_create_expr_subscript($1, $3, @1.first_line, @1.first_column); }
+    | expression DOT IDENTIFIER         { $$ = cdsl_create_expr_subscript($1, cdsl_create_expr_string($3, @3.first_line, @3.first_column), @1.first_line, @1.first_column); }
+    | expression IN expression          { $$ = cdsl_create_expr_binary(CDSL_OP_IN, $1, $3, @1.first_line, @1.first_column); }
+    | IDENTIFIER ARROW expression       { $$ = cdsl_create_expr_lambda($1, $3, @1.first_line, @1.first_column); }
     | LPAREN expression RPAREN               { $$ = $2; }
     | error                                  { $$ = cdsl_create_expr_error(@1.first_line, @1.first_column); }
+    ;
+
+map_entry_list:
+    %empty                             { $$ = NULL; }
+    | map_entry_list_nonempty           { $$ = $1; }
+    ;
+
+map_entry_list_nonempty:
+    map_entry                          { $$ = $1; }
+    | map_entry_list_nonempty COMMA map_entry { $$ = cdsl_append_map_ast_entry($1, $3); }
+    ;
+
+map_entry:
+    IDENTIFIER COLON expression         { $$ = cdsl_create_map_ast_entry($1, $3); }
+    | STRING_LIT COLON expression       { $$ = cdsl_create_map_ast_entry($1, $3); }
     ;
 
 action_statement:

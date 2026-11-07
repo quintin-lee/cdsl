@@ -363,42 +363,42 @@ cdsl_eval_expr_internal(
 		break;
 	}
 	case CDSL_EXPR_ID: {
-		cdsl_context_entry_t* e = cdsl_context_get_entry_internal(ctx, expr->data.id_val);
-		if (e) {
+		const cdsl_value_t* val_ptr = cdsl_context_lookup_value(ctx, expr->data.id_val);
+		if (val_ptr) {
 			if (debug) {
 				fprintf(stderr, "[TRACE]   lookup: %s = ", expr->data.id_val);
-				switch (e->value.type) {
+				switch (val_ptr->type) {
 				case CDSL_TYPE_INT:
-					fprintf(stderr, "%d\n", e->value.data.int_val);
+					fprintf(stderr, "%d\n", val_ptr->data.int_val);
 					break;
 				case CDSL_TYPE_FLOAT:
-					fprintf(stderr, "%.2f\n", e->value.data.float_val);
+					fprintf(stderr, "%.2f\n", val_ptr->data.float_val);
 					break;
 				case CDSL_TYPE_BOOL:
 					fprintf(stderr,
 						"%s\n",
-						e->value.data.bool_val ? "true" : "false");
+						val_ptr->data.bool_val ? "true" : "false");
 					break;
 				case CDSL_TYPE_STRING:
-					fprintf(stderr, "\"%s\"\n", e->value.data.string_val);
+					fprintf(stderr, "\"%s\"\n", val_ptr->data.string_val);
 					break;
 				case CDSL_TYPE_DATE: {
 					char buf[32];
 					struct tm tm_buf;
-					CDSL_LOCALTIME_R(&e->value.data.date_val, &tm_buf);
+					CDSL_LOCALTIME_R(&val_ptr->data.date_val, &tm_buf);
 					strftime(buf, sizeof(buf), "%Y-%m-%d %H:%M:%S", &tm_buf);
 					fprintf(stderr, "%s\n", buf);
 					break;
 				}
 				case CDSL_TYPE_LONG:
-					fprintf(stderr, "%ld\n", (long)e->value.data.long_val);
+					fprintf(stderr, "%ld\n", (long)val_ptr->data.long_val);
 					break;
 				default:
 					fprintf(stderr, "?\n");
 					break;
 				}
 			}
-			cdsl_value_t v = e->value;
+			cdsl_value_t v = *val_ptr;
 			if (v.type == CDSL_TYPE_STRING && v.data.string_val) {
 				v.data.string_val = cdsl_vm_strdup(vm, v.data.string_val);
 				v.owned_string = 1;
@@ -419,6 +419,8 @@ cdsl_eval_expr_internal(
 					}
 					return v;
 				}
+			} else if (v.type == CDSL_TYPE_ARRAY || v.type == CDSL_TYPE_MAP) {
+				return cdsl_value_copy(val_ptr);
 			}
 			return v;
 		}
@@ -427,6 +429,52 @@ cdsl_eval_expr_internal(
 		}
 		break;
 	}
+	case CDSL_EXPR_MAP: {
+		cdsl_map_t* m = cdsl_map_create(16);
+		if (!m) {
+			result.type = CDSL_TYPE_VOID;
+			break;
+		}
+		for (cdsl_map_ast_entry_t* me = expr->data.map.entries; me; me = me->next) {
+			cdsl_value_t item_val =
+			    cdsl_eval_expr_internal(me->value, ctx, vm, debug, depth + 1);
+			cdsl_map_set(m, me->key, &item_val);
+			cdsl_value_free(&item_val);
+		}
+		result.type = CDSL_TYPE_MAP;
+		result.data.map_val = m;
+		break;
+	}
+	case CDSL_EXPR_SUBSCRIPT: {
+		cdsl_value_t target =
+		    cdsl_eval_expr_internal(expr->data.subscript.target, ctx, vm, debug, depth + 1);
+		cdsl_value_t index =
+		    cdsl_eval_expr_internal(expr->data.subscript.index, ctx, vm, debug, depth + 1);
+		if (target.type == CDSL_TYPE_MAP && target.data.map_val) {
+			const char* key =
+			    (index.type == CDSL_TYPE_STRING) ? index.data.string_val : NULL;
+			if (key) {
+				const cdsl_value_t* found = cdsl_map_get(target.data.map_val, key);
+				if (found) {
+					result = cdsl_value_copy(found);
+				}
+			}
+		} else if (target.type == CDSL_TYPE_ARRAY && target.data.array_val) {
+			int idx = (index.type == CDSL_TYPE_INT)	   ? index.data.int_val
+				  : (index.type == CDSL_TYPE_LONG) ? (int)index.data.long_val
+								   : -1;
+			if (idx >= 0 && idx < target.data.array_val->count) {
+				result = cdsl_value_copy(&target.data.array_val->items[idx]);
+			}
+		}
+		cdsl_value_free(&target);
+		cdsl_value_free(&index);
+		break;
+	}
+	case CDSL_EXPR_RANGE:
+	case CDSL_EXPR_LAMBDA:
+		result.type = CDSL_TYPE_VOID;
+		break;
 	case CDSL_EXPR_UNARY: {
 		cdsl_value_t v =
 		    cdsl_eval_expr_internal(expr->data.unary.expr, ctx, vm, debug, depth + 1);
@@ -534,6 +582,28 @@ cdsl_eval_expr_internal(
 		    cdsl_eval_expr_internal(expr->data.binary.left, ctx, vm, debug, depth + 1);
 		if (vm && CDSL_ATOMIC_LOAD(&vm->error_state)) {
 			cdsl_value_free(&l);
+			break;
+		}
+		if (op == CDSL_OP_IN && expr->data.binary.right->type == CDSL_EXPR_RANGE) {
+			cdsl_expr_node_t* range_node = expr->data.binary.right;
+			cdsl_value_t min_v = cdsl_eval_expr_internal(
+			    range_node->data.range.min_expr, ctx, vm, debug, depth + 1);
+			cdsl_value_t max_v = cdsl_eval_expr_internal(
+			    range_node->data.range.max_expr, ctx, vm, debug, depth + 1);
+			cdsl_value_t ge_res, le_res;
+			cdsl_valop_status_t st1 = cdsl_value_binop(CDSL_OP_GE, &l, &min_v, &ge_res);
+			cdsl_valop_status_t st2 = cdsl_value_binop(CDSL_OP_LE, &l, &max_v, &le_res);
+			if (st1 == CDSL_VALOP_OK && st2 == CDSL_VALOP_OK) {
+				result.type = CDSL_TYPE_BOOL;
+				result.data.bool_val =
+				    (ge_res.data.bool_val && le_res.data.bool_val);
+			} else {
+				result.type = CDSL_TYPE_BOOL;
+				result.data.bool_val = 0;
+			}
+			cdsl_value_free(&l);
+			cdsl_value_free(&min_v);
+			cdsl_value_free(&max_v);
 			break;
 		}
 		cdsl_value_t r =

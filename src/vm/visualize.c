@@ -119,6 +119,49 @@ dot_expr(cdsl_strbuf_t* sb, cdsl_expr_node_t* expr, int* id)
 		    my_id,
 		    expr->data.call.func_name);
 		break;
+	case CDSL_EXPR_MAP:
+		cdsl_strbuf_printf(
+		    sb,
+		    "  n%d [label=\"Map\",shape=box,style=filled,fillcolor=lightyellow];\n",
+		    my_id);
+		break;
+	case CDSL_EXPR_SUBSCRIPT: {
+		cdsl_strbuf_printf(
+		    sb,
+		    "  n%d [label=\"[]\",shape=diamond,style=filled,fillcolor=lavender];\n",
+		    my_id);
+		int tid = *id;
+		dot_expr(sb, expr->data.subscript.target, id);
+		cdsl_strbuf_printf(sb, "  n%d -> n%d;\n", my_id, tid);
+		int iid = *id;
+		dot_expr(sb, expr->data.subscript.index, id);
+		cdsl_strbuf_printf(sb, "  n%d -> n%d;\n", my_id, iid);
+		break;
+	}
+	case CDSL_EXPR_RANGE: {
+		cdsl_strbuf_printf(
+		    sb,
+		    "  n%d [label=\"..\",shape=diamond,style=filled,fillcolor=lavender];\n",
+		    my_id);
+		int min_id = *id;
+		dot_expr(sb, expr->data.range.min_expr, id);
+		cdsl_strbuf_printf(sb, "  n%d -> n%d;\n", my_id, min_id);
+		int max_id = *id;
+		dot_expr(sb, expr->data.range.max_expr, id);
+		cdsl_strbuf_printf(sb, "  n%d -> n%d;\n", my_id, max_id);
+		break;
+	}
+	case CDSL_EXPR_LAMBDA: {
+		cdsl_strbuf_printf(
+		    sb,
+		    "  n%d [label=\"%s ->\",shape=box,style=filled,fillcolor=lightgreen];\n",
+		    my_id,
+		    expr->data.lambda.param_name ? expr->data.lambda.param_name : "param");
+		int bid = *id;
+		dot_expr(sb, expr->data.lambda.body, id);
+		cdsl_strbuf_printf(sb, "  n%d -> n%d;\n", my_id, bid);
+		break;
+	}
 	case CDSL_EXPR_ERROR:
 		cdsl_strbuf_printf(
 		    sb, "  n%d [label=\"<error>\",shape=box,style=filled,fillcolor=red];\n", my_id);

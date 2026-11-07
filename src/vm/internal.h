@@ -95,6 +95,30 @@ int cdsl_meta_get_bool(cdsl_meta_item_t* list, const char* key, int default_val)
 cdsl_context_entry_t* cdsl_context_get_entry_internal(cdsl_context_t* ctx, const char* name);
 
 /**
+ * @brief Lookup variable value in context, supporting nested Map navigation.
+ * @param ctx Execution context
+ * @param name Variable name or dotted path
+ * @return Pointer to value or NULL
+ */
+const cdsl_value_t* cdsl_context_lookup_value(const cdsl_context_t* ctx, const char* name);
+
+/**
+ * @brief Push a scoped temporary variable into context (for Lambda parameter binding).
+ * @param ctx Context
+ * @param name Parameter name
+ * @param val Value to bind
+ * @return 1 on success, 0 on failure
+ */
+int cdsl_context_push_var(cdsl_context_t* ctx, const char* name, cdsl_value_t val);
+
+/**
+ * @brief Pop a scoped temporary variable from context, restoring any previous binding.
+ * @param ctx Context
+ * @param name Parameter name
+ */
+void cdsl_context_pop_var(cdsl_context_t* ctx, const char* name);
+
+/**
  * @brief Register all built-in functions (strlen, contains, etc.) in a VM.
  *
  * Called automatically during cdsl_vm_create().
