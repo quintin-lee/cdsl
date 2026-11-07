@@ -92,14 +92,7 @@ copy_metric_list(const cdsl_metric_node_t* src)
 	for (const cdsl_metric_node_t* m = src; m; m = m->next) {
 		cdsl_meta_item_t* meta = NULL;
 		for (cdsl_meta_item_t* mi = m->meta_list; mi; mi = mi->next) {
-			char* k = strdup(mi->key);
-			char* v = strdup(mi->value);
-			if (k && v) {
-				meta = cdsl_append_meta(meta, cdsl_create_meta_item(k, v));
-			} else {
-				free(k);
-				free(v);
-			}
+			meta = cdsl_append_meta_kv(meta, mi->key, mi->value);
 		}
 
 		cdsl_case_node_t* cases = NULL;

@@ -81,8 +81,8 @@ void
 test_ast_create_meta(void)
 {
 	TEST_BEGIN("create meta list");
-	cdsl_meta_item_t* m1 = cdsl_create_meta_item(strdup("key1"), strdup("val1"));
-	cdsl_meta_item_t* m2 = cdsl_create_meta_item(strdup("key2"), strdup("val2"));
+	cdsl_meta_item_t* m1 = cdsl_create_meta_item("key1", "val1");
+	cdsl_meta_item_t* m2 = cdsl_create_meta_item("key2", "val2");
 	cdsl_meta_item_t* list = cdsl_append_meta(m1, m2);
 	TEST_ASSERT_NOT_NULL(list, "list not null");
 	TEST_ASSERT_STR(cdsl_meta_get(list, "key1"), "val1", "find key1");
@@ -99,7 +99,7 @@ void
 test_ast_create_rule(void)
 {
 	TEST_BEGIN("create simple rule");
-	cdsl_meta_item_t* meta = cdsl_create_meta_item(strdup("description"), strdup("test rule"));
+	cdsl_meta_item_t* meta = cdsl_create_meta_item("description", "test rule");
 	cdsl_expr_node_t* when = cdsl_create_expr_bool(1, 0, 0);
 	cdsl_action_node_t* then = cdsl_create_action(strdup("block"), NULL, 0, 0);
 	cdsl_rule_t* rule = cdsl_create_simple_rule(strdup("test_rule"), meta, when, then, 0, 0);

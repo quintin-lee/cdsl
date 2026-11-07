@@ -621,9 +621,9 @@ test_vm_internal_utils(void)
 			"safe_atoi overflow returns default");
 
 	/* meta extraction tests */
-	cdsl_meta_item_t* meta = cdsl_create_meta_item(strdup("weight"), strdup("85"));
-	meta = cdsl_append_meta(meta, cdsl_create_meta_item(strdup("is_critical"), strdup("true")));
-	meta = cdsl_append_meta(meta, cdsl_create_meta_item(strdup("bad_int"), strdup("xyz")));
+	cdsl_meta_item_t* meta = cdsl_create_meta_item("weight", "85");
+	meta = cdsl_append_meta_kv(meta, "is_critical", "true");
+	meta = cdsl_append_meta_kv(meta, "bad_int", "xyz");
 
 	TEST_ASSERT_INT(cdsl_meta_get_int(meta, "weight", 0), 85, "meta get int weight");
 	TEST_ASSERT_INT(
