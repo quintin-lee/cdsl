@@ -577,5 +577,46 @@ cdsl_rule_t* cdsl_template_get(const char* name);
 void cdsl_template_clear(void);
 /** @} */
 
+/** @name Operator and Type Queries */
+/** @{ */
+/**
+ * @brief 判断算子是否为关系/比较算子 (==, !=, <, >, <=, >=)
+ */
+bool cdsl_op_is_relational(cdsl_op_t op);
+
+/**
+ * @brief 判断算子是否为二元算术算子 (+, -, *, /)
+ */
+bool cdsl_op_is_arithmetic(cdsl_op_t op);
+
+/**
+ * @brief 判断算子是否为二元逻辑算子 (AND, OR)
+ */
+bool cdsl_op_is_logical_binary(cdsl_op_t op);
+
+/**
+ * @brief 判断算子是否为一元算子 (NOT, NEG)
+ */
+bool cdsl_op_is_unary(cdsl_op_t op);
+
+/**
+ * @brief 获取算子在 C 代码中的运算符符号（供 codegen 使用）
+ * @return 对应的 C 符号字符串（如 "==", "&&", "||", "!", "+", "-"），非法返回 "?"
+ */
+const char* cdsl_op_c_symbol(cdsl_op_t op);
+
+/**
+ * @brief 获取算子的可读名称（供 visualize / 跟踪 / 报错使用）
+ * @return 对应的名称（如 "==", "AND", "OR", "NOT", "+", "-", "NEG"），非法返回 "?"
+ */
+const char* cdsl_op_name(cdsl_op_t op);
+
+/**
+ * @brief 获取 DSL 类型的字符串名称
+ * @return 类型名称（如 "INT", "FLOAT", "BOOL", "STRING", "DATE", "LONG", "ARRAY", "VOID"），非法返回 "UNKNOWN"
+ */
+const char* cdsl_type_name(cdsl_type_t type);
+/** @} */
+
 #endif
 /** @} */
