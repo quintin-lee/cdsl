@@ -55,8 +55,19 @@ typedef enum {
 	BC_SET_SCORE,	 /**< Set score for current metric [operand: none (pops value)] */
 	BC_FAIL_METRIC,	 /**< Fail metric with reason [operand: const_idx (reason)] */
 	BC_RULE_END,	 /**< Finalize rule report [operand: none] */
-	BC_RET		 /**< Return (top of stack is result) */
+	BC_RET,		 /**< Return (top of stack is result) */
+	BC_ACTION /**< Trigger action callback [operand: const_idx (name), pops nargs & args] */
 } bc_op_t;
+
+/**
+ * @brief Compiled metadata for a single metric in bytecode mode.
+ */
+typedef struct bc_metric_info {
+	char* name;
+	char* description;
+	int max_weight;
+	int is_critical;
+} bc_metric_info_t;
 
 /**
  * @brief Single bytecode instruction.
@@ -85,6 +96,13 @@ typedef struct cdsl_bytecode {
 	cdsl_value_t* constants; /**< Constant pool for strings and large literals */
 	int const_count;
 	int const_capacity;
+	char* rule_name;
+	char* description;
+	int pass_threshold;
+	int partial_threshold;
+	int is_metric_rule;
+	bc_metric_info_t* metric_infos;
+	int metric_info_count;
 } cdsl_bytecode_t;
 
 /**

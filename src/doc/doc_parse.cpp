@@ -327,12 +327,15 @@ struct Style {
 	bool resolved = false;
 };
 
-static Style g_style_db[2048];
-static int g_style_count = 0;
+static thread_local Style g_style_db[2048];
+static thread_local int g_style_count = 0;
 
 static void
 init_style_db()
 {
+	for (int i = 0; i < g_style_count; i++) {
+		g_style_db[i] = Style{};
+	}
 	g_style_count = 0;
 }
 

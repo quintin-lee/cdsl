@@ -359,6 +359,8 @@ class cdsl_expr_data(Union):
 cdsl_expr_node._fields_ = [
     ("type", c_int),
     ("data", cdsl_expr_data),
+    ("line", c_int),
+    ("column", c_int),
 ]
 
 cdsl_arg_node._fields_ = [
@@ -371,6 +373,8 @@ class cdsl_action_node(Structure):
     _fields_ = [
         ("action_name", c_char_p),
         ("args", POINTER(cdsl_arg_node)),
+        ("line", c_int),
+        ("column", c_int),
     ]
 
 
@@ -414,6 +418,8 @@ class cdsl_rule(Structure):
         ("then_action", POINTER(cdsl_action_node)),
         ("metrics", POINTER(cdsl_metric_node)),
         ("arena", POINTER(cdsl_arena)),
+        ("line", c_int),
+        ("column", c_int),
     ]
 
 
@@ -512,6 +518,7 @@ class cdsl_vm(Structure):
         ("alloc_bytes", c_int64),
         ("instruction_count", c_int64),
         ("error_state", c_int),
+        ("last_error", c_void_p),
         ("trace_cb", c_void_p),
         ("trace_ud", c_void_p),
     ]
@@ -540,6 +547,7 @@ class cdsl_rule_report(Structure):
         ("total_obtained_score", c_int),
         ("status", c_int),
         ("decision_summary", c_char_p),
+        ("error", c_void_p),
     ]
 
 
@@ -618,6 +626,13 @@ class cdsl_bytecode(Structure):
         ("constants", POINTER(cdsl_value)),
         ("const_count", c_int),
         ("const_capacity", c_int),
+        ("rule_name", c_char_p),
+        ("description", c_char_p),
+        ("pass_threshold", c_int),
+        ("partial_threshold", c_int),
+        ("is_metric_rule", c_int),
+        ("metric_infos", c_void_p),
+        ("metric_info_count", c_int),
     ]
 
 
@@ -630,7 +645,7 @@ _BC_OP_NAMES = {
     19: "NOT", 20: "NEG", 21: "CALL", 22: "DUP",
     23: "JMP_IF_FALSE", 24: "JMP_IF_TRUE", 25: "JMP",
     26: "METRIC_START", 27: "SET_SCORE", 28: "FAIL_METRIC",
-    29: "RULE_END", 30: "RET",
+    29: "RULE_END", 30: "RET", 31: "ACTION",
 }
 
 

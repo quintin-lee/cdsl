@@ -39,13 +39,18 @@ test_api_ctx_create_free_null_safe(void)
 static void
 test_api_ctx_create_with_schema(void)
 {
-	TEST_BEGIN("api: ctx create with provided schema");
+	TEST_BEGIN("api: ctx create with provided schema (shared without double-free)");
 	cdsl_schema_t* schema = cdsl_schema_create();
-	cdsl_ctx_t* c = cdsl_ctx_create(schema);
-	TEST_ASSERT_NOT_NULL(c, "cdsl_ctx_create(schema) should return non-NULL");
-	TEST_ASSERT_INT(c->schema, schema, "ctx->schema should be the provided schema");
-	/* cdsl_ctx_free takes ownership of the schema */
-	cdsl_ctx_free(c);
+	cdsl_ctx_t* c1 = cdsl_ctx_create(schema);
+	cdsl_ctx_t* c2 = cdsl_ctx_create(schema);
+	TEST_ASSERT_NOT_NULL(c1, "cdsl_ctx_create(schema) c1 should return non-NULL");
+	TEST_ASSERT_NOT_NULL(c2, "cdsl_ctx_create(schema) c2 should return non-NULL");
+	TEST_ASSERT_INT(c1->schema, schema, "c1->schema should be the provided schema");
+	TEST_ASSERT_INT(c2->schema, schema, "c2->schema should be the provided schema");
+	/* cdsl_ctx_free does NOT free externally provided schema */
+	cdsl_ctx_free(c1);
+	cdsl_ctx_free(c2);
+	cdsl_schema_free(schema);
 	TEST_END();
 }
 

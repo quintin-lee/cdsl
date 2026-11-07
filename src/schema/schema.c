@@ -177,6 +177,17 @@ resolve_expr_type(cdsl_expr_node_t* expr,
 		return CDSL_TYPE_STRING;
 	case CDSL_EXPR_DATE:
 		return CDSL_TYPE_DATE;
+	case CDSL_EXPR_LONG:
+		return CDSL_TYPE_LONG;
+	case CDSL_EXPR_ARRAY: {
+		for (cdsl_arg_node_t* a = expr->data.array.elements; a; a = a->next) {
+			if (resolve_expr_type(a->expr, schema, err, errsz, error_list) ==
+			    CDSL_TYPE_VOID) {
+				return CDSL_TYPE_VOID;
+			}
+		}
+		return CDSL_TYPE_ARRAY;
+	}
 	case CDSL_EXPR_ID: {
 		cdsl_var_schema_t* v = find_var(schema, expr->data.id_val);
 		if (!v) {
@@ -293,6 +304,7 @@ resolve_expr_type(cdsl_expr_node_t* expr,
 				return CDSL_TYPE_VOID;
 			}
 			return (lt == CDSL_TYPE_FLOAT || rt == CDSL_TYPE_FLOAT) ? CDSL_TYPE_FLOAT
+			       : (lt == CDSL_TYPE_LONG || rt == CDSL_TYPE_LONG) ? CDSL_TYPE_LONG
 										: CDSL_TYPE_INT;
 		}
 

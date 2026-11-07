@@ -485,6 +485,40 @@ test_ruleset_codegen()
 	TEST_CODEGEN_END();
 }
 
+// Test 12: Arithmetic operators and string escaping in codegen
+static void
+test_codegen_arithmetic_and_escapes(void)
+{
+	TEST_CODEGEN_BEGIN("Codegen arithmetic operators and string escapes");
+
+	cdsl_schema_t* schema = cdsl_schema_create();
+	cdsl_schema_register_var(schema, "x", CDSL_TYPE_INT);
+	cdsl_schema_register_var(schema, "y", CDSL_TYPE_INT);
+	cdsl_schema_register_var(schema, "msg", CDSL_TYPE_STRING);
+	cdsl_schema_register_action(schema, "block", CDSL_TYPE_VOID, 1, CDSL_TYPE_STRING);
+
+	const char* dsl = "RULE arith_esc {"
+			  "  WHEN (x + y - 2) * 3 / 1 > -10 && msg == \"a\\\"b\\nc\\\\d\""
+			  "  THEN block(\"ok\")"
+			  "}";
+	cdsl_rule_t* rule = cdsl_parse_string(dsl, NULL);
+	TEST_ASSERT_NOT_NULL(rule, "Rule with arithmetic and escapes should parse");
+
+	char* c_code = cdsl_codegen_rule_to_c(rule, schema);
+	TEST_ASSERT_NOT_NULL(c_code, "C code should be generated without crashing");
+	TEST_ASSERT(strstr(c_code, "+") != NULL, "Generated code should contain +");
+	TEST_ASSERT(strstr(c_code, "-") != NULL, "Generated code should contain -");
+	TEST_ASSERT(strstr(c_code, "*") != NULL, "Generated code should contain *");
+	TEST_ASSERT(strstr(c_code, "/") != NULL, "Generated code should contain /");
+	TEST_ASSERT(strstr(c_code, "\"a\\\"b\\nc\\\\d\"") != NULL,
+		    "Generated code should properly escape string literal");
+
+	free(c_code);
+	cdsl_free_rule(rule);
+	cdsl_schema_free(schema);
+	TEST_CODEGEN_END();
+}
+
 int
 main()
 {
@@ -502,6 +536,7 @@ main()
 	test_codegen_performance();
 	test_codegen_complex_expressions();
 	test_ruleset_codegen();
+	test_codegen_arithmetic_and_escapes();
 
 	TEST_SUMMARY();
 	TEST_EXIT();

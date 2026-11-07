@@ -51,6 +51,7 @@ builtin_strlen(const char* name, cdsl_arg_node_t* args, cdsl_context_t* ctx, cds
 		snprintf(buf, sizeof(buf), "%d", v.data.int_val);
 		res.data.int_val = (int)strlen(buf);
 	}
+	cdsl_value_free(&v);
 	return res;
 }
 
@@ -74,6 +75,8 @@ builtin_contains(const char* name, cdsl_arg_node_t* args, cdsl_context_t* ctx, c
 		res.data.bool_val =
 		    (strstr(haystack.data.string_val, needle.data.string_val) != NULL);
 	}
+	cdsl_value_free(&haystack);
+	cdsl_value_free(&needle);
 	return res;
 }
 
@@ -181,6 +184,8 @@ builtin_days_between(const char* name, cdsl_arg_node_t* args, cdsl_context_t* ct
 		double diff = difftime(t1, t2);
 		res.data.int_val = (int)(diff / (24 * 3600));
 	}
+	cdsl_value_free(&v1);
+	cdsl_value_free(&v2);
 	return res;
 }
 
@@ -215,6 +220,8 @@ builtin_is_before(const char* name, cdsl_arg_node_t* args, cdsl_context_t* ctx, 
 	if (t1 != (time_t)-1 && t2 != (time_t)-1) {
 		res.data.bool_val = (t1 < t2);
 	}
+	cdsl_value_free(&t1_val);
+	cdsl_value_free(&t2_val);
 	return res;
 }
 
@@ -249,6 +256,8 @@ builtin_is_after(const char* name, cdsl_arg_node_t* args, cdsl_context_t* ctx, c
 	if (t1 != (time_t)-1 && t2 != (time_t)-1) {
 		res.data.bool_val = (t1 > t2);
 	}
+	cdsl_value_free(&t1_val);
+	cdsl_value_free(&t2_val);
 	return res;
 }
 
@@ -265,17 +274,20 @@ builtin_uppercase(const char* name, cdsl_arg_node_t* args, cdsl_context_t* ctx, 
 	}
 	cdsl_value_t v = cdsl_eval_expr_internal(args->expr, ctx, vm, 0, 0);
 	if (v.type != CDSL_TYPE_STRING || !v.data.string_val) {
+		cdsl_value_free(&v);
 		return res;
 	}
 	size_t len = strlen(v.data.string_val);
 	char* out = malloc(len + 1);
 	if (!out) {
+		cdsl_value_free(&v);
 		return res;
 	}
 	for (size_t i = 0; i < len; i++) {
 		out[i] = (char)toupper((unsigned char)v.data.string_val[i]);
 	}
 	out[len] = '\0';
+	cdsl_value_free(&v);
 	res.data.string_val = out;
 	res.owned_string = 1;
 	return res;
@@ -294,17 +306,20 @@ builtin_lowercase(const char* name, cdsl_arg_node_t* args, cdsl_context_t* ctx, 
 	}
 	cdsl_value_t v = cdsl_eval_expr_internal(args->expr, ctx, vm, 0, 0);
 	if (v.type != CDSL_TYPE_STRING || !v.data.string_val) {
+		cdsl_value_free(&v);
 		return res;
 	}
 	size_t len = strlen(v.data.string_val);
 	char* out = malloc(len + 1);
 	if (!out) {
+		cdsl_value_free(&v);
 		return res;
 	}
 	for (size_t i = 0; i < len; i++) {
 		out[i] = (char)tolower((unsigned char)v.data.string_val[i]);
 	}
 	out[len] = '\0';
+	cdsl_value_free(&v);
 	res.data.string_val = out;
 	res.owned_string = 1;
 	return res;
@@ -323,6 +338,7 @@ builtin_trim(const char* name, cdsl_arg_node_t* args, cdsl_context_t* ctx, cdsl_
 	}
 	cdsl_value_t v = cdsl_eval_expr_internal(args->expr, ctx, vm, 0, 0);
 	if (v.type != CDSL_TYPE_STRING || !v.data.string_val) {
+		cdsl_value_free(&v);
 		return res;
 	}
 	const char* s = v.data.string_val;
@@ -330,6 +346,7 @@ builtin_trim(const char* name, cdsl_arg_node_t* args, cdsl_context_t* ctx, cdsl_
 		s++;
 	}
 	if (*s == '\0') {
+		cdsl_value_free(&v);
 		res.data.string_val = strdup("");
 		res.owned_string = 1;
 		return res;
@@ -340,10 +357,12 @@ builtin_trim(const char* name, cdsl_arg_node_t* args, cdsl_context_t* ctx, cdsl_
 	}
 	char* out = malloc(len + 1);
 	if (!out) {
+		cdsl_value_free(&v);
 		return res;
 	}
 	memcpy(out, s, len);
 	out[len] = '\0';
+	cdsl_value_free(&v);
 	res.data.string_val = out;
 	res.owned_string = 1;
 	return res;
@@ -368,6 +387,8 @@ builtin_startswith(const char* name, cdsl_arg_node_t* args, cdsl_context_t* ctx,
 		    (strncmp(v1.data.string_val, v2.data.string_val, strlen(v2.data.string_val)) ==
 		     0);
 	}
+	cdsl_value_free(&v1);
+	cdsl_value_free(&v2);
 	return res;
 }
 
@@ -391,6 +412,8 @@ builtin_endswith(const char* name, cdsl_arg_node_t* args, cdsl_context_t* ctx, c
 		res.data.bool_val = (len1 >= len2 && strcmp(v1.data.string_val + len1 - len2,
 							    v2.data.string_val) == 0);
 	}
+	cdsl_value_free(&v1);
+	cdsl_value_free(&v2);
 	return res;
 }
 
@@ -413,6 +436,7 @@ builtin_abs(const char* name, cdsl_arg_node_t* args, cdsl_context_t* ctx, cdsl_v
 		res.type = CDSL_TYPE_FLOAT;
 		res.data.float_val = fabs(v.data.float_val);
 	}
+	cdsl_value_free(&v);
 	return res;
 }
 
@@ -435,6 +459,8 @@ builtin_minmax(
 	int b_num = (b.type == CDSL_TYPE_INT || b.type == CDSL_TYPE_BOOL ||
 		     b.type == CDSL_TYPE_FLOAT || b.type == CDSL_TYPE_LONG);
 	if (!a_num || !b_num) {
+		cdsl_value_free(&a);
+		cdsl_value_free(&b);
 		return res;
 	}
 	double av = (a.type == CDSL_TYPE_FLOAT)	 ? a.data.float_val
@@ -454,6 +480,8 @@ builtin_minmax(
 		res.type = CDSL_TYPE_INT;
 		res.data.int_val = (int)cmp_val;
 	}
+	cdsl_value_free(&a);
+	cdsl_value_free(&b);
 	return res;
 }
 
@@ -486,6 +514,7 @@ builtin_round(const char* name, cdsl_arg_node_t* args, cdsl_context_t* ctx, cdsl
 	} else if (v.type == CDSL_TYPE_INT) {
 		res.data.int_val = v.data.int_val;
 	}
+	cdsl_value_free(&v);
 	return res;
 }
 
@@ -517,6 +546,9 @@ builtin_typeof(const char* name, cdsl_arg_node_t* args, cdsl_context_t* ctx, cds
 	case CDSL_TYPE_DATE:
 		res.data.string_val = "DATE";
 		break;
+	case CDSL_TYPE_LONG:
+		res.data.string_val = "LONG";
+		break;
 	case CDSL_TYPE_ARRAY:
 		res.data.string_val = "ARRAY";
 		break;
@@ -524,10 +556,7 @@ builtin_typeof(const char* name, cdsl_arg_node_t* args, cdsl_context_t* ctx, cds
 		res.data.string_val = "VOID";
 		break;
 	}
-	if (v.type == CDSL_TYPE_ARRAY && v.data.array_val) {
-		free(v.data.array_val->items);
-		free(v.data.array_val);
-	}
+	cdsl_value_free(&v);
 	return res;
 }
 
@@ -545,9 +574,8 @@ builtin_count(const char* name, cdsl_arg_node_t* args, cdsl_context_t* ctx, cdsl
 	cdsl_value_t v = cdsl_eval_expr_internal(args->expr, ctx, vm, 0, 0);
 	if (v.type == CDSL_TYPE_ARRAY && v.data.array_val) {
 		res.data.int_val = v.data.array_val->count;
-		free(v.data.array_val->items);
-		free(v.data.array_val);
 	}
+	cdsl_value_free(&v);
 	return res;
 }
 
@@ -571,9 +599,8 @@ builtin_sum(const char* name, cdsl_arg_node_t* args, cdsl_context_t* ctx, cdsl_v
 			}
 		}
 		res.data.int_val = sum;
-		free(v.data.array_val->items);
-		free(v.data.array_val);
 	}
+	cdsl_value_free(&v);
 	return res;
 }
 
@@ -608,6 +635,8 @@ builtin_date_add(const char* name, cdsl_arg_node_t* args, cdsl_context_t* ctx, c
 	if (t != (time_t)-1 && days != 0) {
 		res.data.date_val = t + (time_t)(days * 86400);
 	}
+	cdsl_value_free(&dv);
+	cdsl_value_free(&nv);
 	return res;
 }
 

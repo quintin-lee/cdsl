@@ -60,6 +60,10 @@ parse_string_raw(json_parser_t* p)
 	while (p->src[p->pos] && p->src[p->pos] != '"') {
 		if (p->src[p->pos] == '\\') {
 			p->pos++;
+			if (p->src[p->pos] == '\0') {
+				free(s);
+				return NULL;
+			}
 			switch (p->src[p->pos]) {
 			case '"':
 				JSON_STR_ENSURE(1);
@@ -138,9 +142,11 @@ parse_string_raw(json_parser_t* p)
 		}
 	}
 #undef JSON_STR_ENSURE
-	if (p->src[p->pos] == '"') {
-		p->pos++;
+	if (p->src[p->pos] != '"') {
+		free(s);
+		return NULL;
 	}
+	p->pos++;
 	s[len] = '\0';
 	return s;
 }
@@ -308,6 +314,9 @@ parse_value(json_parser_t* p)
 	}
 	if (c == '"') {
 		char* s = parse_string_raw(p);
+		if (!s) {
+			return NULL;
+		}
 		cdsl_json_value_t* v = calloc(1, sizeof(*v));
 		if (!v) {
 			free(s);

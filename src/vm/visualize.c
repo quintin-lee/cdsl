@@ -103,13 +103,28 @@ dot_expr(cdsl_strbuf_t* sb, cdsl_expr_node_t* expr, int* id)
 		    expr->data.id_val);
 		break;
 	case CDSL_EXPR_BINARY: {
-		const char* ops[] = {
-		    "==", "!=", "<", ">", "<=", ">=", "AND", "OR", "+", "-", "*", "/"};
+		const char* ops[] = {"==",
+				     "!=",
+				     "<",
+				     ">",
+				     "<=",
+				     ">=",
+				     "AND",
+				     "OR",
+				     "NOT",
+				     "+",
+				     "-",
+				     "*",
+				     "/",
+				     "NEG"};
+		int op_idx = (int)expr->data.binary.op;
+		const char* op_str =
+		    (op_idx >= 0 && op_idx <= (int)CDSL_OP_NEG) ? ops[op_idx] : "?";
 		cdsl_strbuf_printf(
 		    sb,
 		    "  n%d [label=\"%s\",shape=diamond,style=filled,fillcolor=lightgreen];\n",
 		    my_id,
-		    ops[expr->data.binary.op]);
+		    op_str);
 		int lid = *id;
 		dot_expr(sb, expr->data.binary.left, id);
 		cdsl_strbuf_printf(sb, "  n%d -> n%d;\n", my_id, lid);
@@ -121,8 +136,9 @@ dot_expr(cdsl_strbuf_t* sb, cdsl_expr_node_t* expr, int* id)
 	case CDSL_EXPR_UNARY:
 		cdsl_strbuf_printf(
 		    sb,
-		    "  n%d [label=\"NOT\",shape=diamond,style=filled,fillcolor=lightgreen];\n",
-		    my_id);
+		    "  n%d [label=\"%s\",shape=diamond,style=filled,fillcolor=lightgreen];\n",
+		    my_id,
+		    expr->data.unary.op == CDSL_OP_NEG ? "NEG" : "NOT");
 		int cid = *id;
 		dot_expr(sb, expr->data.unary.expr, id);
 		cdsl_strbuf_printf(sb, "  n%d -> n%d;\n", my_id, cid);
@@ -186,10 +202,10 @@ cdsl_rule_to_dot(const cdsl_rule_t* rule)
 				    cnum + 1);
 				cdsl_strbuf_printf(
 				    &sb, "  metric_%s -> case_%s_%d;\n", m->name, m->name, cnum);
-				int eid = dot_id++;
-				dot_expr(&sb, c->condition, &eid);
+				int root_id = dot_id;
+				dot_expr(&sb, c->condition, &dot_id);
 				cdsl_strbuf_printf(
-				    &sb, "  case_%s_%d -> n%d;\n", m->name, cnum, eid - 1);
+				    &sb, "  case_%s_%d -> n%d;\n", m->name, cnum, root_id);
 				cnum++;
 			}
 			cdsl_strbuf_printf(
@@ -210,9 +226,9 @@ cdsl_rule_to_dot(const cdsl_rule_t* rule)
 		    "  when_%s [label=\"WHEN\",shape=diamond,style=filled,fillcolor=lightgreen];\n",
 		    rname);
 		cdsl_strbuf_printf(&sb, "  rule_%s -> when_%s;\n", rname, rname);
-		int eid = dot_id++;
-		dot_expr(&sb, rule->when_expr, &eid);
-		cdsl_strbuf_printf(&sb, "  when_%s -> n%d;\n", rname, eid - 1);
+		int root_id = dot_id;
+		dot_expr(&sb, rule->when_expr, &dot_id);
+		cdsl_strbuf_printf(&sb, "  when_%s -> n%d;\n", rname, root_id);
 		if (rule->then_action) {
 			cdsl_strbuf_printf(&sb,
 					   "  then_%s [label=\"THEN: "

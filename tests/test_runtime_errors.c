@@ -8,6 +8,7 @@
  */
 
 #include <cdsl/api.h>
+#include <cdsl/bytecode.h>
 #include <cdsl/util/error.h>
 #include <string.h>
 #include "test.h"
@@ -106,6 +107,62 @@ test_runtime_error_no_error(void)
 	TEST_END();
 }
 
+static cdsl_value_t
+dummy_func(const char* name, cdsl_arg_node_t* args, cdsl_context_t* ctx, struct cdsl_vm* vm)
+{
+	(void)name;
+	(void)args;
+	(void)ctx;
+	(void)vm;
+	cdsl_value_t v = {0};
+	v.type = CDSL_TYPE_INT;
+	v.data.int_val = 42;
+	return v;
+}
+
+static void
+test_runtime_unregistered_func_no_deadlock(void)
+{
+	TEST_BEGIN("runtime error: unregistered function releases rwlock without deadlock");
+
+	cdsl_schema_t* schema = cdsl_schema_create();
+	cdsl_schema_register_action(schema, "block", CDSL_TYPE_VOID, 0, CDSL_TYPE_VOID);
+
+	cdsl_vm_t* vm = cdsl_vm_create(schema);
+	cdsl_context_t* ctx = cdsl_context_create(schema);
+
+	const char* dsl = "RULE r { WHEN unknown_fn() == 42 THEN block() }";
+	cdsl_rule_t* rule = cdsl_parse_string(dsl, NULL);
+	TEST_ASSERT_NOT_NULL(rule, "rule should parse");
+
+	/* Tree-walking eval of unregistered function */
+	cdsl_rule_report_t* rpt = cdsl_vm_execute(vm, rule, ctx);
+	TEST_ASSERT_NOT_NULL(rpt, "report should not be NULL");
+	cdsl_report_free(rpt);
+
+	/* Bytecode eval of unregistered function */
+	cdsl_bytecode_t bc = {0};
+	TEST_ASSERT_INT(cdsl_bytecode_compile(rule, schema, &bc), 1, "bytecode compiled");
+	cdsl_rule_report_t* rpt_bc = cdsl_bytecode_execute_rule(vm, &bc, ctx);
+	TEST_ASSERT_NOT_NULL(rpt_bc, "bytecode report should not be NULL");
+	cdsl_report_free(rpt_bc);
+
+	/* Acquiring write lock via cdsl_vm_register_function must NOT deadlock! */
+	cdsl_vm_register_function(vm, "unknown_fn", dummy_func);
+
+	cdsl_rule_report_t* rpt2 = cdsl_vm_execute(vm, rule, ctx);
+	TEST_ASSERT_INT(rpt2->status, CDSL_STATUS_FAILED, "now unknown_fn()==42 is true -> FAILED");
+	cdsl_report_free(rpt2);
+
+	cdsl_bytecode_free(&bc);
+	cdsl_free_rule(rule);
+	cdsl_context_free(ctx);
+	cdsl_vm_free(vm);
+	cdsl_schema_free(schema);
+
+	TEST_END();
+}
+
 int
 main(void)
 {
@@ -113,6 +170,7 @@ main(void)
 
 	test_runtime_error_instruction_quota();
 	test_runtime_error_no_error();
+	test_runtime_unregistered_func_no_deadlock();
 
 	TEST_SUMMARY();
 	TEST_EXIT();

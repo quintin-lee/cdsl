@@ -236,6 +236,12 @@ test_json_error_handling()
 	cdsl_json_value_t* obj_malformed = cdsl_json_parse(malformed_obj);
 	TEST_ASSERT_NULL(obj_malformed, "Malformed object should return NULL");
 
+	// Test trailing backslash at EOF and unclosed string
+	cdsl_json_value_t* trailing_bs = cdsl_json_parse("{\"key\": \"abc\\");
+	TEST_ASSERT_NULL(trailing_bs, "Trailing backslash in string should return NULL");
+	cdsl_json_value_t* unclosed_str = cdsl_json_parse("\"unclosed");
+	TEST_ASSERT_NULL(unclosed_str, "Unclosed string literal should return NULL");
+
 	TEST_JSON_END();
 }
 

@@ -20,6 +20,8 @@ int yylex_init_extra(struct cdsl_error_list* extra, yyscan_t* scanner);
 int yylex_destroy(yyscan_t scanner);
 struct yy_buffer_state* yy_scan_string(const char*, yyscan_t);
 void yy_delete_buffer(struct yy_buffer_state*, yyscan_t);
+void yyset_lineno(int _line_number, yyscan_t yyscanner);
+void cdsl_lexer_reset_column(void);
 int yyparse(yyscan_t scanner,
 	    cdsl_rule_t** rule_ptr,
 	    int* error_count,
@@ -73,8 +75,12 @@ cdsl_parse_string(const char* dsl_code, cdsl_error_list_t** errors)
 	/* Create arena for AST node allocations during parsing */
 	cdsl_arena_t* arena = cdsl_arena_create(8192);
 	cdsl_ast_set_current_arena(arena);
+	cdsl_lexer_reset_column();
 
 	struct yy_buffer_state* buf = yy_scan_string(dsl_code, scanner);
+	if (buf) {
+		yyset_lineno(1, scanner);
+	}
 
 	if (yyparse(scanner, &rule, &error_count, error_list) != 0 || error_count > 0) {
 		if (errors) {

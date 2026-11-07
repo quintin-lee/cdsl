@@ -178,7 +178,7 @@ int64_t cdsl_context_get_long(const cdsl_context_t* ctx, const char* name, int64
  * @brief Remove a variable from the context.
  * @param ctx  Context
  * @param name Variable name
- * @return 0 on success, -1 if not found
+ * @return 1 on success, 0 if not found
  */
 int cdsl_context_remove(cdsl_context_t* ctx, const char* name);
 
@@ -186,7 +186,7 @@ int cdsl_context_remove(cdsl_context_t* ctx, const char* name);
  * @brief Load variables from a JSON string into the context.
  * @param ctx      Context
  * @param json_str JSON object string
- * @return 0 on success, -1 on parse error
+ * @return 1 on success, 0 on parse error
  */
 int cdsl_context_load_json(cdsl_context_t* ctx, const char* json_str);
 

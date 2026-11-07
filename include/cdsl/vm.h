@@ -157,6 +157,7 @@ typedef struct cdsl_ctx {
 	cdsl_vm_t* vm;		     /**< VM instance */
 	const cdsl_schema_t* schema; /**< Schema for type resolution */
 	cdsl_context_t* ctx;	     /**< Execution context */
+	int owned_schema;	     /**< 1 if default schema was created internally */
 } cdsl_ctx_t;
 
 /**

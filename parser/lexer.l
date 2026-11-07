@@ -42,7 +42,27 @@ int yylex(YYSTYPE * yylval_param, YYLTYPE * yylloc, yyscan_t yyscanner);
 #undef yycolumn
 THREAD_LOCAL int yycolumn = 0;
 
-#define YY_USER_ACTION yycolumn += yyleng;
+void cdsl_lexer_reset_column(void);
+void cdsl_lexer_reset_column(void) {
+	yycolumn = 0;
+}
+
+#define YY_USER_ACTION                                                                             \
+	do {                                                                                       \
+		if (yylloc_param) {                                                                \
+			yylloc_param->first_line = yylineno;                                       \
+			yylloc_param->last_line = yylineno;                                        \
+			yylloc_param->first_column = yycolumn + 1;                                 \
+			yylloc_param->last_column = yycolumn + (int)yyleng;                        \
+		}                                                                                  \
+		for (int _i = 0; _i < (int)yyleng; _i++) {                                         \
+			if (yytext[_i] == '\n') {                                                  \
+				yycolumn = 0;                                                      \
+			} else {                                                                   \
+				yycolumn++;                                                        \
+			}                                                                          \
+		}                                                                                  \
+	} while (0);
 
 /* Override YY_DECL to match bison's 3-arg yylex call (with YYLTYPE* for location).
    All parameters must be named: unnamed parameters in a definition are C23-only
@@ -149,14 +169,15 @@ THREAD_LOCAL int yycolumn = 0;
 "="                      { return ASSIGN; }
 ","                      { return COMMA; }
 
-[ \t\n\r]+              { if (strchr(yytext, '\n')) yycolumn = 0; }
+[ \t\n\r]+              ;
 .                       {
                             if (yyextra) {
                                 char buf[128];
                                 snprintf(buf, sizeof(buf), "Unknown character: '%s'", yytext);
                                 int safe_line = yylineno;
                                 if (safe_line < 0) safe_line = 0;
-                                cdsl_error_t* err = cdsl_error_create(CDSL_ERR_SYNTAX, safe_line, yycolumn, buf, NULL);
+                                int safe_col = yylloc_param ? yylloc_param->first_column : yycolumn;
+                                cdsl_error_t* err = cdsl_error_create(CDSL_ERR_SYNTAX, safe_line, safe_col, buf, NULL);
                                 cdsl_error_list_add(yyextra, err);
                             }
                         }

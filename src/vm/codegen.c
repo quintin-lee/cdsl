@@ -61,9 +61,34 @@ codegen_expr(cdsl_strbuf_t* sb,
 	case CDSL_EXPR_BOOL:
 		cdsl_strbuf_printf(sb, "%s", expr->data.bool_val ? "1" : "0");
 		break;
-	case CDSL_EXPR_STRING:
-		cdsl_strbuf_printf(sb, "\"%s\"", expr->data.string_val);
+	case CDSL_EXPR_STRING: {
+		cdsl_strbuf_printf(sb, "\"");
+		const char* s = expr->data.string_val ? expr->data.string_val : "";
+		for (; *s; s++) {
+			switch (*s) {
+			case '"':
+				cdsl_strbuf_printf(sb, "\\\"");
+				break;
+			case '\\':
+				cdsl_strbuf_printf(sb, "\\\\");
+				break;
+			case '\n':
+				cdsl_strbuf_printf(sb, "\\n");
+				break;
+			case '\r':
+				cdsl_strbuf_printf(sb, "\\r");
+				break;
+			case '\t':
+				cdsl_strbuf_printf(sb, "\\t");
+				break;
+			default:
+				cdsl_strbuf_printf(sb, "%c", *s);
+				break;
+			}
+		}
+		cdsl_strbuf_printf(sb, "\"");
 		break;
+	}
 	case CDSL_EXPR_DATE:
 		cdsl_strbuf_printf(sb, "%ldL", (long)expr->data.date_val);
 		break;
@@ -89,15 +114,19 @@ codegen_expr(cdsl_strbuf_t* sb,
 		cdsl_strbuf_printf(sb, "%s(ctx, \"%s\")", getter, expr->data.id_val);
 		break;
 	}
-	case CDSL_EXPR_BINARY:
+	case CDSL_EXPR_BINARY: {
 		cdsl_strbuf_printf(sb, "(");
 		codegen_expr(sb, expr->data.binary.left, schema, indent);
 		const char* ops[] = {
-		    "==", "!=", "<", ">", "<=", ">=", "&&", "||", "+", "-", "*", "/"};
-		cdsl_strbuf_printf(sb, " %s ", ops[expr->data.binary.op]);
+		    "==", "!=", "<", ">", "<=", ">=", "&&", "||", "!", "+", "-", "*", "/", "-"};
+		int op_idx = (int)expr->data.binary.op;
+		const char* op_str =
+		    (op_idx >= 0 && op_idx <= (int)CDSL_OP_NEG) ? ops[op_idx] : "?";
+		cdsl_strbuf_printf(sb, " %s ", op_str);
 		codegen_expr(sb, expr->data.binary.right, schema, indent);
 		cdsl_strbuf_printf(sb, ")");
 		break;
+	}
 	case CDSL_EXPR_UNARY:
 		cdsl_strbuf_printf(sb, expr->data.unary.op == CDSL_OP_NOT ? "!" : "-");
 		codegen_expr(sb, expr->data.unary.expr, schema, indent);

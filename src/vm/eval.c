@@ -388,6 +388,7 @@ cdsl_eval_expr_internal(
 				fprintf(stderr, "[TRACE]   NEG\n");
 			}
 		}
+		cdsl_value_free(&v);
 		break;
 	}
 	case CDSL_EXPR_BINARY: {
@@ -536,6 +537,8 @@ cdsl_eval_expr_internal(
 		} else {
 			result.type = CDSL_TYPE_BOOL;
 			result.data.bool_val = 0;
+			cdsl_value_free(&l);
+			cdsl_value_free(&r);
 			break;
 		}
 
@@ -555,6 +558,8 @@ cdsl_eval_expr_internal(
 		} else {
 			result.type = CDSL_TYPE_BOOL;
 			result.data.bool_val = 0;
+			cdsl_value_free(&l);
+			cdsl_value_free(&r);
 			break;
 		}
 
@@ -624,45 +629,45 @@ cdsl_eval_expr_internal(
 		if (!vm) {
 			break;
 		}
-		int func_found = 0;
+		cdsl_func_cb_t target_fn = NULL;
 		CDSL_RWLOCK_RDLOCK(&vm->rwlock);
 		for (cdsl_func_entry_t* fn = vm->functions; fn; fn = fn->next) {
 			if (strcmp(fn->func_name, expr->data.call.func_name) == 0) {
-				func_found = 1;
-				if (debug) {
-					fprintf(stderr,
-						"[TRACE]   calling function: %s()\n",
-						expr->data.call.func_name);
-				}
-				result = fn->cb(
-				    expr->data.call.func_name, expr->data.call.args, ctx, vm);
-				if (debug) {
-					fprintf(stderr, "[TRACE]   function result: ");
-					switch (result.type) {
-					case CDSL_TYPE_INT:
-						fprintf(stderr, "%d\n", result.data.int_val);
-						break;
-					case CDSL_TYPE_FLOAT:
-						fprintf(stderr, "%.2f\n", result.data.float_val);
-						break;
-					case CDSL_TYPE_BOOL:
-						fprintf(stderr,
-							"%s\n",
-							result.data.bool_val ? "true" : "false");
-						break;
-					case CDSL_TYPE_STRING:
-						fprintf(stderr, "\"%s\"\n", result.data.string_val);
-						break;
-					default:
-						fprintf(stderr, "void\n");
-						break;
-					}
-				}
+				target_fn = fn->cb;
 				break;
 			}
 		}
-		if (func_found) {
-			CDSL_RWLOCK_UNLOCK_RD(&vm->rwlock);
+		CDSL_RWLOCK_UNLOCK_RD(&vm->rwlock);
+		if (target_fn) {
+			if (debug) {
+				fprintf(stderr,
+					"[TRACE]   calling function: %s()\n",
+					expr->data.call.func_name);
+			}
+			result =
+			    target_fn(expr->data.call.func_name, expr->data.call.args, ctx, vm);
+			if (debug) {
+				fprintf(stderr, "[TRACE]   function result: ");
+				switch (result.type) {
+				case CDSL_TYPE_INT:
+					fprintf(stderr, "%d\n", result.data.int_val);
+					break;
+				case CDSL_TYPE_FLOAT:
+					fprintf(stderr, "%.2f\n", result.data.float_val);
+					break;
+				case CDSL_TYPE_BOOL:
+					fprintf(stderr,
+						"%s\n",
+						result.data.bool_val ? "true" : "false");
+					break;
+				case CDSL_TYPE_STRING:
+					fprintf(stderr, "\"%s\"\n", result.data.string_val);
+					break;
+				default:
+					fprintf(stderr, "void\n");
+					break;
+				}
+			}
 		}
 		break;
 	}
@@ -683,17 +688,18 @@ cdsl_trigger_action_internal(cdsl_vm_t* vm, cdsl_action_node_t* action)
 	if (!vm || !action) {
 		return;
 	}
+	cdsl_action_cb_t target_cb = NULL;
 	CDSL_RWLOCK_RDLOCK(&vm->rwlock);
 	for (cdsl_action_cb_entry_t* cb = vm->callbacks; cb; cb = cb->next) {
 		if (strcmp(cb->action_name, action->action_name) == 0) {
-			if (cb->cb) {
-				cb->cb(action->action_name, action->args, vm->user_data);
-			}
-			CDSL_RWLOCK_UNLOCK_RD(&vm->rwlock);
-			return;
+			target_cb = cb->cb;
+			break;
 		}
 	}
 	CDSL_RWLOCK_UNLOCK_RD(&vm->rwlock);
+	if (target_cb) {
+		target_cb(action->action_name, action->args, vm->user_data);
+	}
 }
 
 static char*
@@ -773,7 +779,26 @@ execute_metric_rule(cdsl_vm_t* vm, const cdsl_rule_t* rule, cdsl_context_t* ctx)
 					    (sv.type == CDSL_TYPE_INT) ? sv.data.int_val : 0;
 					cdsl_value_free(&sv);
 					if (CDSL_ATOMIC_LOAD(&vm->error_state)) {
+						cdsl_value_free(&cond);
 						break;
+					}
+				} else if (c->action &&
+					   strcmp(c->action->action_name, "fail_metric") == 0) {
+					mr->score_obtained = 0;
+					if (c->action->args && c->action->args->next) {
+						cdsl_value_t rv = cdsl_eval_expr_internal(
+						    c->action->args->next->expr,
+						    ctx,
+						    vm,
+						    vm->debug_enabled,
+						    0);
+						if (!CDSL_ATOMIC_LOAD(&vm->error_state) &&
+						    rv.type == CDSL_TYPE_STRING &&
+						    rv.data.string_val) {
+							mr->violation_reason =
+							    strdup(rv.data.string_val);
+						}
+						cdsl_value_free(&rv);
 					}
 				} else {
 					mr->score_obtained = mr->max_weight;

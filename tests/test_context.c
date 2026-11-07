@@ -225,6 +225,19 @@ test_context_schema_bound(void)
 	TEST_CONTEXT_END();
 }
 
+static void
+test_context_remove_array(void)
+{
+	TEST_CONTEXT_BEGIN("Context remove array frees elements cleanly");
+	cdsl_context_t* ctx = cdsl_context_create(NULL);
+	TEST_ASSERT_INT(
+	    cdsl_context_load_json(ctx, "{\"items\": [\"elem1\", \"elem2\"]}"), 1, "load json");
+	TEST_ASSERT_INT(cdsl_context_remove(ctx, "items"), 1, "remove array returns 1");
+	TEST_ASSERT_INT(cdsl_context_remove(ctx, "items"), 0, "second remove returns 0");
+	cdsl_context_free(ctx);
+	TEST_CONTEXT_END();
+}
+
 int
 main(void)
 {
@@ -239,6 +252,7 @@ main(void)
 	test_context_set_get_long();
 	test_context_null_safe();
 	test_context_schema_bound();
+	test_context_remove_array();
 
 	TEST_SUMMARY();
 	TEST_EXIT();

@@ -482,9 +482,7 @@ cdsl_context_remove(cdsl_context_t* ctx, const char* name)
 				ctx->entries = e->next;
 			}
 			free(e->name);
-			if (e->value.type == CDSL_TYPE_STRING) {
-				free(e->value.data.string_val);
-			}
+			cdsl_value_free(&e->value);
 			free(e);
 			return 1;
 		}
@@ -528,6 +526,72 @@ load_json_recursive(cdsl_context_t* ctx, cdsl_json_value_t* obj, const char* pre
 			cdsl_context_set_bool(ctx, key, child->value.bool_val);
 		} else if (child->type == CDSL_JSON_STRING) {
 			cdsl_context_set_string(ctx, key, child->value.string_val);
+		} else if (child->type == CDSL_JSON_ARRAY) {
+			cdsl_array_t* arr = calloc(1, sizeof(cdsl_array_t));
+			if (arr) {
+				arr->count = child->value.array.count;
+				arr->capacity = arr->count;
+				if (arr->count > 0) {
+					arr->items =
+					    calloc((size_t)arr->count, sizeof(cdsl_value_t));
+				}
+				int idx = 0;
+				for (cdsl_json_value_t* elem = child->value.array.items;
+				     elem && arr->items && idx < arr->count;
+				     elem = elem->next, idx++) {
+					if (elem->type == CDSL_JSON_NUMBER) {
+						double nv = elem->value.number_val;
+						if (nv != (double)(int)nv) {
+							arr->items[idx].type = CDSL_TYPE_FLOAT;
+							arr->items[idx].data.float_val = nv;
+						} else {
+							arr->items[idx].type = CDSL_TYPE_INT;
+							arr->items[idx].data.int_val = (int)nv;
+						}
+					} else if (elem->type == CDSL_JSON_BOOL) {
+						arr->items[idx].type = CDSL_TYPE_BOOL;
+						arr->items[idx].data.bool_val =
+						    elem->value.bool_val;
+					} else if (elem->type == CDSL_JSON_STRING &&
+						   elem->value.string_val) {
+						arr->items[idx].type = CDSL_TYPE_STRING;
+						arr->items[idx].data.string_val =
+						    strdup(elem->value.string_val);
+						arr->items[idx].owned_string = 1;
+					}
+				}
+				cdsl_context_entry_t* e = cdsl_context_get_entry_internal(ctx, key);
+				if (e && !context_var_is_readonly(ctx, key)) {
+					cdsl_value_free(&e->value);
+					e->value.type = CDSL_TYPE_ARRAY;
+					e->value.data.array_val = arr;
+				} else if (!e) {
+					cdsl_context_entry_t* ne = calloc(1, sizeof(*ne));
+					if (ne) {
+						ne->name = strdup(key);
+						if (ne->name) {
+							ne->value.type = CDSL_TYPE_ARRAY;
+							ne->value.data.array_val = arr;
+							ne->next = ctx->entries;
+							ctx->entries = ne;
+							cdsl_hashmap_put(ctx->map, key, ne);
+						} else {
+							cdsl_value_t tv = {.type = CDSL_TYPE_ARRAY,
+									   .data.array_val = arr};
+							cdsl_value_free(&tv);
+							free(ne);
+						}
+					} else {
+						cdsl_value_t tv = {.type = CDSL_TYPE_ARRAY,
+								   .data.array_val = arr};
+						cdsl_value_free(&tv);
+					}
+				} else {
+					cdsl_value_t tv = {.type = CDSL_TYPE_ARRAY,
+							   .data.array_val = arr};
+					cdsl_value_free(&tv);
+				}
+			}
 		}
 		free(key);
 		child = child->next;

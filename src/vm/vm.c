@@ -270,6 +270,7 @@ cdsl_ctx_create(const cdsl_schema_t* schema)
 		owned_schema_ptr = (cdsl_schema_t*)schema;
 	}
 	c->schema = schema;
+	c->owned_schema = owned_schema;
 	c->vm = cdsl_vm_create(schema);
 	if (!c->vm) {
 		if (owned_schema) {
@@ -302,7 +303,7 @@ cdsl_ctx_free(cdsl_ctx_t* c)
 	if (c->vm) {
 		cdsl_vm_free(c->vm);
 	}
-	if (c->schema) {
+	if (c->owned_schema && c->schema) {
 		cdsl_schema_free((cdsl_schema_t*)c->schema);
 	}
 	free(c);

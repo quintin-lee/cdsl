@@ -33,6 +33,17 @@ copy_expr(const cdsl_expr_node_t* expr)
 	case CDSL_EXPR_STRING:
 		return cdsl_create_expr_string(
 		    strdup(expr->data.string_val), expr->line, expr->column);
+	case CDSL_EXPR_DATE:
+		return cdsl_create_expr_date(expr->data.date_val, expr->line, expr->column);
+	case CDSL_EXPR_LONG:
+		return cdsl_create_expr_long(expr->data.long_val, expr->line, expr->column);
+	case CDSL_EXPR_ARRAY: {
+		cdsl_arg_node_t* elems = NULL;
+		for (cdsl_arg_node_t* a = expr->data.array.elements; a; a = a->next) {
+			elems = cdsl_append_arg(elems, copy_expr(a->expr));
+		}
+		return cdsl_create_expr_array(elems, expr->line, expr->column);
+	}
 	case CDSL_EXPR_UNARY:
 		return cdsl_create_expr_unary(expr->data.unary.op,
 					      copy_expr(expr->data.unary.expr),

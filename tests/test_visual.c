@@ -381,6 +381,27 @@ test_visualize_null_rule(void)
 	TEST_VISUAL_END();
 }
 
+// Test 14: Arithmetic and unary negation visualization
+static void
+test_visualize_arithmetic_and_neg(void)
+{
+	TEST_VISUAL_BEGIN("Visualize arithmetic operators and unary NEG");
+
+	const char* dsl = "RULE arith_vis { WHEN (a + b - 1) * 2 / 3 > -5 THEN log(\"ok\") }";
+	cdsl_rule_t* rule = cdsl_parse_string(dsl, NULL);
+	TEST_ASSERT_NOT_NULL(rule, "Arithmetic rule should parse");
+
+	char* dot = cdsl_rule_to_dot(rule);
+	TEST_ASSERT_NOT_NULL(dot, "DOT output should be generated without crashing");
+	TEST_ASSERT(strstr(dot, "NEG") != NULL, "DOT output should label unary minus as NEG");
+	TEST_ASSERT(strstr(dot, "+") != NULL, "DOT output should contain +");
+	TEST_ASSERT(strstr(dot, "*") != NULL, "DOT output should contain *");
+
+	free(dot);
+	cdsl_free_rule(rule);
+	TEST_VISUAL_END();
+}
+
 int
 main()
 {
@@ -400,6 +421,7 @@ main()
 	test_visualize_rule_to_dot_file();
 	test_visualize_ruleset_to_dot_file();
 	test_visualize_null_rule();
+	test_visualize_arithmetic_and_neg();
 
 	TEST_SUMMARY();
 	TEST_EXIT();

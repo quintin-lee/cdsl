@@ -480,7 +480,7 @@ cdsl_meta_get(cdsl_meta_item_t* list, const char* key)
 void
 cdsl_free_expr(cdsl_expr_node_t* expr)
 {
-	if (!expr) {
+	if (!expr || current_ast_arena) {
 		return;
 	}
 	switch (expr->type) {
@@ -518,6 +518,9 @@ cdsl_free_expr(cdsl_expr_node_t* expr)
 void
 cdsl_free_arg(cdsl_arg_node_t* arg)
 {
+	if (current_ast_arena) {
+		return;
+	}
 	while (arg) {
 		cdsl_arg_node_t* next = arg->next;
 		cdsl_free_expr(arg->expr);
@@ -529,7 +532,7 @@ cdsl_free_arg(cdsl_arg_node_t* arg)
 void
 cdsl_free_action(cdsl_action_node_t* action)
 {
-	if (!action) {
+	if (!action || current_ast_arena) {
 		return;
 	}
 	free(action->action_name);
@@ -540,6 +543,9 @@ cdsl_free_action(cdsl_action_node_t* action)
 void
 cdsl_free_meta(cdsl_meta_item_t* meta)
 {
+	if (current_ast_arena) {
+		return;
+	}
 	while (meta) {
 		cdsl_meta_item_t* next = meta->next;
 		free(meta->key);
@@ -552,6 +558,9 @@ cdsl_free_meta(cdsl_meta_item_t* meta)
 void
 cdsl_free_case(cdsl_case_node_t* cs)
 {
+	if (current_ast_arena) {
+		return;
+	}
 	while (cs) {
 		cdsl_case_node_t* next = cs->next;
 		cdsl_free_expr(cs->condition);
@@ -564,6 +573,9 @@ cdsl_free_case(cdsl_case_node_t* cs)
 void
 cdsl_free_metric(cdsl_metric_node_t* m)
 {
+	if (current_ast_arena) {
+		return;
+	}
 	while (m) {
 		cdsl_metric_node_t* next = m->next;
 		free(m->name);

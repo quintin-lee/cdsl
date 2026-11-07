@@ -181,6 +181,15 @@ cdsl_vm_execute_ruleset(cdsl_vm_t* vm, cdsl_ruleset_t* set, cdsl_context_t* ctx)
 typedef struct {
 	cdsl_action_cb_entry_t* callbacks_snapshot; /* Snapshot of parent's callbacks */
 	cdsl_func_entry_t* functions_snapshot;	    /* Snapshot of parent's functions */
+	void* user_data;
+	int debug_enabled;
+	int max_expr_depth;
+	int64_t timeout_us;
+	int64_t memory_limit;
+	int64_t instruction_limit;
+	cdsl_trace_cb_t trace_cb;
+	void* trace_ud;
+	cdsl_stats_t worker_stats;
 	cdsl_ruleset_t* set;
 	cdsl_context_t* ctx;
 	cdsl_atomic_int_t* next_idx;
@@ -200,7 +209,14 @@ parallel_worker(void* arg)
 	}
 	CDSL_RWLOCK_INIT(&wvm->rwlock);
 	wvm->schema = NULL;
-	wvm->max_expr_depth = 64;
+	wvm->user_data = a->user_data;
+	wvm->debug_enabled = a->debug_enabled;
+	wvm->max_expr_depth = a->max_expr_depth > 0 ? a->max_expr_depth : 64;
+	wvm->timeout_us = a->timeout_us;
+	wvm->memory_limit = a->memory_limit;
+	wvm->instruction_limit = a->instruction_limit;
+	wvm->trace_cb = a->trace_cb;
+	wvm->trace_ud = a->trace_ud;
 	wvm->callbacks = a->callbacks_snapshot;
 	wvm->functions = a->functions_snapshot;
 
@@ -220,6 +236,7 @@ parallel_worker(void* arg)
 		a->rule_reports[idx] = cdsl_vm_execute(wvm, e->rule, a->ctx);
 	}
 
+	a->worker_stats = wvm->stats;
 	CDSL_RWLOCK_DESTROY(&wvm->rwlock);
 	free(wvm);
 	return NULL;
@@ -249,12 +266,23 @@ cdsl_vm_execute_ruleset_parallel(cdsl_vm_t* vm,
 	}
 	batch->rule_count = set->count;
 
-	/* Snapshot parent's callbacks/functions under write lock so workers
+	/* Snapshot parent's callbacks/functions and config under write lock so workers
 	   can traverse them without holding any parent lock (avoids self-deadlock
 	   if a user callback tries to register a new action/function). */
 	cdsl_action_cb_entry_t* cb_snapshot = NULL;
+	cdsl_action_cb_entry_t* cb_tail = NULL;
 	cdsl_func_entry_t* fn_snapshot = NULL;
+	cdsl_func_entry_t* fn_tail = NULL;
 	CDSL_RWLOCK_WRLOCK(&vm->rwlock);
+	void* snap_user_data = vm->user_data;
+	int snap_debug_enabled = vm->debug_enabled;
+	int snap_max_expr_depth = vm->max_expr_depth;
+	int64_t snap_timeout_us = vm->timeout_us;
+	int64_t snap_memory_limit = vm->memory_limit;
+	int64_t snap_instruction_limit = vm->instruction_limit;
+	cdsl_trace_cb_t snap_trace_cb = vm->trace_cb;
+	void* snap_trace_ud = vm->trace_ud;
+
 	for (cdsl_action_cb_entry_t* cb = vm->callbacks; cb; cb = cb->next) {
 		cdsl_action_cb_entry_t* entry = calloc(1, sizeof(*entry));
 		if (!entry) {
@@ -262,8 +290,13 @@ cdsl_vm_execute_ruleset_parallel(cdsl_vm_t* vm,
 		}
 		entry->action_name = strdup(cb->action_name);
 		entry->cb = cb->cb;
-		entry->next = cb_snapshot;
-		cb_snapshot = entry;
+		entry->next = NULL;
+		if (!cb_snapshot) {
+			cb_snapshot = entry;
+		} else {
+			cb_tail->next = entry;
+		}
+		cb_tail = entry;
 	}
 	for (cdsl_func_entry_t* fn = vm->functions; fn; fn = fn->next) {
 		cdsl_func_entry_t* entry = calloc(1, sizeof(*entry));
@@ -272,8 +305,13 @@ cdsl_vm_execute_ruleset_parallel(cdsl_vm_t* vm,
 		}
 		entry->func_name = strdup(fn->func_name);
 		entry->cb = fn->cb;
-		entry->next = fn_snapshot;
-		fn_snapshot = entry;
+		entry->next = NULL;
+		if (!fn_snapshot) {
+			fn_snapshot = entry;
+		} else {
+			fn_tail->next = entry;
+		}
+		fn_tail = entry;
 	}
 	CDSL_RWLOCK_UNLOCK_WR(&vm->rwlock);
 
@@ -307,6 +345,14 @@ cdsl_vm_execute_ruleset_parallel(cdsl_vm_t* vm,
 	for (int t = 0; t < nthreads; t++) {
 		args[t].callbacks_snapshot = cb_snapshot;
 		args[t].functions_snapshot = fn_snapshot;
+		args[t].user_data = snap_user_data;
+		args[t].debug_enabled = snap_debug_enabled;
+		args[t].max_expr_depth = snap_max_expr_depth;
+		args[t].timeout_us = snap_timeout_us;
+		args[t].memory_limit = snap_memory_limit;
+		args[t].instruction_limit = snap_instruction_limit;
+		args[t].trace_cb = snap_trace_cb;
+		args[t].trace_ud = snap_trace_ud;
 		args[t].set = set;
 		args[t].ctx = ctx;
 		args[t].next_idx = &next_idx;
@@ -325,6 +371,17 @@ cdsl_vm_execute_ruleset_parallel(cdsl_vm_t* vm,
 
 	/* Aggregate worker stats into parent VM under write lock */
 	CDSL_RWLOCK_WRLOCK(&vm->rwlock);
+	for (int t = 0; t < nthreads; t++) {
+		vm->stats.total_executions += args[t].worker_stats.total_executions;
+		vm->stats.total_rules_executed += args[t].worker_stats.total_rules_executed;
+		vm->stats.total_metrics_evaluated += args[t].worker_stats.total_metrics_evaluated;
+		vm->stats.total_actions_triggered += args[t].worker_stats.total_actions_triggered;
+		vm->stats.total_time_us += args[t].worker_stats.total_time_us;
+	}
+	if (vm->stats.total_executions > 0) {
+		vm->stats.avg_time_us =
+		    vm->stats.total_time_us / (double)vm->stats.total_executions;
+	}
 	for (int i = 0; i < set->count; i++) {
 		if (!batch->rule_reports[i]) {
 			continue;

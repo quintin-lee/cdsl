@@ -35,8 +35,8 @@ test_validation_error_has_location(void)
 	TEST_ASSERT(errors->count > 0, "should have at least one error");
 
 	cdsl_error_t* err = errors->errors[0];
-	TEST_ASSERT(err->line > 0, "error line should be > 0");
-	TEST_ASSERT(err->column > 0, "error column should be > 0");
+	TEST_ASSERT_INT(err->line, 2, "error line should be 2");
+	TEST_ASSERT_INT(err->column, 8, "error column should be 8");
 	TEST_ASSERT(strstr(err->message, "salary") != NULL, "message should mention salary");
 
 	cdsl_error_list_free(errors);

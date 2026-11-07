@@ -238,6 +238,18 @@ test_bytecode_date_arith(void)
 	cdsl_bytecode_free(&bc1);
 	cdsl_free_rule(r1);
 
+	/* DATE + INT and DATE - INT */
+	cdsl_rule_t* r2 = cdsl_parse_string("RULE r { WHEN @2024-01-01 + 9 == @2024-01-10 && "
+					    "@2024-01-10 - 9 == @2024-01-01 THEN block(\"ok\") }",
+					    NULL);
+	TEST_ASSERT_NOT_NULL(r2, "date+int/date-int rule");
+	cdsl_bytecode_t bc2 = {0};
+	cdsl_bytecode_compile(r2, schema, &bc2);
+	cdsl_value_t v2 = cdsl_bytecode_execute(vm, &bc2, ctx);
+	TEST_ASSERT_INT(v2.data.bool_val, 1, "DATE+INT and DATE-INT via bytecode");
+	cdsl_bytecode_free(&bc2);
+	cdsl_free_rule(r2);
+
 	cdsl_context_free(ctx);
 	cdsl_vm_free(vm);
 	cdsl_schema_free(schema);
@@ -405,6 +417,77 @@ test_bytecode_long_literal(void)
 	TEST_END();
 }
 
+void
+test_bytecode_action_and_critical_metric(void)
+{
+	TEST_BEGIN("bytecode BC_ACTION callback, critical metric veto, and >16 CASEs");
+
+	cdsl_schema_t* schema = cdsl_schema_create();
+	cdsl_schema_register_var(schema, "x", CDSL_TYPE_INT);
+	cdsl_schema_register_action(schema, "block", CDSL_TYPE_VOID, 1, CDSL_TYPE_STRING);
+	cdsl_schema_register_action(schema, "score", CDSL_TYPE_VOID, 1, CDSL_TYPE_INT);
+	cdsl_vm_t* vm = cdsl_vm_create(schema);
+	cdsl_vm_register_action(vm, "block", test_cb);
+	cdsl_context_t* ctx = cdsl_context_create(schema);
+	cdsl_context_set_int(ctx, "x", 20);
+
+	/* 1. Verify BC_ACTION fires registered callback in simple rule */
+	action_called = 0;
+	cdsl_rule_t* r1 = cdsl_parse_string("RULE r1 { WHEN x == 20 THEN block(\"alert\") }", NULL);
+	cdsl_bytecode_t bc1 = {0};
+	TEST_ASSERT_INT(cdsl_bytecode_compile(r1, schema, &bc1), 1, "r1 compiled");
+	cdsl_rule_report_t* rep1 = cdsl_bytecode_execute_rule(vm, &bc1, ctx);
+	TEST_ASSERT_NOT_NULL(rep1, "rep1 not NULL");
+	TEST_ASSERT_INT(action_called, 1, "BC_ACTION fired registered callback");
+	TEST_ASSERT_STR(rep1->rule_name, "r1", "rep1 rule_name populated");
+	cdsl_report_free(rep1);
+	cdsl_bytecode_free(&bc1);
+	cdsl_free_rule(r1);
+
+	/* 2. Verify is_critical veto and >16 CASE branches */
+	cdsl_rule_t* r2 =
+	    cdsl_parse_string("RULE r2 { "
+			      "  META { pass_threshold = \"50\" } "
+			      "  METRIC m1 { "
+			      "    META { weight = \"80\" } "
+			      "    CASE x == 1 THEN score(80) CASE x == 2 THEN score(80) "
+			      "    CASE x == 3 THEN score(80) CASE x == 4 THEN score(80) "
+			      "    CASE x == 5 THEN score(80) CASE x == 6 THEN score(80) "
+			      "    CASE x == 7 THEN score(80) CASE x == 8 THEN score(80) "
+			      "    CASE x == 9 THEN score(80) CASE x == 10 THEN score(80) "
+			      "    CASE x == 11 THEN score(80) CASE x == 12 THEN score(80) "
+			      "    CASE x == 13 THEN score(80) CASE x == 14 THEN score(80) "
+			      "    CASE x == 15 THEN score(80) CASE x == 16 THEN score(80) "
+			      "    CASE x == 17 THEN score(80) CASE x == 18 THEN score(80) "
+			      "    CASE x == 19 THEN score(80) CASE x == 20 THEN score(80) "
+			      "    DEFAULT score(0) "
+			      "  } "
+			      "  METRIC m2 { "
+			      "    META { weight = \"20\" is_critical = \"true\" } "
+			      "    CASE x == 999 THEN score(20) "
+			      "    DEFAULT score(0) "
+			      "  } "
+			      "}",
+			      NULL);
+	TEST_ASSERT_NOT_NULL(r2, "r2 parsed");
+	cdsl_bytecode_t bc2 = {0};
+	TEST_ASSERT_INT(cdsl_bytecode_compile(r2, schema, &bc2), 1, "r2 (>16 cases) compiled");
+	cdsl_rule_report_t* rep2 = cdsl_bytecode_execute_rule(vm, &bc2, ctx);
+	TEST_ASSERT_NOT_NULL(rep2, "rep2 not NULL");
+	TEST_ASSERT_INT(rep2->total_obtained_score, 80, "m1 scored 80 on 20th CASE");
+	TEST_ASSERT_INT(rep2->total_max_score, 100, "total max score is 80+20=100");
+	TEST_ASSERT_INT(
+	    rep2->status, CDSL_STATUS_FAILED, "critical metric m2=0 vetoes rule to FAILED");
+	cdsl_report_free(rep2);
+	cdsl_bytecode_free(&bc2);
+	cdsl_free_rule(r2);
+
+	cdsl_context_free(ctx);
+	cdsl_vm_free(vm);
+	cdsl_schema_free(schema);
+	TEST_END();
+}
+
 int
 main(void)
 {
@@ -421,6 +504,7 @@ main(void)
 	test_bytecode_rule_full_types();
 	test_bytecode_rule_metric();
 	test_bytecode_long_literal();
+	test_bytecode_action_and_critical_metric();
 
 	TEST_SUMMARY();
 	TEST_EXIT();
