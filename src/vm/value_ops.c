@@ -66,19 +66,6 @@ ck_mul_i64(int64_t a, int64_t b, int64_t* out)
 }
 
 static int
-is_comparison_op(cdsl_op_t op)
-{
-	return op == CDSL_OP_EQ || op == CDSL_OP_NE || op == CDSL_OP_LT || op == CDSL_OP_GT ||
-	       op == CDSL_OP_LE || op == CDSL_OP_GE;
-}
-
-static int
-is_arithmetic_op(cdsl_op_t op)
-{
-	return op == CDSL_OP_ADD || op == CDSL_OP_SUB || op == CDSL_OP_MUL || op == CDSL_OP_DIV;
-}
-
-static int
 is_numeric_type(cdsl_type_t t)
 {
 	return t == CDSL_TYPE_INT || t == CDSL_TYPE_LONG || t == CDSL_TYPE_FLOAT;
@@ -151,7 +138,7 @@ cdsl_value_binop(cdsl_op_t op, const cdsl_value_t* a, const cdsl_value_t* b, cds
 	}
 
 	if (a->type == CDSL_TYPE_VOID || b->type == CDSL_TYPE_VOID) {
-		if (is_comparison_op(op)) {
+		if (cdsl_op_is_relational(op)) {
 			out->type = CDSL_TYPE_BOOL;
 			out->data.bool_val = 0;
 		}
@@ -169,7 +156,7 @@ cdsl_value_binop(cdsl_op_t op, const cdsl_value_t* a, const cdsl_value_t* b, cds
 		int cmp = strcmp(a->data.string_val ? a->data.string_val : "",
 				 b->data.string_val ? b->data.string_val : "");
 		out->type = CDSL_TYPE_BOOL;
-		out->data.bool_val = (op == CDSL_OP_EQ) ? (cmp == 0) : (cmp != 0);
+		out->data.bool_val = cdsl_op_eval_cmp(op, cmp);
 		return CDSL_VALOP_OK;
 	}
 
@@ -187,16 +174,12 @@ cdsl_value_binop(cdsl_op_t op, const cdsl_value_t* a, const cdsl_value_t* b, cds
 				out->data.int_val = (int)days;
 				return CDSL_VALOP_OK;
 			}
-			if (is_comparison_op(op)) {
+			if (cdsl_op_is_relational(op)) {
 				time_t t1 = a->data.date_val;
 				time_t t2 = b->data.date_val;
+				int cmp = (t1 < t2) ? -1 : (t1 > t2) ? 1 : 0;
 				out->type = CDSL_TYPE_BOOL;
-				out->data.bool_val = (op == CDSL_OP_EQ)	  ? (t1 == t2)
-						     : (op == CDSL_OP_NE) ? (t1 != t2)
-						     : (op == CDSL_OP_LT) ? (t1 < t2)
-						     : (op == CDSL_OP_GT) ? (t1 > t2)
-						     : (op == CDSL_OP_LE) ? (t1 <= t2)
-									  : (t1 >= t2);
+				out->data.bool_val = cdsl_op_eval_cmp(op, cmp);
 				return CDSL_VALOP_OK;
 			}
 			return CDSL_VALOP_TYPE_ERROR;
@@ -213,18 +196,13 @@ cdsl_value_binop(cdsl_op_t op, const cdsl_value_t* a, const cdsl_value_t* b, cds
 	/* BOOL: comparison with BOOL only */
 	if (a->type == CDSL_TYPE_BOOL || b->type == CDSL_TYPE_BOOL) {
 		if (a->type != CDSL_TYPE_BOOL || b->type != CDSL_TYPE_BOOL ||
-		    !is_comparison_op(op)) {
+		    !cdsl_op_is_relational(op)) {
 			return CDSL_VALOP_TYPE_ERROR;
 		}
 		int bv1 = a->data.bool_val ? 1 : 0;
 		int bv2 = b->data.bool_val ? 1 : 0;
 		out->type = CDSL_TYPE_BOOL;
-		out->data.bool_val = (op == CDSL_OP_EQ)	  ? (bv1 == bv2)
-				     : (op == CDSL_OP_NE) ? (bv1 != bv2)
-				     : (op == CDSL_OP_LT) ? (bv1 < bv2)
-				     : (op == CDSL_OP_GT) ? (bv1 > bv2)
-				     : (op == CDSL_OP_LE) ? (bv1 <= bv2)
-							  : (bv1 >= bv2);
+		out->data.bool_val = cdsl_op_eval_cmp(op, bv1 - bv2);
 		return CDSL_VALOP_OK;
 	}
 
@@ -241,7 +219,7 @@ cdsl_value_binop(cdsl_op_t op, const cdsl_value_t* a, const cdsl_value_t* b, cds
 		double bv = (b->type == CDSL_TYPE_FLOAT)  ? b->data.float_val
 			    : (b->type == CDSL_TYPE_LONG) ? (double)b->data.long_val
 							  : (double)b->data.int_val;
-		if (is_arithmetic_op(op)) {
+		if (cdsl_op_is_arithmetic(op)) {
 			if (op == CDSL_OP_DIV && bv == 0.0) {
 				return CDSL_VALOP_DIV_ZERO;
 			}
@@ -252,14 +230,10 @@ cdsl_value_binop(cdsl_op_t op, const cdsl_value_t* a, const cdsl_value_t* b, cds
 								    : (av / bv);
 			return CDSL_VALOP_OK;
 		}
-		if (is_comparison_op(op)) {
+		if (cdsl_op_is_relational(op)) {
+			int cmp = (fabs(av - bv) < 1e-9) ? 0 : (av < bv) ? -1 : 1;
 			out->type = CDSL_TYPE_BOOL;
-			out->data.bool_val = (op == CDSL_OP_EQ)	  ? (fabs(av - bv) < 1e-9)
-					     : (op == CDSL_OP_NE) ? (fabs(av - bv) >= 1e-9)
-					     : (op == CDSL_OP_LT) ? (av < bv)
-					     : (op == CDSL_OP_GT) ? (av > bv)
-					     : (op == CDSL_OP_LE) ? (av <= bv)
-								  : (av >= bv);
+			out->data.bool_val = cdsl_op_eval_cmp(op, cmp);
 			return CDSL_VALOP_OK;
 		}
 		return CDSL_VALOP_TYPE_ERROR;
@@ -271,7 +245,7 @@ cdsl_value_binop(cdsl_op_t op, const cdsl_value_t* a, const cdsl_value_t* b, cds
 		    (a->type == CDSL_TYPE_LONG) ? a->data.long_val : (int64_t)a->data.int_val;
 		int64_t bl =
 		    (b->type == CDSL_TYPE_LONG) ? b->data.long_val : (int64_t)b->data.int_val;
-		if (is_arithmetic_op(op)) {
+		if (cdsl_op_is_arithmetic(op)) {
 			int64_t rl = 0;
 			if (op == CDSL_OP_ADD) {
 				if (!ck_add_i64(al, bl, &rl)) {
@@ -298,14 +272,10 @@ cdsl_value_binop(cdsl_op_t op, const cdsl_value_t* a, const cdsl_value_t* b, cds
 			out->data.long_val = rl;
 			return CDSL_VALOP_OK;
 		}
-		if (is_comparison_op(op)) {
+		if (cdsl_op_is_relational(op)) {
+			int cmp = (al < bl) ? -1 : (al > bl) ? 1 : 0;
 			out->type = CDSL_TYPE_BOOL;
-			out->data.bool_val = (op == CDSL_OP_EQ)	  ? (al == bl)
-					     : (op == CDSL_OP_NE) ? (al != bl)
-					     : (op == CDSL_OP_LT) ? (al < bl)
-					     : (op == CDSL_OP_GT) ? (al > bl)
-					     : (op == CDSL_OP_LE) ? (al <= bl)
-								  : (al >= bl);
+			out->data.bool_val = cdsl_op_eval_cmp(op, cmp);
 			return CDSL_VALOP_OK;
 		}
 		return CDSL_VALOP_TYPE_ERROR;
@@ -314,7 +284,7 @@ cdsl_value_binop(cdsl_op_t op, const cdsl_value_t* a, const cdsl_value_t* b, cds
 	/* Case 3: Both INT -> exact checked int32 via int64_t intermediate */
 	int64_t ai = (int64_t)a->data.int_val;
 	int64_t bi = (int64_t)b->data.int_val;
-	if (is_arithmetic_op(op)) {
+	if (cdsl_op_is_arithmetic(op)) {
 		int64_t ri = 0;
 		if (op == CDSL_OP_ADD) {
 			ri = ai + bi;
@@ -335,14 +305,10 @@ cdsl_value_binop(cdsl_op_t op, const cdsl_value_t* a, const cdsl_value_t* b, cds
 		out->data.int_val = (int)ri;
 		return CDSL_VALOP_OK;
 	}
-	if (is_comparison_op(op)) {
+	if (cdsl_op_is_relational(op)) {
+		int cmp = (ai < bi) ? -1 : (ai > bi) ? 1 : 0;
 		out->type = CDSL_TYPE_BOOL;
-		out->data.bool_val = (op == CDSL_OP_EQ)	  ? (ai == bi)
-				     : (op == CDSL_OP_NE) ? (ai != bi)
-				     : (op == CDSL_OP_LT) ? (ai < bi)
-				     : (op == CDSL_OP_GT) ? (ai > bi)
-				     : (op == CDSL_OP_LE) ? (ai <= bi)
-							  : (ai >= bi);
+		out->data.bool_val = cdsl_op_eval_cmp(op, cmp);
 		return CDSL_VALOP_OK;
 	}
 
