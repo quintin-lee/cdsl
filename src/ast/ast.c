@@ -604,4 +604,199 @@ cdsl_free_rule(cdsl_rule_t* rule)
 	cdsl_free_metric(rule->metrics);
 	free(rule);
 }
+
+bool
+cdsl_op_is_relational(cdsl_op_t op)
+{
+	switch (op) {
+	case CDSL_OP_EQ:
+	case CDSL_OP_NE:
+	case CDSL_OP_LT:
+	case CDSL_OP_GT:
+	case CDSL_OP_LE:
+	case CDSL_OP_GE:
+		return true;
+	case CDSL_OP_AND:
+	case CDSL_OP_OR:
+	case CDSL_OP_NOT:
+	case CDSL_OP_ADD:
+	case CDSL_OP_SUB:
+	case CDSL_OP_MUL:
+	case CDSL_OP_DIV:
+	case CDSL_OP_NEG:
+	default:
+		return false;
+	}
+}
+
+bool
+cdsl_op_is_arithmetic(cdsl_op_t op)
+{
+	switch (op) {
+	case CDSL_OP_ADD:
+	case CDSL_OP_SUB:
+	case CDSL_OP_MUL:
+	case CDSL_OP_DIV:
+		return true;
+	case CDSL_OP_EQ:
+	case CDSL_OP_NE:
+	case CDSL_OP_LT:
+	case CDSL_OP_GT:
+	case CDSL_OP_LE:
+	case CDSL_OP_GE:
+	case CDSL_OP_AND:
+	case CDSL_OP_OR:
+	case CDSL_OP_NOT:
+	case CDSL_OP_NEG:
+	default:
+		return false;
+	}
+}
+
+bool
+cdsl_op_is_logical_binary(cdsl_op_t op)
+{
+	switch (op) {
+	case CDSL_OP_AND:
+	case CDSL_OP_OR:
+		return true;
+	case CDSL_OP_EQ:
+	case CDSL_OP_NE:
+	case CDSL_OP_LT:
+	case CDSL_OP_GT:
+	case CDSL_OP_LE:
+	case CDSL_OP_GE:
+	case CDSL_OP_NOT:
+	case CDSL_OP_ADD:
+	case CDSL_OP_SUB:
+	case CDSL_OP_MUL:
+	case CDSL_OP_DIV:
+	case CDSL_OP_NEG:
+	default:
+		return false;
+	}
+}
+
+bool
+cdsl_op_is_unary(cdsl_op_t op)
+{
+	switch (op) {
+	case CDSL_OP_NOT:
+	case CDSL_OP_NEG:
+		return true;
+	case CDSL_OP_EQ:
+	case CDSL_OP_NE:
+	case CDSL_OP_LT:
+	case CDSL_OP_GT:
+	case CDSL_OP_LE:
+	case CDSL_OP_GE:
+	case CDSL_OP_AND:
+	case CDSL_OP_OR:
+	case CDSL_OP_ADD:
+	case CDSL_OP_SUB:
+	case CDSL_OP_MUL:
+	case CDSL_OP_DIV:
+	default:
+		return false;
+	}
+}
+
+const char*
+cdsl_op_c_symbol(cdsl_op_t op)
+{
+	switch (op) {
+	case CDSL_OP_EQ:
+		return "==";
+	case CDSL_OP_NE:
+		return "!=";
+	case CDSL_OP_LT:
+		return "<";
+	case CDSL_OP_GT:
+		return ">";
+	case CDSL_OP_LE:
+		return "<=";
+	case CDSL_OP_GE:
+		return ">=";
+	case CDSL_OP_AND:
+		return "&&";
+	case CDSL_OP_OR:
+		return "||";
+	case CDSL_OP_NOT:
+		return "!";
+	case CDSL_OP_ADD:
+		return "+";
+	case CDSL_OP_SUB:
+		return "-";
+	case CDSL_OP_MUL:
+		return "*";
+	case CDSL_OP_DIV:
+		return "/";
+	case CDSL_OP_NEG:
+		return "-";
+	default:
+		return "?";
+	}
+}
+
+const char*
+cdsl_op_name(cdsl_op_t op)
+{
+	switch (op) {
+	case CDSL_OP_EQ:
+		return "==";
+	case CDSL_OP_NE:
+		return "!=";
+	case CDSL_OP_LT:
+		return "<";
+	case CDSL_OP_GT:
+		return ">";
+	case CDSL_OP_LE:
+		return "<=";
+	case CDSL_OP_GE:
+		return ">=";
+	case CDSL_OP_AND:
+		return "AND";
+	case CDSL_OP_OR:
+		return "OR";
+	case CDSL_OP_NOT:
+		return "NOT";
+	case CDSL_OP_ADD:
+		return "+";
+	case CDSL_OP_SUB:
+		return "-";
+	case CDSL_OP_MUL:
+		return "*";
+	case CDSL_OP_DIV:
+		return "/";
+	case CDSL_OP_NEG:
+		return "NEG";
+	default:
+		return "?";
+	}
+}
+
+const char*
+cdsl_type_name(cdsl_type_t type)
+{
+	switch (type) {
+	case CDSL_TYPE_INT:
+		return "INT";
+	case CDSL_TYPE_FLOAT:
+		return "FLOAT";
+	case CDSL_TYPE_BOOL:
+		return "BOOL";
+	case CDSL_TYPE_STRING:
+		return "STRING";
+	case CDSL_TYPE_DATE:
+		return "DATE";
+	case CDSL_TYPE_LONG:
+		return "LONG";
+	case CDSL_TYPE_ARRAY:
+		return "ARRAY";
+	case CDSL_TYPE_VOID:
+		return "VOID";
+	default:
+		return "UNKNOWN";
+	}
+}
 /** @} */

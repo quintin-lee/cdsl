@@ -15,21 +15,6 @@
 #include <math.h>
 #include <errno.h>
 
-static int
-bc_safe_atoi(const char* str, int default_val)
-{
-	if (!str) {
-		return default_val;
-	}
-	char* end = NULL;
-	errno = 0;
-	long val = strtol(str, &end, 10);
-	if (errno != 0 || end == str || *end != '\0') {
-		return default_val;
-	}
-	return (int)val;
-}
-
 /* ---- bytecode chunk management ---- */
 
 static int
@@ -288,7 +273,7 @@ is_const_expr(cdsl_expr_node_t* expr)
 		return is_const_expr(expr->data.unary.expr);
 	case CDSL_EXPR_BINARY: {
 		cdsl_op_t op = expr->data.binary.op;
-		if (op == CDSL_OP_AND || op == CDSL_OP_OR) {
+		if (cdsl_op_is_logical_binary(op)) {
 			return 0;
 		}
 		return is_const_expr(expr->data.binary.left) &&
@@ -402,7 +387,7 @@ fold_const_expr(cdsl_expr_node_t* expr, cdsl_value_t* out)
 		}
 
 		/* Numeric arithmetic */
-		if (op >= CDSL_OP_ADD && op <= CDSL_OP_DIV) {
+		if (cdsl_op_is_arithmetic(op)) {
 			double lv = (l.type == CDSL_TYPE_FLOAT)	 ? l.data.float_val
 				    : (l.type == CDSL_TYPE_LONG) ? (double)l.data.long_val
 								 : (double)l.data.int_val;
@@ -430,7 +415,7 @@ fold_const_expr(cdsl_expr_node_t* expr, cdsl_value_t* out)
 		}
 
 		/* Numeric comparison */
-		if (op >= CDSL_OP_EQ && op <= CDSL_OP_GE) {
+		if (cdsl_op_is_relational(op)) {
 			double lv = (l.type == CDSL_TYPE_FLOAT)	 ? l.data.float_val
 				    : (l.type == CDSL_TYPE_LONG) ? (double)l.data.long_val
 								 : (double)l.data.int_val;
@@ -807,9 +792,8 @@ cdsl_bytecode_compile(const cdsl_rule_t* rule, const cdsl_schema_t* schema, cdsl
 	bc->rule_name = strdup(rule->name ? rule->name : "");
 	char* rdesc = cdsl_meta_get(rule->meta_list, "description");
 	bc->description = strdup(rdesc ? rdesc : "");
-	bc->pass_threshold = bc_safe_atoi(cdsl_meta_get(rule->meta_list, "pass_threshold"), 80);
-	bc->partial_threshold =
-	    bc_safe_atoi(cdsl_meta_get(rule->meta_list, "partial_threshold"), 60);
+	bc->pass_threshold = cdsl_meta_get_int(rule->meta_list, "pass_threshold", 80);
+	bc->partial_threshold = cdsl_meta_get_int(rule->meta_list, "partial_threshold", 60);
 	bc->is_metric_rule = (rule->metrics != NULL);
 
 	int stack_used = 0;
@@ -826,15 +810,13 @@ cdsl_bytecode_compile(const cdsl_rule_t* rule, const cdsl_schema_t* schema, cdsl
 		int midx = 0;
 		for (cdsl_metric_node_t* m = rule->metrics; m; m = m->next, midx++) {
 			char* mdesc = cdsl_meta_get(m->meta_list, "description");
-			char* w_str = cdsl_meta_get(m->meta_list, "weight");
-			char* c_str = cdsl_meta_get(m->meta_list, "is_critical");
-			int m_weight = bc_safe_atoi(w_str, 0);
+			int m_weight = cdsl_meta_get_int(m->meta_list, "weight", 0);
 			if (bc->metric_infos) {
 				bc->metric_infos[midx].name = strdup(m->name ? m->name : "");
 				bc->metric_infos[midx].description = strdup(mdesc ? mdesc : "");
 				bc->metric_infos[midx].max_weight = m_weight;
 				bc->metric_infos[midx].is_critical =
-				    (c_str && strcmp(c_str, "true") == 0) ? 1 : 0;
+				    cdsl_meta_get_bool(m->meta_list, "is_critical", 0);
 			}
 
 			bc_emit_metric_start(bc, m->name);

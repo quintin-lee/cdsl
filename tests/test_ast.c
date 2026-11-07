@@ -130,6 +130,71 @@ test_ast_parse_limit(void)
 }
 
 /**
+ * @brief Test operator predicates, string mappers, and type names.
+ */
+static void
+test_ast_operator_and_type_contracts(void)
+{
+	TEST_BEGIN("operator and type contracts");
+
+	/* Relational operators */
+	TEST_ASSERT_INT(cdsl_op_is_relational(CDSL_OP_EQ), 1, "EQ is relational");
+	TEST_ASSERT_INT(cdsl_op_is_relational(CDSL_OP_NE), 1, "NE is relational");
+	TEST_ASSERT_INT(cdsl_op_is_relational(CDSL_OP_LT), 1, "LT is relational");
+	TEST_ASSERT_INT(cdsl_op_is_relational(CDSL_OP_GT), 1, "GT is relational");
+	TEST_ASSERT_INT(cdsl_op_is_relational(CDSL_OP_LE), 1, "LE is relational");
+	TEST_ASSERT_INT(cdsl_op_is_relational(CDSL_OP_GE), 1, "GE is relational");
+	TEST_ASSERT_INT(cdsl_op_is_relational(CDSL_OP_ADD), 0, "ADD is not relational");
+	TEST_ASSERT_INT(cdsl_op_is_relational((cdsl_op_t)999), 0, "invalid op is not relational");
+
+	/* Arithmetic binary operators */
+	TEST_ASSERT_INT(cdsl_op_is_arithmetic(CDSL_OP_ADD), 1, "ADD is arithmetic");
+	TEST_ASSERT_INT(cdsl_op_is_arithmetic(CDSL_OP_SUB), 1, "SUB is arithmetic");
+	TEST_ASSERT_INT(cdsl_op_is_arithmetic(CDSL_OP_MUL), 1, "MUL is arithmetic");
+	TEST_ASSERT_INT(cdsl_op_is_arithmetic(CDSL_OP_DIV), 1, "DIV is arithmetic");
+	TEST_ASSERT_INT(cdsl_op_is_arithmetic(CDSL_OP_EQ), 0, "EQ is not arithmetic");
+
+	/* Logical binary operators */
+	TEST_ASSERT_INT(cdsl_op_is_logical_binary(CDSL_OP_AND), 1, "AND is logical binary");
+	TEST_ASSERT_INT(cdsl_op_is_logical_binary(CDSL_OP_OR), 1, "OR is logical binary");
+	TEST_ASSERT_INT(cdsl_op_is_logical_binary(CDSL_OP_NOT), 0, "NOT is unary not binary");
+
+	/* Unary operators */
+	TEST_ASSERT_INT(cdsl_op_is_unary(CDSL_OP_NOT), 1, "NOT is unary");
+	TEST_ASSERT_INT(cdsl_op_is_unary(CDSL_OP_NEG), 1, "NEG is unary");
+	TEST_ASSERT_INT(cdsl_op_is_unary(CDSL_OP_ADD), 0, "ADD is not unary");
+
+	/* C code symbols */
+	TEST_ASSERT_STR(cdsl_op_c_symbol(CDSL_OP_EQ), "==", "symbol EQ");
+	TEST_ASSERT_STR(cdsl_op_c_symbol(CDSL_OP_AND), "&&", "symbol AND");
+	TEST_ASSERT_STR(cdsl_op_c_symbol(CDSL_OP_OR), "||", "symbol OR");
+	TEST_ASSERT_STR(cdsl_op_c_symbol(CDSL_OP_NOT), "!", "symbol NOT");
+	TEST_ASSERT_STR(cdsl_op_c_symbol(CDSL_OP_NEG), "-", "symbol NEG");
+	TEST_ASSERT_STR(cdsl_op_c_symbol((cdsl_op_t)999), "?", "invalid symbol ?");
+
+	/* DOT/friendly names */
+	TEST_ASSERT_STR(cdsl_op_name(CDSL_OP_EQ), "==", "name EQ");
+	TEST_ASSERT_STR(cdsl_op_name(CDSL_OP_AND), "AND", "name AND");
+	TEST_ASSERT_STR(cdsl_op_name(CDSL_OP_OR), "OR", "name OR");
+	TEST_ASSERT_STR(cdsl_op_name(CDSL_OP_NOT), "NOT", "name NOT");
+	TEST_ASSERT_STR(cdsl_op_name(CDSL_OP_NEG), "NEG", "name NEG");
+	TEST_ASSERT_STR(cdsl_op_name((cdsl_op_t)999), "?", "invalid name ?");
+
+	/* Type names */
+	TEST_ASSERT_STR(cdsl_type_name(CDSL_TYPE_INT), "INT", "type INT");
+	TEST_ASSERT_STR(cdsl_type_name(CDSL_TYPE_FLOAT), "FLOAT", "type FLOAT");
+	TEST_ASSERT_STR(cdsl_type_name(CDSL_TYPE_BOOL), "BOOL", "type BOOL");
+	TEST_ASSERT_STR(cdsl_type_name(CDSL_TYPE_STRING), "STRING", "type STRING");
+	TEST_ASSERT_STR(cdsl_type_name(CDSL_TYPE_DATE), "DATE", "type DATE");
+	TEST_ASSERT_STR(cdsl_type_name(CDSL_TYPE_LONG), "LONG", "type LONG");
+	TEST_ASSERT_STR(cdsl_type_name(CDSL_TYPE_ARRAY), "ARRAY", "type ARRAY");
+	TEST_ASSERT_STR(cdsl_type_name(CDSL_TYPE_VOID), "VOID", "type VOID");
+	TEST_ASSERT_STR(cdsl_type_name((cdsl_type_t)999), "UNKNOWN", "invalid type UNKNOWN");
+
+	TEST_END();
+}
+
+/**
  * @brief Main entry: run all AST test cases.
  * @return 0 if all tests passed, 1 otherwise
  */
@@ -147,6 +212,7 @@ main(void)
 	test_ast_create_meta();
 	test_ast_create_rule();
 	test_ast_parse_limit();
+	test_ast_operator_and_type_contracts();
 
 	TEST_SUMMARY();
 	TEST_EXIT();
