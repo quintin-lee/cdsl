@@ -61,6 +61,30 @@ double cdsl_get_time_us_internal(void);
 const char* cdsl_status_str_internal(cdsl_rule_status_t s);
 
 /**
+ * @brief 防御性整型字符串解析（防止溢出与非法格式，统一替代局部 safe_atoi）
+ * @param str 待解析字符串（为 NULL 或格式错误时返回 default_val）
+ * @param default_val 兜底默认值
+ * @return 解析后的整型数值
+ */
+int cdsl_safe_atoi(const char* str, int default_val);
+
+/**
+ * @brief 从元数据链表中提取整型值
+ * @param list 元数据链表
+ * @param key 键名
+ * @param default_val 键不存在或非合法整数时的默认值
+ */
+int cdsl_meta_get_int(cdsl_meta_item_t* list, const char* key, int default_val);
+
+/**
+ * @brief 从元数据链表中提取布尔值 ("true" -> 1, "false" -> 0)
+ * @param list 元数据链表
+ * @param key 键名
+ * @param default_val 键不存在或非布尔格式时的默认值
+ */
+int cdsl_meta_get_bool(cdsl_meta_item_t* list, const char* key, int default_val);
+
+/**
  * @brief Internal context variable lookup by name.
  *
  * @param ctx Execution context
