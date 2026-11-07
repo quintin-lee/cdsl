@@ -726,13 +726,6 @@ cdsl_trigger_action_internal(cdsl_vm_t* vm, cdsl_action_node_t* action)
 	}
 }
 
-static char*
-get_metric_meta(cdsl_meta_item_t* meta, const char* key, const char* def)
-{
-	char* v = cdsl_meta_get(meta, key);
-	return v ? v : (char*)def;
-}
-
 static cdsl_rule_report_t*
 execute_metric_rule(cdsl_vm_t* vm, const cdsl_rule_t* rule, cdsl_context_t* ctx)
 {
@@ -771,9 +764,8 @@ execute_metric_rule(cdsl_vm_t* vm, const cdsl_rule_t* rule, cdsl_context_t* ctx)
 		mr->metric_name = strdup(m->name);
 		char* mdesc = cdsl_meta_get(m->meta_list, "description");
 		mr->description = mdesc ? strdup(mdesc) : strdup("");
-		mr->max_weight = cdsl_safe_atoi(get_metric_meta(m->meta_list, "weight", "0"), 0);
-		mr->is_critical =
-		    (strcmp(get_metric_meta(m->meta_list, "is_critical", "false"), "true") == 0);
+		mr->max_weight = cdsl_meta_get_int(m->meta_list, "weight", 0);
+		mr->is_critical = cdsl_meta_get_bool(m->meta_list, "is_critical", 0);
 
 		total_max += mr->max_weight;
 
@@ -894,10 +886,8 @@ execute_metric_rule(cdsl_vm_t* vm, const cdsl_rule_t* rule, cdsl_context_t* ctx)
 	if (any_critical_failed) {
 		report->status = CDSL_STATUS_FAILED;
 	} else {
-		char* pass_str = cdsl_meta_get(rule->meta_list, "pass_threshold");
-		char* partial_str = cdsl_meta_get(rule->meta_list, "partial_threshold");
-		int pass_thresh = cdsl_safe_atoi(pass_str, 80);
-		int partial_thresh = cdsl_safe_atoi(partial_str, 60);
+		int pass_thresh = cdsl_meta_get_int(rule->meta_list, "pass_threshold", 80);
+		int partial_thresh = cdsl_meta_get_int(rule->meta_list, "partial_threshold", 60);
 
 		if (total_obtained >= pass_thresh) {
 			report->status = CDSL_STATUS_PASSED;
