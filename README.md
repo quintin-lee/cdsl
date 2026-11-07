@@ -53,7 +53,7 @@
 - **Expression compilation cache** — Cache parsed and verified rules by DSL hash
 - **Performance monitoring** — Per-VM execution statistics (counts, timing)
 - **Debug trace mode** — Step-by-step expression evaluation output
-- **Bytecode VM** — AST→bytecode compiler with 24-instruction ISA, constant folding, short-circuit evaluation
+- **Bytecode VM** — AST→bytecode compiler with 31-instruction ISA, constant folding, short-circuit evaluation
 - **Sandboxing** — Per-execution timeout, memory limit, instruction quota, read-only variables
 
 ### AI Integration
@@ -311,17 +311,16 @@ cdsl/
 │   │   └── template.c
 │   ├── schema/
 │   │   └── schema.c  # Schema verification
-│   ├── vm/           # Execution module (7 sub-modules)
+│   ├── vm/           # Execution module (9 sub-modules)
 │   │   ├── context.c
 │   │   ├── vm.c
 │   │   ├── eval.c
-│   │   ├── report.c
 │   │   ├── cache.c
 │   │   ├── ruleset.c
 │   │   ├── codegen.c
 │   │   ├── bytecode.c
 │   │   ├── builtins.c
-│   │   └── visual.c
+│   │   └── visualize.c
 │   ├── ai/
 │   │   └── bridge.c  # AI translation & review
 │   └── util/         # Infrastructure

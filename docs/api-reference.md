@@ -80,10 +80,10 @@ typedef struct cdsl_rule {
 #### `cdsl_parse_string`
 
 ```c
-cdsl_rule_t* cdsl_parse_string(const char* dsl_code);
+cdsl_rule_t* cdsl_parse_string(const char* dsl_code, cdsl_error_list_t** errors);
 ```
 
-Parses a DSL string into an AST rule. Returns NULL on parse failure. **Not thread-safe** (Flex uses global state).
+Parses a DSL string into an AST rule. Returns NULL on parse failure. The parser uses a **reentrant** Flex/Bison scanner (a fresh scanner is created per call), so it is thread-safe; AST nodes are allocated in a per-call thread-local arena. The optional `errors` output parameter (pass NULL to discard) receives a structured error list that must be freed with `cdsl_error_list_free()`.
 
 | Returns | Condition          |
 |---------|--------------------|
@@ -295,22 +295,25 @@ typedef struct {
 
 ```c
 typedef struct {
-    long total_executions;        /**< Number of VM execute() calls */
-    long total_rules_executed;    /**< Number of individual rule evaluations */
-    long total_metrics_evaluated; /**< Number of metric evaluations */
-    long total_actions_triggered; /**< Number of action callbacks invoked */
+    cdsl_atomic_long_t total_executions;    /**< Number of VM execute() calls */
+    cdsl_atomic_long_t total_rules_executed;    /**< Number of individual rule evaluations */
+    cdsl_atomic_long_t total_metrics_evaluated; /**< Number of metric evaluations */
+    cdsl_atomic_long_t total_actions_triggered; /**< Number of action callbacks invoked */
     double total_time_us;         /**< Total execution time in microseconds */
     double avg_time_us;           /**< Average time per execution */
 } cdsl_stats_t;
 ```
 
+> Counters use C23 `_Atomic` types (via `cdsl_atomic_long_t`) so parallel rule-set execution can update stats lock-free. Call `cdsl_vm_get_stats()` for a heap-allocated snapshot (caller frees with `free()`); the raw VM counters are protected by the VM's rwlock during aggregation.
+
 #### `cdsl_compiled_rule_t`
 
 ```c
 typedef struct cdsl_compiled_rule {
-    cdsl_rule_t* rule;
-    char* dsl_hash;
-    int verified;
+    cdsl_rule_t* rule;    /**< Parsed + verified AST */
+    char* dsl_hash;       /**< DSL source string used as cache key */
+    int verified;         /**< Non-zero once schema-verified */
+    cdsl_bytecode_t bc;   /**< Compiled bytecode (used by fast execution path) */
 } cdsl_compiled_rule_t;
 ```
 
@@ -319,7 +322,7 @@ typedef struct cdsl_compiled_rule {
 ```c
 typedef struct cdsl_compile_cache {
     cdsl_hashmap_t* map;
-    pthread_rwlock_t lock;
+    cdsl_rwlock_t lock;
 } cdsl_compile_cache_t;
 ```
 

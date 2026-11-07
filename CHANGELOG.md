@@ -1,5 +1,20 @@
 # Changelog
 
+## [Unreleased] - 2026-11-07
+
+### Changed
+- **Documentation sync**: Updated all docs (`README.md`, `docs/architecture.md`, `docs/modules.md`, `docs/api-reference.md`, `docs/user-guide.md`, `docs/dsl-syntax.md`) to match the current codebase:
+  - Bytecode ISA corrected from "24-instruction" to **31-instruction** (full `bc_op_t` enum in `<cdsl/bytecode.h>`)
+  - Execution layer file name corrected `src/vm/visual.c` → `src/vm/visualize.c` throughout; non-existent `report.c` removed from structure listings
+  - Execution layer re-counted as **9 sub-modules** (added `bytecode.c`, `builtins.c`, `vm.c` to the source-layout tables)
+  - Documented the **dual execution path** (tree-walk in `eval.c` + bytecode in `bytecode.c`, dispatched by `cdsl_vm_execute_compiled()`)
+  - `cdsl_parse_string()` documented as **thread-safe** (reentrant Flex/Bison scanner + thread-local arena), fixing the old "Not thread-safe (Flex uses global state)" claim
+  - `cdsl_compiled_rule_t` struct now shows the `cdsl_bytecode_t bc` member; `cdsl_compile_cache_t` lock type corrected to `cdsl_rwlock_t`
+  - `cdsl_stats_t` counters documented as `cdsl_atomic_long_t` (C23 `_Atomic`)
+  - DSL syntax reference: added **array literal** section (§1.5), clarified string-literal notes; user guide built-in-function table now lists `count`/`sum` and extended `typeof` return-type set to include `LONG`/`ARRAY`
+  - User-guide section numbering fixed (was jumping 12 → 15; now continuous 1–21) and table of contents aligned
+  - `CDSL_GENERATE_DOCS` default corrected ON → **OFF** in `docs/architecture.md`
+
 ## [1.1.0] - 2026-06-13
 
 ### Added
@@ -33,7 +48,7 @@
 ### Added
 - **CDSL_TYPE_LONG**: 64-bit signed integer type with `L` suffix (`9999999999L`)
 - **11 built-in functions**: `uppercase`, `lowercase`, `trim`, `startswith`, `endswith`, `abs`, `min`, `max`, `round`, `typeof`, `date_add`
-- **Bytecode VM**: AST→bytecode compiler + stack VM with 24-instruction ISA, constant folding, short-circuit evaluation
+- **Bytecode VM**: AST→bytecode compiler + stack VM with 31-instruction ISA, constant folding, short-circuit evaluation
 - **Static analysis**: `cdsl_analyze_rule()` with dead CASE detection, tautology/contradiction detection, shadowed CASE detection
 - **Sandboxing**: per-execution timeout (`cdsl_vm_set_timeout`), memory limit (`cdsl_vm_set_memory_limit`), instruction limit, read-only variables
 - **Engineering tools**: execution tracer API (`cdsl_vm_set_trace_callback`), LSP server (`tools/cdsl-lsp`, optional build via `-DCDSL_BUILD_LSP=ON`)

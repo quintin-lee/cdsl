@@ -13,22 +13,20 @@
 - Debug Trace Mode (5)
 - Performance Monitoring (6)
 - Compilation Cache (7)
-- Custom Functions (8)
+- Custom Functions & Built-ins (8)
 - Templates & Inheritance (9)
 - Code Generation (10)
 - Visualization (11)
 - AI Integration (12)
-- Custom AI Providers (13)
-- Custom Cache Drivers (14)
-- Custom Actions (15)
-- Error Handling (16)
-- Thread Safety (17)
-- Bytecode VM (18)
-- Sandboxing (19)
-- Static Analysis (20)
-- Execution Tracing (21)
-- Language Server (22) (LSP)
-- Document Parsing (23)
+- Custom Actions (13)
+- Error Handling (14)
+- Thread Safety (15)
+- Bytecode VM (16)
+- Sandboxing (17)
+- Static Analysis (18)
+- Execution Tracing (19)
+- Language Server (20) (LSP)
+- Document Parsing (21)
 
 ---
 
@@ -441,11 +439,13 @@ CDSL provides these functions out of the box (auto-registered by `cdsl_vm_create
 | `max(a, b)`             | INT/FLOAT, INT/FLOAT | INT/FLOAT | Larger of two values |
 | `round(n)`              | FLOAT     | INT    | Round to nearest integer |
 
-**Type introspection:**
+**Type introspection & collections:**
 
 | Function                | Args      | Return | Description |
 |-------------------------|-----------|--------|-------------|
-| `typeof(expr)`          | ANY       | STRING | Type as string ("INT","FLOAT","BOOL","STRING","DATE","VOID") |
+| `typeof(expr)`          | ANY       | STRING | Type as string ("INT","FLOAT","BOOL","STRING","DATE","LONG","ARRAY","VOID") |
+| `count(arr)`            | ARRAY     | INT    | Number of elements in an array |
+| `sum(arr)`              | ARRAY     | INT    | Sum of INT elements in an array |
 
 DSL usage:
 
@@ -635,7 +635,7 @@ free(review);
 
 ---
 
-## 15. Custom Actions
+## 13. Custom Actions
 
 Register any C function as an action callback:
 
@@ -663,7 +663,7 @@ RULE alert_rule {
 
 ---
 
-## 16. Error Handling
+## 14. Error Handling
 
 ### 16.1 Parse Errors
 
@@ -692,7 +692,7 @@ cdsl_error_list_free(errors);
 
 ---
 
-## 17. Thread Safety Notes
+## 15. Thread Safety Notes
 
 > **Key principle**: One VM + one Context per thread. Schema and parsed
 > Rule objects are read-only and can be shared across threads after parsing.
@@ -727,12 +727,12 @@ For thread-safe hash map operations, use `cdsl_compile_cache_t`.
 
 ---
 
-## 18. Bytecode VM
+## 16. Bytecode VM
 
 The bytecode VM compiles DSL rule expressions into a flat instruction
 stream for faster execution via a stack-based virtual machine.
 
-### 18.1 Usage
+### 16.1 Usage
 
 Bytecode is generated automatically by `cdsl_compile()` (the compilation
 cache).  When you call `cdsl_vm_execute_compiled()`, the cached bytecode
@@ -748,28 +748,28 @@ cdsl_rule_report_t* report = cdsl_vm_execute_compiled(vm, compiled, ctx);
 For `cdsl_vm_execute()` (no caching), the recursive tree-walk evaluator
 is always used.
 
-### 18.2 Managing cache entries
+### 16.2 Managing cache entries
 
 ```c
 cdsl_compile_cache_remove(cache, dsl_string); // evict one entry
 cdsl_compile_cache_free(cache);               // evict all
 ```
 
-### 18.3 Bytecode features
+### 16.3 Bytecode features
 
 - **Constant folding**: `2+3`, `@2024-01-10 - @2024-01-01` → evaluated at compile time
 - **Short-circuit AND/OR**: compiled to conditional jumps (no recursion)
-- **24-instruction stack ISA** including arithmetic, comparison, control flow, and function calls
+- **31-instruction stack ISA** including arithmetic, comparison, control flow, and function calls
 - **Low-level API**: `cdsl_bytecode_compile()`, `cdsl_bytecode_execute()`, `cdsl_bytecode_free()`
 
 ---
 
-## 19. Sandboxing
+## 17. Sandboxing
 
 The VM supports per-execution resource quotas to prevent malicious or
 misconfigured DSL rules from exhausting system resources.
 
-### 19.1 Timeout
+### 17.1 Timeout
 
 ```c
 cdsl_vm_set_timeout(vm, 5000000);  // 5-second timeout (in microseconds)
@@ -779,7 +779,7 @@ When the timeout is exceeded, execution aborts and returns
 `CDSL_STATUS_ERROR`.  Timeout is checked every 1024 bytecode instructions
 and at rule entry for tree-walk evaluation.
 
-### 19.2 Memory limit
+### 17.2 Memory limit
 
 ```c
 cdsl_vm_set_memory_limit(vm, 1048576);  // 1 MB per execution
@@ -788,7 +788,7 @@ cdsl_vm_set_memory_limit(vm, 1048576);  // 1 MB per execution
 Allocations exceeding this cap cause abort with `CDSL_STATUS_ERROR`.
 The counters are `_Atomic` for correct concurrent access.
 
-### 19.3 Read-only variables
+### 17.3 Read-only variables
 
 ```c
 cdsl_schema_register_var_rw(schema, "config.api_key", CDSL_TYPE_STRING, 1 /* readonly */);
@@ -798,7 +798,7 @@ cdsl_context_set_string(ctx, "config.api_key", "xyz");  // silently ignored (rea
 
 ---
 
-## 20. Static Analysis
+## 18. Static Analysis
 
 Beyond `cdsl_verify_rule()`, use `cdsl_analyze_rule()` to detect warnings:
 
@@ -819,7 +819,7 @@ if (warnings) {
 
 ---
 
-## 21. Execution Tracing
+## 19. Execution Tracing
 
 Register a callback to receive step-by-step execution events:
 
@@ -838,7 +838,7 @@ cdsl_vm_execute(vm, rule, ctx);
 
 ---
 
-## 22. Language Server (LSP)
+## 20. Language Server (LSP)
 
 The C-DSL Language Server provides real-time diagnostics and completions
 for editors supporting the Language Server Protocol (Neovim, VSCode, etc.).
@@ -864,11 +864,11 @@ cmake -DCDSL_BUILD_LSP=ON .. && make cdsl-lsp
 
 ---
 
-## 23. Document Parsing (Word .docx)
+## 21. Document Parsing (Word .docx)
 
 Extract structured content from Word documents for rule-based evaluation.
 
-### 23.1 Initialization
+### 21.1 Initialization
 
 ```c
 #include <cdsl/doc.h>
@@ -885,7 +885,7 @@ if (!cdsl_doc_init()) {
 cdsl_doc_shutdown();
 ```
 
-### 23.2 Extract Plain Text
+### 21.2 Extract Plain Text
 
 ```c
 char* text = cdsl_doc_extract_text("/path/to/document.docx");
@@ -895,7 +895,7 @@ if (text) {
 }
 ```
 
-### 23.3 Extract Structured JSON
+### 21.3 Extract Structured JSON
 
 ```c
 char* json = cdsl_doc_extract_to_json("/path/to/document.docx");
@@ -914,7 +914,7 @@ if (json) {
 }
 ```
 
-### 23.4 JSON Output Structure
+### 21.4 JSON Output Structure
 
 ```json
 {
@@ -965,7 +965,7 @@ if (json) {
 }
 ```
 
-### 23.5 Evaluate Document Content with Rules
+### 21.5 Evaluate Document Content with Rules
 
 ```c
 // Define a schema for document properties

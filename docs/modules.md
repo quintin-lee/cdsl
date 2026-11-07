@@ -11,7 +11,7 @@ cdsl/
 ├── Core Modules
 │   ├── ast          — Abstract syntax tree construction (src/ast/)
 │   ├── schema       — Schema verification and type checking (src/schema/)
-│   ├── execution    — VM engine: context, vm, report, cache, ruleset, codegen, visual (src/vm/)
+│   ├── execution    — VM engine: context, vm, report, cache, ruleset, codegen, bytecode, builtins, visual (src/vm/)
 │   ├── ai           — AI translation and safety review (src/ai/)
 │   └── doc          — Word document parsing via LibreOffice (src/doc/)
 │
@@ -158,28 +158,30 @@ Two verification modes:
 
 ---
 
-## 3. Execution Module (7 Sub-modules)
+## 3. Execution Module (9 Sub-modules)
 
 ### Responsibility
 
-The largest module. Handles: runtime context binding, AST interpretation, action dispatch, report generation, RuleSet management, compilation caching, code generation, and Graphviz visualization.
+The largest module. Handles: runtime context binding, AST interpretation, action dispatch, report generation, RuleSet management, compilation caching, bytecode execution, code generation, and Graphviz visualization.
 
-The single monolithic `execution.h` / `execution.c` has been split into 7 specialized sub-modules under `src/vm/`.
+The single monolithic `execution.h` / `execution.c` has been split into 9 specialized sub-modules under `src/vm/`.
 
 ### Source Layout
 
 | File                    | Header                    | Responsibility                    |
 |-------------------------|---------------------------|-----------------------------------|
 | `src/vm/context.c`      | `<cdsl/context.h>`        | Context binding, `cdsl_value_t`   |
-| `src/vm/context.c`      | `<cdsl/vm.h>`             | VM lifecycle, action/function registration, stats |
-| `src/vm/eval.c`         | `<cdsl/report.h>`         | Report creation, printing, JSON serialization |
+| `src/vm/vm.c`           | `<cdsl/vm.h>`             | VM lifecycle, action/function registration, stats, sandbox quotas |
+| `src/vm/eval.c`         | `<cdsl/report.h>`         | Tree-walk interpreter, report creation, printing, JSON serialization |
+| `src/vm/bytecode.c`     | `<cdsl/bytecode.h>`       | Bytecode compiler and stack-based VM executor |
+| `src/vm/builtins.c`     | (internal)                | Built-in DSL function implementations |
 | `src/vm/cache.c`        | `<cdsl/cache.h>`          | Thread-safe compilation cache     |
 | `src/vm/ruleset.c`      | `<cdsl/ruleset.h>`        | Priority-based batch execution, parallel, hot reload, topological sort |
 | `src/vm/codegen.c`      | `<cdsl/codegen.h>`        | DSL → C code generation           |
-| `src/vm/visual.c`       | `<cdsl/visual.h>`         | Graphviz DOT output                |
+| `src/vm/visualize.c`    | `<cdsl/visual.h>`         | Graphviz DOT output                |
 | `src/vm/internal.h`     | — (private)               | Shared internal declarations       |
 
-A backward-compatible shim header `<cdsl/execution.h>` includes all 7 sub-module headers.
+A backward-compatible shim header `<cdsl/execution.h>` includes all sub-module headers.
 
 ### Context (`cdsl_context_t`)
 
@@ -197,7 +199,7 @@ Two binding methods:
 1. **API binding**: type-specific setters (`cdsl_context_set_int`, etc.)
 2. **JSON loading**: `cdsl_context_load_json()` parses JSON and recursively binds variables with dot-notation keys
 
-### Expression Evaluation (`eval_expr` — internal to `vm/eval.c`)
+### Expression Evaluation (`cdsl_eval_expr_internal` — internal to `vm/eval.c`)
 
 ```
 eval_expr(expr, ctx, vm, debug)
@@ -206,13 +208,19 @@ eval_expr(expr, ctx, vm, debug)
     ├── CDSL_EXPR_FLOAT    → return typed value
     ├── CDSL_EXPR_BOOL     → return typed value
     ├── CDSL_EXPR_STRING   → return typed value
+    ├── CDSL_EXPR_LONG     → return typed value
+    ├── CDSL_EXPR_DATE     → return typed value
+    ├── CDSL_EXPR_ARRAY    → recursively evaluate elements
     ├── CDSL_EXPR_ID       → ctx_get() lookup
-    ├── CDSL_EXPR_UNARY    → recurse + apply NOT
+    ├── CDSL_EXPR_UNARY    → recurse + apply NOT / NEG
     ├── CDSL_EXPR_BINARY   → recurse left/right + apply operator
     │   ├── AND/OR → short-circuit evaluation
-    │   └── Comparison → numeric or string comparison
+    │   ├── DATE arithmetic (DATE +/- INT/LONG → DATE, DATE - DATE → INT)
+    │   └── Comparison → numeric / string / date comparison
     └── CDSL_EXPR_CALL     → lookup registered function + invoke callback
 ```
+
+A parallel **bytecode path** (`vm/bytecode.c`) compiles the same expressions to a 31-opcode stack machine for faster execution via `cdsl_vm_execute_compiled()`, with constant folding and short-circuit jumps applied at compile time. Both paths implement identical rule semantics.
 
 ### Tri-state Decision Logic
 
@@ -241,18 +249,18 @@ Rules are maintained in ascending priority order. `cdsl_vm_execute_ruleset()` it
 
 ### Compilation Cache
 
-The cache is a hash table indexed by the DSL source string (djb2 hash). On cache hit, parsing and verification are skipped:
+The cache is a hash table indexed by the DSL source string. On cache hit, parsing and verification are skipped, and the pre-compiled bytecode is reused for fast execution:
 
 ```
 cdsl_compile(cache, dsl_string, schema)
     │
-    ├── hash = hash_dsl_string(dsl_string)
-    ├── if cache[hash] matches → return cached rule
+    ├── if cache[dsl_string] exists → return cached compiled rule (with bytecode)
     ├── else:
     │   ├── cdsl_parse_string(dsl_string) → rule
     │   ├── cdsl_verify_rule(rule, schema) → verify
-    │   └── cache[hash] = rule
-    └── return rule
+    │   ├── cache[dsl_string] = rule
+    │   └── cdsl_bytecode_compile(rule, schema, &cached.bc) → compile bytecode
+    └── return compiled rule
 ```
 
 ### Code Generation (`cdsl_codegen_rule_to_c`)
