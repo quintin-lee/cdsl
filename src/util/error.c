@@ -17,8 +17,8 @@
  * @param kind Error kind value
  * @return Static string label
  */
-static const char*
-kind_str(cdsl_error_kind_t kind)
+const char*
+cdsl_error_kind_str(cdsl_error_kind_t kind)
 {
 	switch (kind) {
 	case CDSL_ERR_SYNTAX:
@@ -29,9 +29,17 @@ kind_str(cdsl_error_kind_t kind)
 		return "SEMANTIC";
 	case CDSL_ERR_RUNTIME:
 		return "RUNTIME";
+	case CDSL_ERR_WARNING:
+		return "WARNING";
 	default:
 		return "UNKNOWN";
 	}
+}
+
+static const char*
+kind_str(cdsl_error_kind_t kind)
+{
+	return cdsl_error_kind_str(kind);
 }
 
 /**

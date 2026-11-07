@@ -643,32 +643,6 @@ cdsl_ai_config_default(void)
 }
 
 /**
- * @brief Convert a type enum to a printable name (internal).
- * @param t Type value
- * @return Static string label
- */
-static const char*
-type_to_str(cdsl_type_t t)
-{
-	switch (t) {
-	case CDSL_TYPE_INT:
-		return "INT";
-	case CDSL_TYPE_FLOAT:
-		return "FLOAT";
-	case CDSL_TYPE_BOOL:
-		return "BOOL";
-	case CDSL_TYPE_STRING:
-		return "STRING";
-	case CDSL_TYPE_DATE:
-		return "DATE";
-	case CDSL_TYPE_LONG:
-		return "LONG";
-	default:
-		return "VOID";
-	}
-}
-
-/**
  * @brief Count schema variables (internal).
  * @param schema Schema (may be NULL)
  * @return Variable count
@@ -683,12 +657,6 @@ count_schema_vars(const cdsl_schema_t* schema)
 	return n;
 }
 
-/**
- * @brief Append schema variable and action info to a prompt buffer (internal).
- * @param buf    Target buffer
- * @param sz     Buffer size
- * @param schema Schema to describe
- */
 /**
  * @brief Safe append to a buffer with overflow protection.
  * @return New string length, capped at sz-1
@@ -712,7 +680,7 @@ build_schema_prompt(char* buf, size_t sz, const cdsl_schema_t* schema)
 	size_t pos = strlen(buf);
 	pos = safe_append(buf, sz, pos, "Available variables:\n");
 	for (cdsl_var_schema_t* v = schema ? schema->vars : NULL; v; v = v->next) {
-		pos = safe_append(buf, sz, pos, "  - %s (%s)\n", v->name, type_to_str(v->type));
+		pos = safe_append(buf, sz, pos, "  - %s (%s)\n", v->name, cdsl_type_name(v->type));
 	}
 	pos = safe_append(buf, sz, pos, "\nAvailable actions:\n");
 	for (cdsl_action_schema_t* a = schema ? schema->actions : NULL; a; a = a->next) {
@@ -721,9 +689,9 @@ build_schema_prompt(char* buf, size_t sz, const cdsl_schema_t* schema)
 			if (i > 0) {
 				pos = safe_append(buf, sz, pos, ", ");
 			}
-			pos = safe_append(buf, sz, pos, "%s", type_to_str(a->arg_types[i]));
+			pos = safe_append(buf, sz, pos, "%s", cdsl_type_name(a->arg_types[i]));
 		}
-		pos = safe_append(buf, sz, pos, ") -> %s\n", type_to_str(a->return_type));
+		pos = safe_append(buf, sz, pos, ") -> %s\n", cdsl_type_name(a->return_type));
 	}
 }
 
