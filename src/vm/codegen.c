@@ -13,21 +13,6 @@
 #include <errno.h>
 #include <ctype.h>
 
-static int
-safe_atoi(const char* str, int default_val)
-{
-	if (!str) {
-		return default_val;
-	}
-	char* end = NULL;
-	errno = 0;
-	long val = strtol(str, &end, 10);
-	if (errno != 0 || end == str || *end != '\0') {
-		return default_val;
-	}
-	return (int)val;
-}
-
 static void
 sanitize_identifier(char* buf, size_t bufsize, const char* src)
 {
@@ -183,11 +168,7 @@ codegen_expr(cdsl_strbuf_t* sb,
 		}
 		cdsl_strbuf_printf(sb, "(");
 		codegen_expr(sb, expr->data.binary.left, schema, indent);
-		const char* ops[] = {
-		    "==", "!=", "<", ">", "<=", ">=", "&&", "||", "!", "+", "-", "*", "/", "-"};
-		int op_idx = (int)op;
-		const char* op_str =
-		    (op_idx >= 0 && op_idx <= (int)CDSL_OP_NEG) ? ops[op_idx] : "?";
+		const char* op_str = cdsl_op_c_symbol(op);
 		cdsl_strbuf_printf(sb, " %s ", op_str);
 		codegen_expr(sb, expr->data.binary.right, schema, indent);
 		cdsl_strbuf_printf(sb, ")");
@@ -293,10 +274,8 @@ cdsl_codegen_rule_to_c(const cdsl_rule_t* rule, const cdsl_schema_t* schema)
 				   safe_rname);
 		cdsl_strbuf_printf(&sb, "    int total_score = 0;\n");
 		for (cdsl_metric_node_t* m = rule->metrics; m; m = m->next) {
-			const char* w_meta = cdsl_meta_get(m->meta_list, "weight");
-			int weight = safe_atoi(w_meta, 0);
-			const char* c_meta = cdsl_meta_get(m->meta_list, "is_critical");
-			int critical = (strcmp(c_meta ? c_meta : "false", "true") == 0);
+			int weight = cdsl_meta_get_int(m->meta_list, "weight", 0);
+			int critical = cdsl_meta_get_bool(m->meta_list, "is_critical", 0);
 			char safe_mname[256];
 			sanitize_identifier(
 			    safe_mname, sizeof(safe_mname), m->name ? m->name : "unnamed_metric");
