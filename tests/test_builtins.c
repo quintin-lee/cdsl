@@ -312,6 +312,126 @@ test_builtin_misc(void)
 	TEST_END();
 }
 
+static void
+test_builtin_approx_eq(void)
+{
+	TEST_BEGIN("built-in approx_eq");
+	cdsl_schema_t* schema = cdsl_schema_create();
+	cdsl_vm_t* vm = cdsl_vm_create(schema);
+	cdsl_context_t* ctx = cdsl_context_create(schema);
+
+	/* 1. 双参默认容差: 0.1 + 0.2 近似等于 0.3 */
+	cdsl_rule_t* r1 = cdsl_parse_string(
+	    "RULE r1 { WHEN approx_eq(0.1 + 0.2, 0.3) THEN block(\"ok\") }", NULL);
+	TEST_ASSERT_NOT_NULL(r1, "parse r1 ok");
+	cdsl_rule_report_t* rpt = cdsl_vm_execute(vm, r1, ctx);
+	TEST_ASSERT_NOT_NULL(rpt, "execute r1 ok");
+	TEST_ASSERT_INT(
+	    rpt->status, CDSL_STATUS_FAILED, "approx_eq(0.1+0.2, 0.3) is true -> FAILED");
+	cdsl_report_free(rpt);
+	cdsl_free_rule(r1);
+
+	/* 2. 三参自定义容差: 宽松匹配成功 (10.0 与 10.05, 容差 0.1) */
+	cdsl_rule_t* r2 = cdsl_parse_string(
+	    "RULE r2 { WHEN approx_eq(10.0, 10.05, 0.1) THEN block(\"ok\") }", NULL);
+	TEST_ASSERT_NOT_NULL(r2, "parse r2 ok");
+	rpt = cdsl_vm_execute(vm, r2, ctx);
+	TEST_ASSERT_NOT_NULL(rpt, "execute r2 ok");
+	TEST_ASSERT_INT(rpt->status, CDSL_STATUS_FAILED, "approx_eq with eps=0.1 matches");
+	cdsl_report_free(rpt);
+	cdsl_free_rule(r2);
+
+	/* 3. 三参自定义容差: 严格匹配失败 (10.0 与 10.05, 容差 0.001: 相对差 0.5% > 0.1%) */
+	cdsl_rule_t* r3 = cdsl_parse_string(
+	    "RULE r3 { WHEN approx_eq(10.0, 10.05, 0.001) THEN block(\"ok\") }", NULL);
+	TEST_ASSERT_NOT_NULL(r3, "parse r3 ok");
+	rpt = cdsl_vm_execute(vm, r3, ctx);
+	TEST_ASSERT_NOT_NULL(rpt, "execute r3 ok");
+	TEST_ASSERT_INT(
+	    rpt->status, CDSL_STATUS_PASSED, "approx_eq with eps=0.001 does not match -> PASSED");
+	cdsl_report_free(rpt);
+	cdsl_free_rule(r3);
+
+	/* 4. 大数相对尺度匹配 (1e12 与 1e12 + 100, eps 1e-9) */
+	cdsl_rule_t* r4 = cdsl_parse_string("RULE r4 { WHEN approx_eq(1000000000000.0, "
+					    "1000000000100.0, 0.000000001) THEN block(\"ok\") }",
+					    NULL);
+	TEST_ASSERT_NOT_NULL(r4, "parse r4 ok");
+	rpt = cdsl_vm_execute(vm, r4, ctx);
+	TEST_ASSERT_NOT_NULL(rpt, "execute r4 ok");
+	TEST_ASSERT_INT(rpt->status, CDSL_STATUS_FAILED, "large number relative approx_eq matches");
+	cdsl_report_free(rpt);
+	cdsl_free_rule(r4);
+
+	/* 5. 跨类型参数 (整型与浮点提升) */
+	cdsl_rule_t* r5 = cdsl_parse_string(
+	    "RULE r5 { WHEN approx_eq(5, 5.0000000001) THEN block(\"ok\") }", NULL);
+	TEST_ASSERT_NOT_NULL(r5, "parse r5 ok");
+	rpt = cdsl_vm_execute(vm, r5, ctx);
+	TEST_ASSERT_NOT_NULL(rpt, "execute r5 ok");
+	TEST_ASSERT_INT(rpt->status, CDSL_STATUS_FAILED, "mixed int/float approx_eq matches");
+	cdsl_report_free(rpt);
+	cdsl_free_rule(r5);
+
+	/* 6. 异常参数防护: 负容差视为非法返回 false */
+	cdsl_rule_t* r6 = cdsl_parse_string(
+	    "RULE r6 { WHEN approx_eq(1.0, 1.0, -0.01) THEN block(\"ok\") }", NULL);
+	TEST_ASSERT_NOT_NULL(r6, "parse r6 ok");
+	rpt = cdsl_vm_execute(vm, r6, ctx);
+	TEST_ASSERT_NOT_NULL(rpt, "execute r6 ok");
+	TEST_ASSERT_INT(rpt->status, CDSL_STATUS_PASSED, "negative eps returns false -> PASSED");
+	cdsl_report_free(rpt);
+	cdsl_free_rule(r6);
+
+	/* 7. 参数数量不足: 仅 1 个参数返回 false */
+	cdsl_rule_t* r7 =
+	    cdsl_parse_string("RULE r7 { WHEN approx_eq(1.0) THEN block(\"ok\") }", NULL);
+	TEST_ASSERT_NOT_NULL(r7, "parse r7 ok");
+	rpt = cdsl_vm_execute(vm, r7, ctx);
+	TEST_ASSERT_NOT_NULL(rpt, "execute r7 ok");
+	TEST_ASSERT_INT(rpt->status, CDSL_STATUS_PASSED, "too few args returns false -> PASSED");
+	cdsl_report_free(rpt);
+	cdsl_free_rule(r7);
+
+	/* 8. 参数数量过多: 4 个参数返回 false */
+	cdsl_rule_t* r8 = cdsl_parse_string(
+	    "RULE r8 { WHEN approx_eq(1.0, 1.0, 0.1, 0.2) THEN block(\"ok\") }", NULL);
+	TEST_ASSERT_NOT_NULL(r8, "parse r8 ok");
+	rpt = cdsl_vm_execute(vm, r8, ctx);
+	TEST_ASSERT_NOT_NULL(rpt, "execute r8 ok");
+	TEST_ASSERT_INT(rpt->status, CDSL_STATUS_PASSED, "too many args returns false -> PASSED");
+	cdsl_report_free(rpt);
+	cdsl_free_rule(r8);
+
+	/* 9. 非数值类型: 字符串参数返回 false */
+	cdsl_rule_t* r9 = cdsl_parse_string(
+	    "RULE r9 { WHEN approx_eq(\"hello\", 1.0) THEN block(\"ok\") }", NULL);
+	TEST_ASSERT_NOT_NULL(r9, "parse r9 ok");
+	rpt = cdsl_vm_execute(vm, r9, ctx);
+	TEST_ASSERT_NOT_NULL(rpt, "execute r9 ok");
+	TEST_ASSERT_INT(
+	    rpt->status, CDSL_STATUS_PASSED, "non-numeric args returns false -> PASSED");
+	cdsl_report_free(rpt);
+	cdsl_free_rule(r9);
+
+	/* 10. 极小数尺度: 1e-10 与 2e-10 在严格容差 1e-11 下不匹配 */
+	cdsl_rule_t* r10 = cdsl_parse_string("RULE r10 { WHEN approx_eq(0.0000000001, "
+					     "0.0000000002, 0.00000000001) THEN block(\"ok\") }",
+					     NULL);
+	TEST_ASSERT_NOT_NULL(r10, "parse r10 ok");
+	rpt = cdsl_vm_execute(vm, r10, ctx);
+	TEST_ASSERT_NOT_NULL(rpt, "execute r10 ok");
+	TEST_ASSERT_INT(
+	    rpt->status, CDSL_STATUS_PASSED, "small numbers with strict eps don't match -> PASSED");
+	cdsl_report_free(rpt);
+	cdsl_free_rule(r10);
+
+	cdsl_context_free(ctx);
+	cdsl_vm_free(vm);
+	cdsl_schema_free(schema);
+	TEST_END();
+}
+
 /**
  * @brief Main entry: run all built-in function test cases.
  * @return 0 if all tests passed, 1 otherwise
@@ -331,6 +451,7 @@ main(void)
 	test_builtin_misc();
 	test_builtin_array();
 	test_builtin_string_isolation();
+	test_builtin_approx_eq();
 
 	TEST_SUMMARY();
 	TEST_EXIT();

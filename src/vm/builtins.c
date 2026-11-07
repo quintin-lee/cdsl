@@ -642,6 +642,87 @@ builtin_date_add(const char* name, cdsl_arg_node_t* args, cdsl_context_t* ctx, c
 	return res;
 }
 
+static int
+value_to_double(const cdsl_value_t* v, double* out)
+{
+	if (!v || !out) {
+		return 0;
+	}
+	switch (v->type) {
+	case CDSL_TYPE_FLOAT:
+		*out = v->data.float_val;
+		return 1;
+	case CDSL_TYPE_INT:
+		*out = (double)v->data.int_val;
+		return 1;
+	case CDSL_TYPE_LONG:
+		*out = (double)v->data.long_val;
+		return 1;
+	case CDSL_TYPE_BOOL:
+		*out = (double)v->data.bool_val;
+		return 1;
+	default:
+		return 0;
+	}
+}
+
+/**
+ * @brief built-in approx_eq(a, b, [eps]): checks if two numbers are approximately equal.
+ *
+ * Tolerance formula: diff <= fmax(eps, eps * fmax(|a|, |b|))
+ */
+static cdsl_value_t
+builtin_approx_eq(const char* name, cdsl_arg_node_t* args, cdsl_context_t* ctx, cdsl_vm_t* vm)
+{
+	(void)name;
+	cdsl_value_t res = {.type = CDSL_TYPE_BOOL, .data = {.bool_val = 0}};
+	if (!args || !args->next || !args->expr || !args->next->expr) {
+		return res;
+	}
+	if (args->next->next && args->next->next->next) {
+		/* More than 3 arguments -> invalid */
+		return res;
+	}
+
+	cdsl_value_t v1 = cdsl_eval_expr_internal(args->expr, ctx, vm, 0, 0);
+	cdsl_value_t v2 = cdsl_eval_expr_internal(args->next->expr, ctx, vm, 0, 0);
+
+	double a = 0.0, b = 0.0;
+	if (!value_to_double(&v1, &a) || !value_to_double(&v2, &b)) {
+		cdsl_value_free(&v1);
+		cdsl_value_free(&v2);
+		return res;
+	}
+	cdsl_value_free(&v1);
+	cdsl_value_free(&v2);
+
+	double eps = CDSL_DEFAULT_FLOAT_EPSILON;
+	if (args->next->next && args->next->next->expr) {
+		cdsl_value_t v3 = cdsl_eval_expr_internal(args->next->next->expr, ctx, vm, 0, 0);
+		if (!value_to_double(&v3, &eps) || eps < 0.0) {
+			cdsl_value_free(&v3);
+			return res;
+		}
+		cdsl_value_free(&v3);
+	}
+
+	/* Exact equality covers +0.0 == -0.0 and identical infinities */
+	if (a == b) {
+		res.data.bool_val = 1;
+		return res;
+	}
+	if (isnan(a) || isnan(b)) {
+		return res;
+	}
+
+	double diff = fabs(a - b);
+	double max_mag = fmax(fabs(a), fabs(b));
+	double tol = fmax(eps, eps * max_mag);
+
+	res.data.bool_val = (diff <= tol) ? 1 : 0;
+	return res;
+}
+
 void
 cdsl_vm_register_builtins(cdsl_vm_t* vm)
 {
@@ -664,5 +745,6 @@ cdsl_vm_register_builtins(cdsl_vm_t* vm)
 	cdsl_vm_register_function(vm, "count", builtin_count);
 	cdsl_vm_register_function(vm, "sum", builtin_sum);
 	cdsl_vm_register_function(vm, "date_add", builtin_date_add);
+	cdsl_vm_register_function(vm, "approx_eq", builtin_approx_eq);
 }
 /** @} */
