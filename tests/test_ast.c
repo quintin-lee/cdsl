@@ -267,6 +267,53 @@ test_meta_value_semantics(void)
 }
 
 /**
+ * @brief Test normalized three-way comparison operator evaluator.
+ */
+static void
+test_ast_op_eval_cmp(void)
+{
+	TEST_BEGIN("operator three-way comparison evaluator");
+
+	/* EQ: true only when cmp == 0 */
+	TEST_ASSERT_INT(cdsl_op_eval_cmp(CDSL_OP_EQ, 0), 1, "EQ with cmp=0");
+	TEST_ASSERT_INT(cdsl_op_eval_cmp(CDSL_OP_EQ, -1), 0, "EQ with cmp=-1");
+	TEST_ASSERT_INT(cdsl_op_eval_cmp(CDSL_OP_EQ, 1), 0, "EQ with cmp=1");
+
+	/* NE: true when cmp != 0 */
+	TEST_ASSERT_INT(cdsl_op_eval_cmp(CDSL_OP_NE, 0), 0, "NE with cmp=0");
+	TEST_ASSERT_INT(cdsl_op_eval_cmp(CDSL_OP_NE, -1), 1, "NE with cmp=-1");
+	TEST_ASSERT_INT(cdsl_op_eval_cmp(CDSL_OP_NE, 1), 1, "NE with cmp=1");
+
+	/* LT: true only when cmp < 0 */
+	TEST_ASSERT_INT(cdsl_op_eval_cmp(CDSL_OP_LT, -1), 1, "LT with cmp=-1");
+	TEST_ASSERT_INT(cdsl_op_eval_cmp(CDSL_OP_LT, 0), 0, "LT with cmp=0");
+	TEST_ASSERT_INT(cdsl_op_eval_cmp(CDSL_OP_LT, 1), 0, "LT with cmp=1");
+
+	/* GT: true only when cmp > 0 */
+	TEST_ASSERT_INT(cdsl_op_eval_cmp(CDSL_OP_GT, 1), 1, "GT with cmp=1");
+	TEST_ASSERT_INT(cdsl_op_eval_cmp(CDSL_OP_GT, 0), 0, "GT with cmp=0");
+	TEST_ASSERT_INT(cdsl_op_eval_cmp(CDSL_OP_GT, -1), 0, "GT with cmp=-1");
+
+	/* LE: true when cmp <= 0 */
+	TEST_ASSERT_INT(cdsl_op_eval_cmp(CDSL_OP_LE, -1), 1, "LE with cmp=-1");
+	TEST_ASSERT_INT(cdsl_op_eval_cmp(CDSL_OP_LE, 0), 1, "LE with cmp=0");
+	TEST_ASSERT_INT(cdsl_op_eval_cmp(CDSL_OP_LE, 1), 0, "LE with cmp=1");
+
+	/* GE: true when cmp >= 0 */
+	TEST_ASSERT_INT(cdsl_op_eval_cmp(CDSL_OP_GE, 1), 1, "GE with cmp=1");
+	TEST_ASSERT_INT(cdsl_op_eval_cmp(CDSL_OP_GE, 0), 1, "GE with cmp=0");
+	TEST_ASSERT_INT(cdsl_op_eval_cmp(CDSL_OP_GE, -1), 0, "GE with cmp=-1");
+
+	/* Non-relational and invalid operators return false */
+	TEST_ASSERT_INT(cdsl_op_eval_cmp(CDSL_OP_ADD, 0), 0, "ADD returns false");
+	TEST_ASSERT_INT(cdsl_op_eval_cmp(CDSL_OP_AND, 0), 0, "AND returns false");
+	TEST_ASSERT_INT(cdsl_op_eval_cmp(CDSL_OP_NOT, 0), 0, "NOT returns false");
+	TEST_ASSERT_INT(cdsl_op_eval_cmp((cdsl_op_t)999, 0), 0, "invalid op returns false");
+
+	TEST_END();
+}
+
+/**
  * @brief Main entry: run all AST test cases.
  * @return 0 if all tests passed, 1 otherwise
  */
@@ -286,6 +333,7 @@ main(void)
 	test_ast_parse_limit();
 	test_ast_operator_and_type_contracts();
 	test_meta_value_semantics();
+	test_ast_op_eval_cmp();
 
 	TEST_SUMMARY();
 	TEST_EXIT();

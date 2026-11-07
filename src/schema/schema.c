@@ -545,22 +545,10 @@ expr_is_const_true(cdsl_expr_node_t* expr)
 		if (l->type != CDSL_EXPR_INT || r->type != CDSL_EXPR_INT) {
 			return 0;
 		}
-		switch (op) {
-		case CDSL_OP_EQ:
-			return l->data.int_val == r->data.int_val;
-		case CDSL_OP_NE:
-			return l->data.int_val != r->data.int_val;
-		case CDSL_OP_LT:
-			return l->data.int_val < r->data.int_val;
-		case CDSL_OP_GT:
-			return l->data.int_val > r->data.int_val;
-		case CDSL_OP_LE:
-			return l->data.int_val <= r->data.int_val;
-		case CDSL_OP_GE:
-			return l->data.int_val >= r->data.int_val;
-		default:
-			return 0;
-		}
+		int cmp = (l->data.int_val < r->data.int_val)	? -1
+			  : (l->data.int_val > r->data.int_val) ? 1
+								: 0;
+		return cdsl_op_eval_cmp(op, cmp);
 	}
 	default:
 		return 0;
@@ -587,22 +575,13 @@ expr_is_const_false(cdsl_expr_node_t* expr)
 		if (l->type != CDSL_EXPR_INT || r->type != CDSL_EXPR_INT) {
 			return 0;
 		}
-		switch (op) {
-		case CDSL_OP_EQ:
-			return l->data.int_val != r->data.int_val;
-		case CDSL_OP_NE:
-			return l->data.int_val == r->data.int_val;
-		case CDSL_OP_LT:
-			return l->data.int_val >= r->data.int_val;
-		case CDSL_OP_GT:
-			return l->data.int_val <= r->data.int_val;
-		case CDSL_OP_LE:
-			return l->data.int_val > r->data.int_val;
-		case CDSL_OP_GE:
-			return l->data.int_val < r->data.int_val;
-		default:
+		if (!cdsl_op_is_relational(op)) {
 			return 0;
 		}
+		int cmp = (l->data.int_val < r->data.int_val)	? -1
+			  : (l->data.int_val > r->data.int_val) ? 1
+								: 0;
+		return !cdsl_op_eval_cmp(op, cmp);
 	}
 	default:
 		return 0;

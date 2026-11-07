@@ -16,6 +16,74 @@
 #include <math.h>
 #include <errno.h>
 
+/* ---- opcode mapping ---- */
+
+bc_op_t
+cdsl_op_to_bc(cdsl_op_t op)
+{
+	switch (op) {
+	case CDSL_OP_ADD:
+		return BC_ADD;
+	case CDSL_OP_SUB:
+		return BC_SUB;
+	case CDSL_OP_MUL:
+		return BC_MUL;
+	case CDSL_OP_DIV:
+		return BC_DIV;
+	case CDSL_OP_EQ:
+		return BC_EQ;
+	case CDSL_OP_NE:
+		return BC_NE;
+	case CDSL_OP_LT:
+		return BC_LT;
+	case CDSL_OP_GT:
+		return BC_GT;
+	case CDSL_OP_LE:
+		return BC_LE;
+	case CDSL_OP_GE:
+		return BC_GE;
+	case CDSL_OP_NOT:
+		return BC_NOT;
+	case CDSL_OP_NEG:
+		return BC_NEG;
+	default:
+		return (bc_op_t)-1;
+	}
+}
+
+cdsl_op_t
+cdsl_bc_to_op(bc_op_t bc)
+{
+	switch (bc) {
+	case BC_ADD:
+		return CDSL_OP_ADD;
+	case BC_SUB:
+		return CDSL_OP_SUB;
+	case BC_MUL:
+		return CDSL_OP_MUL;
+	case BC_DIV:
+		return CDSL_OP_DIV;
+	case BC_EQ:
+		return CDSL_OP_EQ;
+	case BC_NE:
+		return CDSL_OP_NE;
+	case BC_LT:
+		return CDSL_OP_LT;
+	case BC_GT:
+		return CDSL_OP_GT;
+	case BC_LE:
+		return CDSL_OP_LE;
+	case BC_GE:
+		return CDSL_OP_GE;
+	case BC_NOT:
+		return CDSL_OP_NOT;
+	case BC_NEG:
+		return CDSL_OP_NEG;
+	default:
+		return (cdsl_op_t)-1;
+	}
+}
+
 /* ---- bytecode chunk management ---- */
 
 static int
@@ -464,10 +532,9 @@ compile_expr(cdsl_expr_node_t* expr,
 		if (!compile_expr(expr->data.unary.expr, schema, bc, &sub_stack)) {
 			return 0;
 		}
-		if (expr->data.unary.op == CDSL_OP_NOT) {
-			bc_emit(bc, BC_NOT);
-		} else {
-			bc_emit(bc, BC_NEG);
+		bc_op_t bcop = cdsl_op_to_bc(expr->data.unary.op);
+		if ((int)bcop != -1) {
+			bc_emit(bc, bcop);
 		}
 		max_stack = sub_stack;
 		break;
@@ -518,39 +585,9 @@ compile_expr(cdsl_expr_node_t* expr,
 		if (!compile_expr(expr->data.binary.right, schema, bc, &r_stack)) {
 			return 0;
 		}
-		switch (op) {
-		case CDSL_OP_ADD:
-			bc_emit(bc, BC_ADD);
-			break;
-		case CDSL_OP_SUB:
-			bc_emit(bc, BC_SUB);
-			break;
-		case CDSL_OP_MUL:
-			bc_emit(bc, BC_MUL);
-			break;
-		case CDSL_OP_DIV:
-			bc_emit(bc, BC_DIV);
-			break;
-		case CDSL_OP_EQ:
-			bc_emit(bc, BC_EQ);
-			break;
-		case CDSL_OP_NE:
-			bc_emit(bc, BC_NE);
-			break;
-		case CDSL_OP_LT:
-			bc_emit(bc, BC_LT);
-			break;
-		case CDSL_OP_GT:
-			bc_emit(bc, BC_GT);
-			break;
-		case CDSL_OP_LE:
-			bc_emit(bc, BC_LE);
-			break;
-		case CDSL_OP_GE:
-			bc_emit(bc, BC_GE);
-			break;
-		default:
-			break;
+		bc_op_t bcop = cdsl_op_to_bc(op);
+		if ((int)bcop != -1) {
+			bc_emit(bc, bcop);
 		}
 		max_stack = l_stack > r_stack + 1 ? l_stack : r_stack + 1;
 		break;
@@ -1053,56 +1090,11 @@ bc_run_instructions(cdsl_vm_t* vm,
 			ip++;
 			break;
 
-		/* Arithmetic */
+		/* Binary Operators (Arithmetic & Relational) */
 		case BC_ADD:
 		case BC_SUB:
 		case BC_MUL:
-		case BC_DIV: {
-			cdsl_value_t b = POP();
-			cdsl_value_t a = POP();
-			if (CDSL_ATOMIC_LOAD(&vm->error_state)) {
-				cdsl_value_free(&a);
-				cdsl_value_free(&b);
-				result.type = CDSL_TYPE_VOID;
-				goto done;
-			}
-			cdsl_op_t op;
-			switch (ip->op) {
-			case BC_ADD:
-				op = CDSL_OP_ADD;
-				break;
-			case BC_SUB:
-				op = CDSL_OP_SUB;
-				break;
-			case BC_MUL:
-				op = CDSL_OP_MUL;
-				break;
-			default:
-				op = CDSL_OP_DIV;
-				break;
-			}
-			cdsl_valop_status_t st = cdsl_value_binop(op, &a, &b, &result);
-			cdsl_value_free(&a);
-			cdsl_value_free(&b);
-			if (st != CDSL_VALOP_OK && st != CDSL_VALOP_VOID_OPERAND) {
-				if (!CDSL_ATOMIC_LOAD(&vm->error_state)) {
-					cdsl_vm_set_last_error(vm,
-							       CDSL_ERR_RUNTIME,
-							       0,
-							       0,
-							       cdsl_valop_status_message(st),
-							       cdsl_valop_status_hint(st));
-					CDSL_ATOMIC_STORE(&vm->error_state, 1);
-				}
-				result.type = CDSL_TYPE_VOID;
-				goto done;
-			}
-			PUSH(result);
-			ip++;
-			break;
-		}
-
-		/* Comparison */
+		case BC_DIV:
 		case BC_EQ:
 		case BC_NE:
 		case BC_LT:
@@ -1117,27 +1109,7 @@ bc_run_instructions(cdsl_vm_t* vm,
 				result.type = CDSL_TYPE_VOID;
 				goto done;
 			}
-			cdsl_op_t op;
-			switch (ip->op) {
-			case BC_EQ:
-				op = CDSL_OP_EQ;
-				break;
-			case BC_NE:
-				op = CDSL_OP_NE;
-				break;
-			case BC_LT:
-				op = CDSL_OP_LT;
-				break;
-			case BC_GT:
-				op = CDSL_OP_GT;
-				break;
-			case BC_LE:
-				op = CDSL_OP_LE;
-				break;
-			default:
-				op = CDSL_OP_GE;
-				break;
-			}
+			cdsl_op_t op = cdsl_bc_to_op(ip->op);
 			cdsl_valop_status_t st = cdsl_value_binop(op, &a, &b, &result);
 			cdsl_value_free(&a);
 			cdsl_value_free(&b);
@@ -1159,33 +1131,8 @@ bc_run_instructions(cdsl_vm_t* vm,
 			break;
 		}
 
-		case BC_NOT: {
-			cdsl_value_t v = POP();
-			if (CDSL_ATOMIC_LOAD(&vm->error_state)) {
-				cdsl_value_free(&v);
-				result.type = CDSL_TYPE_VOID;
-				goto done;
-			}
-			cdsl_valop_status_t st = cdsl_value_unop(CDSL_OP_NOT, &v, &result);
-			cdsl_value_free(&v);
-			if (st != CDSL_VALOP_OK && st != CDSL_VALOP_VOID_OPERAND) {
-				if (!CDSL_ATOMIC_LOAD(&vm->error_state)) {
-					cdsl_vm_set_last_error(vm,
-							       CDSL_ERR_RUNTIME,
-							       0,
-							       0,
-							       cdsl_valop_status_message(st),
-							       cdsl_valop_status_hint(st));
-					CDSL_ATOMIC_STORE(&vm->error_state, 1);
-				}
-				result.type = CDSL_TYPE_VOID;
-				goto done;
-			}
-			PUSH(result);
-			ip++;
-			break;
-		}
-
+		/* Unary Operators */
+		case BC_NOT:
 		case BC_NEG: {
 			cdsl_value_t v = POP();
 			if (CDSL_ATOMIC_LOAD(&vm->error_state)) {
@@ -1193,7 +1140,8 @@ bc_run_instructions(cdsl_vm_t* vm,
 				result.type = CDSL_TYPE_VOID;
 				goto done;
 			}
-			cdsl_valop_status_t st = cdsl_value_unop(CDSL_OP_NEG, &v, &result);
+			cdsl_op_t op = cdsl_bc_to_op(ip->op);
+			cdsl_valop_status_t st = cdsl_value_unop(op, &v, &result);
 			cdsl_value_free(&v);
 			if (st != CDSL_VALOP_OK && st != CDSL_VALOP_VOID_OPERAND) {
 				if (!CDSL_ATOMIC_LOAD(&vm->error_state)) {
