@@ -62,6 +62,20 @@ typedef enum {
 } cdsl_op_t;
 ```
 
+#### `cdsl_op_desc_t`
+
+```c
+typedef struct cdsl_op_desc {
+    cdsl_op_t op;          /**< Operator enum constant */
+    const char* c_symbol;  /**< C operator symbol (e.g. "==", "&&", "!", "+") */
+    const char* name;      /**< Friendly name (e.g. "==", "AND", "OR", "NOT", "NEG") */
+    int arity;             /**< Operator arity (1 for unary, 2 for binary) */
+    bool is_relational;    /**< True if relational (==, !=, <, >, <=, >=) */
+    bool is_arithmetic;    /**< True if arithmetic binary (+, -, *, /) */
+    bool is_logical;       /**< True if logical (AND, OR, NOT) */
+} cdsl_op_desc_t;
+```
+
 #### `cdsl_rule_t`
 
 ```c
@@ -137,6 +151,30 @@ char* cdsl_meta_get(cdsl_meta_item_t* list, const char* key);
 ```
 
 Finds a metadata value by key. Returns NULL if the key is not present.
+
+#### `cdsl_create_meta_item`
+
+```c
+cdsl_meta_item_t* cdsl_create_meta_item(const char* key, const char* value);
+```
+
+Creates a metadata item with value semantics (deep copies `key` and `value`). Safe to pass string literals. Returns NULL on OOM or invalid arguments.
+
+#### `cdsl_append_meta_kv`
+
+```c
+cdsl_meta_item_t* cdsl_append_meta_kv(cdsl_meta_item_t* list, const char* key, const char* value);
+```
+
+Creates a metadata item and appends it to the list. Safe against NULL inputs and leaves the existing list intact on failure.
+
+#### `cdsl_op_get_desc`
+
+```c
+const cdsl_op_desc_t* cdsl_op_get_desc(cdsl_op_t op);
+```
+
+Retrieves read-only metadata descriptor for the specified operator. Returns NULL if the operator enum is out of bounds.
 
 ---
 
