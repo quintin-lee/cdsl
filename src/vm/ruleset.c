@@ -160,6 +160,8 @@ cdsl_vm_execute_ruleset(cdsl_vm_t* vm, cdsl_ruleset_t* set, cdsl_context_t* ctx)
 				batch->total_error++;
 				break;
 			}
+		} else {
+			batch->total_error++;
 		}
 	}
 
@@ -298,14 +300,17 @@ cdsl_vm_execute_ruleset_parallel(cdsl_vm_t* vm,
 	cdsl_trace_cb_t snap_trace_cb = vm->trace_cb;
 	void* snap_trace_ud = vm->trace_ud;
 
+	int snap_ok = 1;
 	for (cdsl_action_cb_entry_t* cb = vm->callbacks; cb; cb = cb->next) {
 		cdsl_action_cb_entry_t* entry = calloc(1, sizeof(*entry));
 		if (!entry) {
+			snap_ok = 0;
 			break;
 		}
 		entry->action_name = cdsl_strdup(cb->action_name);
 		if (!entry->action_name) {
 			free(entry);
+			snap_ok = 0;
 			break;
 		}
 		entry->cb = cb->cb;
@@ -318,13 +323,18 @@ cdsl_vm_execute_ruleset_parallel(cdsl_vm_t* vm,
 		cb_tail = entry;
 	}
 	for (cdsl_func_entry_t* fn = vm->functions; fn; fn = fn->next) {
+		if (!snap_ok) {
+			break;
+		}
 		cdsl_func_entry_t* entry = calloc(1, sizeof(*entry));
 		if (!entry) {
+			snap_ok = 0;
 			break;
 		}
 		entry->func_name = cdsl_strdup(fn->func_name);
 		if (!entry->func_name) {
 			free(entry);
+			snap_ok = 0;
 			break;
 		}
 		entry->cb = fn->cb;
@@ -337,6 +347,12 @@ cdsl_vm_execute_ruleset_parallel(cdsl_vm_t* vm,
 		fn_tail = entry;
 	}
 	CDSL_RWLOCK_UNLOCK_WR(&vm->rwlock);
+	if (!snap_ok) {
+		free_snapshots(cb_snapshot, fn_snapshot);
+		free((void*)batch->rule_reports);
+		free(batch);
+		return NULL;
+	}
 
 	/* Build O(1) indexed rule entry array */
 	cdsl_ruleset_entry_t** entry_arr =
@@ -428,6 +444,7 @@ cdsl_vm_execute_ruleset_parallel(cdsl_vm_t* vm,
 	}
 	for (int i = 0; i < set->count; i++) {
 		if (!batch->rule_reports[i]) {
+			batch->total_error++;
 			continue;
 		}
 		cdsl_rule_report_t* r = batch->rule_reports[i];
@@ -704,7 +721,7 @@ cdsl_ruleset_validate_deps(const cdsl_ruleset_t* set, char* err_buf, int err_buf
 	return ok;
 }
 
-static void
+static int
 topo_sort_recursive(cdsl_ruleset_t* set,
 		    cdsl_ruleset_entry_t* entry,
 		    int* visited,
@@ -719,7 +736,7 @@ topo_sort_recursive(cdsl_ruleset_t* set,
 		}
 	}
 	if (idx == -1 || visited[idx]) {
-		return;
+		return 1;
 	}
 
 	visited[idx] = 1;
@@ -727,25 +744,30 @@ topo_sort_recursive(cdsl_ruleset_t* set,
 	char* deps = cdsl_meta_get(entry->rule->meta_list, "depends_on");
 	if (deps) {
 		char* dep_buf = cdsl_strdup(deps);
-		if (dep_buf) {
-			char* token = strtok(dep_buf, ",");
-			while (token) {
-				while (*token == ' ') {
-					token++;
-				}
-				cdsl_ruleset_entry_t* dep_entry = find_entry_by_name(set, token);
-				if (dep_entry) {
-					topo_sort_recursive(
-					    set, dep_entry, visited, entries_arr, output_ptr);
-				}
-				token = strtok(NULL, ",");
-			}
-			free(dep_buf);
+		if (!dep_buf) {
+			return 0;
 		}
+		char* token = strtok(dep_buf, ",");
+		while (token) {
+			while (*token == ' ') {
+				token++;
+			}
+			cdsl_ruleset_entry_t* dep_entry = find_entry_by_name(set, token);
+			if (dep_entry) {
+				if (!topo_sort_recursive(
+					set, dep_entry, visited, entries_arr, output_ptr)) {
+					free(dep_buf);
+					return 0;
+				}
+			}
+			token = strtok(NULL, ",");
+		}
+		free(dep_buf);
 	}
 
 	**output_ptr = entry;
 	(*output_ptr)++;
+	return 1;
 }
 
 int
@@ -781,7 +803,13 @@ cdsl_ruleset_topo_sort(cdsl_ruleset_t* set)
 	for (i = 0; i < set->count; i++) {
 		if (!visited[i]) {
 			// NOLINTNEXTLINE(clang-analyzer-core.CallAndMessage)
-			topo_sort_recursive(set, entries_arr[i], visited, entries_arr, &output_ptr);
+			if (!topo_sort_recursive(
+				set, entries_arr[i], visited, entries_arr, &output_ptr)) {
+				free(visited);
+				free(entries_arr);
+				free(sorted_arr);
+				return 0;
+			}
 		}
 	}
 

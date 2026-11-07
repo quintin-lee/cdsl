@@ -281,6 +281,18 @@ builtin_uppercase(const char* name, cdsl_arg_node_t* args, cdsl_context_t* ctx, 
 	char* out = cdsl_vm_calloc(vm, len + 1, 1);
 	if (!out) {
 		cdsl_value_free(&v);
+		if (vm) {
+			if (!vm->last_error) {
+				cdsl_vm_set_last_error(vm,
+						       CDSL_ERR_RESOURCE_LIMIT,
+						       0,
+						       0,
+						       "Out of memory in uppercase builtin",
+						       NULL);
+			}
+			CDSL_ATOMIC_STORE(&vm->error_state, 1);
+		}
+		res.type = CDSL_TYPE_VOID;
 		return res;
 	}
 	for (size_t i = 0; i < len; i++) {
@@ -313,6 +325,18 @@ builtin_lowercase(const char* name, cdsl_arg_node_t* args, cdsl_context_t* ctx, 
 	char* out = cdsl_vm_calloc(vm, len + 1, 1);
 	if (!out) {
 		cdsl_value_free(&v);
+		if (vm) {
+			if (!vm->last_error) {
+				cdsl_vm_set_last_error(vm,
+						       CDSL_ERR_RESOURCE_LIMIT,
+						       0,
+						       0,
+						       "Out of memory in lowercase builtin",
+						       NULL);
+			}
+			CDSL_ATOMIC_STORE(&vm->error_state, 1);
+		}
+		res.type = CDSL_TYPE_VOID;
 		return res;
 	}
 	for (size_t i = 0; i < len; i++) {
@@ -350,6 +374,19 @@ builtin_trim(const char* name, cdsl_arg_node_t* args, cdsl_context_t* ctx, cdsl_
 		res.data.string_val = cdsl_vm_strdup(vm, "");
 		if (res.data.string_val) {
 			res.owned_string = 1;
+		} else {
+			res.type = CDSL_TYPE_VOID;
+			if (vm) {
+				if (!vm->last_error) {
+					cdsl_vm_set_last_error(vm,
+							       CDSL_ERR_RESOURCE_LIMIT,
+							       0,
+							       0,
+							       "Out of memory in trim builtin",
+							       NULL);
+				}
+				CDSL_ATOMIC_STORE(&vm->error_state, 1);
+			}
 		}
 		return res;
 	}
@@ -360,6 +397,18 @@ builtin_trim(const char* name, cdsl_arg_node_t* args, cdsl_context_t* ctx, cdsl_
 	char* out = cdsl_vm_calloc(vm, len + 1, 1);
 	if (!out) {
 		cdsl_value_free(&v);
+		if (vm) {
+			if (!vm->last_error) {
+				cdsl_vm_set_last_error(vm,
+						       CDSL_ERR_RESOURCE_LIMIT,
+						       0,
+						       0,
+						       "Out of memory in trim builtin",
+						       NULL);
+			}
+			CDSL_ATOMIC_STORE(&vm->error_state, 1);
+		}
+		res.type = CDSL_TYPE_VOID;
 		return res;
 	}
 	memcpy(out, s, len);

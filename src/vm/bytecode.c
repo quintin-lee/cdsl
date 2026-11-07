@@ -753,6 +753,10 @@ cdsl_bytecode_compile(const cdsl_rule_t* rule, const cdsl_schema_t* schema, cdsl
 			mcount++;
 		}
 		bc->metric_infos = calloc(mcount > 0 ? mcount : 1, sizeof(bc_metric_info_t));
+		if (!bc->metric_infos) {
+			cdsl_bytecode_free(bc);
+			return 0;
+		}
 		bc->metric_info_count = mcount;
 
 		int midx = 0;
@@ -779,6 +783,10 @@ cdsl_bytecode_compile(const cdsl_rule_t* rule, const cdsl_schema_t* schema, cdsl
 				case_cap++;
 			}
 			int* metric_end_jmps = calloc(case_cap > 0 ? case_cap : 1, sizeof(int));
+			if (!metric_end_jmps) {
+				cdsl_bytecode_free(bc);
+				return 0;
+			}
 			int njmps = 0;
 
 			for (cdsl_case_node_t* c = m->case_list; c; c = c->next) {
@@ -1174,10 +1182,18 @@ bc_run_instructions(cdsl_vm_t* vm,
 					cdsl_value_t av = POP();
 					cdsl_value_free(&av);
 				}
+				CDSL_ATOMIC_STORE(&vm->error_state, 1);
+				if (!vm->last_error) {
+					cdsl_vm_set_last_error(
+					    vm,
+					    CDSL_ERR_RESOURCE_LIMIT,
+					    0,
+					    0,
+					    "Out of memory allocating builtin call arguments",
+					    NULL);
+				}
 				result.type = CDSL_TYPE_VOID;
-				PUSH(result);
-				ip++;
-				break;
+				goto done;
 			}
 			for (int i = nargs - 1; i >= 0; i--) {
 				cdsl_value_t av = POP();
@@ -1226,8 +1242,18 @@ bc_run_instructions(cdsl_vm_t* vm,
 					cdsl_value_t av = POP();
 					cdsl_value_free(&av);
 				}
-				ip++;
-				break;
+				CDSL_ATOMIC_STORE(&vm->error_state, 1);
+				if (!vm->last_error) {
+					cdsl_vm_set_last_error(
+					    vm,
+					    CDSL_ERR_RESOURCE_LIMIT,
+					    0,
+					    0,
+					    "Out of memory allocating action call arguments",
+					    NULL);
+				}
+				result.type = CDSL_TYPE_VOID;
+				goto done;
 			}
 			for (int i = nargs - 1; i >= 0; i--) {
 				cdsl_value_t av = POP();

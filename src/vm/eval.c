@@ -313,22 +313,47 @@ cdsl_eval_expr_internal(
 			arg = arg->next;
 		}
 		cdsl_array_t* arr = cdsl_vm_calloc(vm, 1, sizeof(cdsl_array_t));
-		if (arr) {
-			arr->items =
-			    cdsl_vm_calloc(vm, count > 0 ? (size_t)count : 1, sizeof(cdsl_value_t));
-			if (!arr->items) {
-				free(arr);
-				arr = NULL;
-			} else {
-				arr->count = count;
-				arr->capacity = count;
-				arg = expr->data.array.elements;
-				for (int i = 0; i < count; i++) {
-					arr->items[i] = cdsl_eval_expr_internal(
-					    arg->expr, ctx, vm, debug, depth + 1);
-					arg = arg->next;
+		if (!arr) {
+			result.type = CDSL_TYPE_VOID;
+			if (vm) {
+				if (!vm->last_error) {
+					cdsl_vm_set_last_error(vm,
+							       CDSL_ERR_RESOURCE_LIMIT,
+							       0,
+							       0,
+							       "Out of memory allocating array",
+							       NULL);
 				}
+				CDSL_ATOMIC_STORE(&vm->error_state, 1);
 			}
+			break;
+		}
+		arr->items =
+		    cdsl_vm_calloc(vm, count > 0 ? (size_t)count : 1, sizeof(cdsl_value_t));
+		if (!arr->items) {
+			free(arr);
+			result.type = CDSL_TYPE_VOID;
+			if (vm) {
+				if (!vm->last_error) {
+					cdsl_vm_set_last_error(
+					    vm,
+					    CDSL_ERR_RESOURCE_LIMIT,
+					    0,
+					    0,
+					    "Out of memory allocating array elements",
+					    NULL);
+				}
+				CDSL_ATOMIC_STORE(&vm->error_state, 1);
+			}
+			break;
+		}
+		arr->count = count;
+		arr->capacity = count;
+		arg = expr->data.array.elements;
+		for (int i = 0; i < count; i++) {
+			arr->items[i] =
+			    cdsl_eval_expr_internal(arg->expr, ctx, vm, debug, depth + 1);
+			arg = arg->next;
 		}
 		result.type = CDSL_TYPE_ARRAY;
 		result.data.array_val = arr;
@@ -923,14 +948,14 @@ execute_simple_rule(cdsl_vm_t* vm,
 	/* Abort if timeout or OOM */
 	if (CDSL_ATOMIC_LOAD(&vm->error_state)) {
 		report->status = CDSL_STATUS_ERROR;
-		report->decision_summary = strdup("ERROR");
+		report->decision_summary = cdsl_strdup("ERROR");
 		return report;
 	}
 	cdsl_value_t cond = evaluate_condition(rule->when_expr, ctx, vm, bc, vm->debug_enabled);
 	if (CDSL_ATOMIC_LOAD(&vm->error_state)) {
 		cdsl_value_free(&cond);
 		report->status = CDSL_STATUS_ERROR;
-		report->decision_summary = strdup("ERROR");
+		report->decision_summary = cdsl_strdup("ERROR");
 		return report;
 	}
 	fire_trace(vm, CDSL_TRACE_EXPR, rule->name, "WHEN", cond, 0);
@@ -1093,15 +1118,15 @@ cdsl_report_print(const cdsl_rule_report_t* report)
 		return;
 	}
 	printf("\n========================================\n");
-	printf("  AUDIT REPORT: %s\n", report->rule_name);
-	printf("  %s\n", report->description);
+	printf("  AUDIT REPORT: %s\n", report->rule_name ? report->rule_name : "");
+	printf("  %s\n", report->description ? report->description : "");
 	printf("========================================\n");
 
 	for (int i = 0; i < report->metric_count; i++) {
 		cdsl_metric_result_t* m = &report->metrics[i];
 		printf("  [%s] %s (weight: %d, score: %d/%d)%s\n",
 		       m->is_passed ? "PASS" : "FAIL",
-		       m->metric_name,
+		       m->metric_name ? m->metric_name : "",
 		       m->max_weight,
 		       m->score_obtained,
 		       m->max_weight,
@@ -1114,7 +1139,7 @@ cdsl_report_print(const cdsl_rule_report_t* report)
 	printf("----------------------------------------\n");
 	printf("  Status:   %s\n", cdsl_status_str_internal(report->status));
 	printf("  Score:    %d / %d\n", report->total_obtained_score, report->total_max_score);
-	printf("  Summary:  %s\n", report->decision_summary);
+	printf("  Summary:  %s\n", report->decision_summary ? report->decision_summary : "");
 	printf("========================================\n\n");
 }
 

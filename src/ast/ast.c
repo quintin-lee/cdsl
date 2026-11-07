@@ -296,8 +296,8 @@ cdsl_create_meta_item(const char* key, const char* value)
 		m->key = cdsl_arena_strdup(current_ast_arena, key);
 		m->value = cdsl_arena_strdup(current_ast_arena, value);
 	} else {
-		m->key = strdup(key);
-		m->value = strdup(value);
+		m->key = cdsl_strdup(key);
+		m->value = cdsl_strdup(value);
 	}
 	if (!m->key || !m->value) {
 		if (!current_ast_arena) {

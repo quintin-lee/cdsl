@@ -128,18 +128,26 @@ cdsl_compile(cdsl_compile_cache_t* cache,
 
 	existing = calloc(1, sizeof(*existing));
 	if (!existing) {
+		cdsl_free_rule(rule);
 		CDSL_RWLOCK_UNLOCK_WR(&cache->lock);
 		return NULL;
 	}
 	existing->rule = rule;
-	existing->dsl_hash = strdup(dsl_code);
+	existing->dsl_hash = cdsl_strdup(dsl_code);
 	if (!existing->dsl_hash) {
+		cdsl_free_rule(rule);
 		free(existing);
 		CDSL_RWLOCK_UNLOCK_WR(&cache->lock);
 		return NULL;
 	}
 	existing->verified = 1;
-	cdsl_hashmap_put(cache->map, dsl_code, existing);
+	if (!cdsl_hashmap_put(cache->map, dsl_code, existing)) {
+		cdsl_free_rule(rule);
+		free(existing->dsl_hash);
+		free(existing);
+		CDSL_RWLOCK_UNLOCK_WR(&cache->lock);
+		return NULL;
+	}
 
 	/* Compile bytecode for faster execution */
 	cdsl_bytecode_compile(rule, schema, &existing->bc);
