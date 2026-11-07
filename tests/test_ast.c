@@ -191,6 +191,36 @@ test_ast_operator_and_type_contracts(void)
 	TEST_ASSERT_STR(cdsl_type_name(CDSL_TYPE_VOID), "VOID", "type VOID");
 	TEST_ASSERT_STR(cdsl_type_name((cdsl_type_t)999), "UNKNOWN", "invalid type UNKNOWN");
 
+	/* Unified operator descriptor table */
+	const cdsl_op_desc_t* desc_eq = cdsl_op_get_desc(CDSL_OP_EQ);
+	TEST_ASSERT(desc_eq != NULL, "desc EQ exists");
+	TEST_ASSERT_INT(desc_eq->op, CDSL_OP_EQ, "desc EQ op matches");
+	TEST_ASSERT_STR(desc_eq->c_symbol, "==", "desc EQ c_symbol");
+	TEST_ASSERT_STR(desc_eq->name, "==", "desc EQ name");
+	TEST_ASSERT_INT(desc_eq->arity, 2, "desc EQ arity");
+	TEST_ASSERT_INT(desc_eq->is_relational, 1, "desc EQ is_relational");
+	TEST_ASSERT_INT(desc_eq->is_arithmetic, 0, "desc EQ is_arithmetic");
+	TEST_ASSERT_INT(desc_eq->is_logical, 0, "desc EQ is_logical");
+
+	const cdsl_op_desc_t* desc_not = cdsl_op_get_desc(CDSL_OP_NOT);
+	TEST_ASSERT(desc_not != NULL, "desc NOT exists");
+	TEST_ASSERT_STR(desc_not->c_symbol, "!", "desc NOT c_symbol");
+	TEST_ASSERT_STR(desc_not->name, "NOT", "desc NOT name");
+	TEST_ASSERT_INT(desc_not->arity, 1, "desc NOT arity");
+	TEST_ASSERT_INT(desc_not->is_logical, 1, "desc NOT is_logical");
+
+	const cdsl_op_desc_t* desc_add = cdsl_op_get_desc(CDSL_OP_ADD);
+	TEST_ASSERT(desc_add != NULL, "desc ADD exists");
+	TEST_ASSERT_STR(desc_add->c_symbol, "+", "desc ADD c_symbol");
+	TEST_ASSERT_INT(desc_add->arity, 2, "desc ADD arity");
+	TEST_ASSERT_INT(desc_add->is_arithmetic, 1, "desc ADD is_arithmetic");
+
+	/* Out-of-bounds operator query */
+	TEST_ASSERT(cdsl_op_get_desc((cdsl_op_t)-1) == NULL, "negative op returns NULL");
+	TEST_ASSERT(cdsl_op_get_desc((cdsl_op_t)CDSL_OP_COUNT) == NULL,
+		    "CDSL_OP_COUNT returns NULL");
+	TEST_ASSERT(cdsl_op_get_desc((cdsl_op_t)999) == NULL, "invalid op 999 returns NULL");
+
 	TEST_END();
 }
 

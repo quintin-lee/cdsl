@@ -63,6 +63,21 @@ typedef enum {
 	CDSL_OP_NEG  /**< Unary negation (-expr) */
 } cdsl_op_t;
 
+#define CDSL_OP_COUNT 14
+
+/**
+ * @brief 算子元数据集中描述符结构体
+ */
+typedef struct cdsl_op_desc {
+	cdsl_op_t op;	      /**< 算子枚举常量 */
+	const char* c_symbol; /**< 对应的 C 代码运算符（如 "==", "&&", "!", "+", "-"） */
+	const char* name;     /**< 算子友好名称（如 "==", "AND", "OR", "NOT", "NEG"） */
+	int arity;	      /**< 算子目数：1 为一元算子，2 为二元算子 */
+	bool is_relational;   /**< 是否为关系比较算子 (==, !=, <, >, <=, >=) */
+	bool is_arithmetic;   /**< 是否为二元算术算子 (+, -, *, /) */
+	bool is_logical;      /**< 是否为逻辑算子 (AND, OR, NOT) */
+} cdsl_op_desc_t;
+
 /**
  * @brief Expression node types in the AST.
  *
@@ -579,6 +594,13 @@ void cdsl_template_clear(void);
 
 /** @name Operator and Type Queries */
 /** @{ */
+/**
+ * @brief 获取算子对应的只读描述符
+ * @param op 算子枚举
+ * @return 描述符常量指针；若枚举非法越界则返回 NULL
+ */
+const cdsl_op_desc_t* cdsl_op_get_desc(cdsl_op_t op);
+
 /**
  * @brief 判断算子是否为关系/比较算子 (==, !=, <, >, <=, >=)
  */
