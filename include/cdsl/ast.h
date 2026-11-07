@@ -647,6 +647,33 @@ const char* cdsl_op_name(cdsl_op_t op);
  * @return 类型名称（如 "INT", "FLOAT", "BOOL", "STRING", "DATE", "LONG", "ARRAY", "VOID"），非法返回 "UNKNOWN"
  */
 const char* cdsl_type_name(cdsl_type_t type);
+
+/**
+ * @brief 对标准化三值比较结果 (cmp < 0, cmp == 0, cmp > 0) 进行关系算子求值
+ * @param op 关系算子枚举 (CDSL_OP_EQ, CDSL_OP_NEQ, CDSL_OP_LT, CDSL_OP_GT, CDSL_OP_LE, CDSL_OP_GE)
+ * @param cmp 标准化比较差值（负数代表小于，0代表等于，正数代表大于）
+ * @return 比较结果布尔值；若 op 不是关系算子则返回 false
+ */
+static inline bool
+cdsl_op_eval_cmp(cdsl_op_t op, int cmp)
+{
+	switch (op) {
+	case CDSL_OP_EQ:
+		return cmp == 0;
+	case CDSL_OP_NE:
+		return cmp != 0;
+	case CDSL_OP_LT:
+		return cmp < 0;
+	case CDSL_OP_GT:
+		return cmp > 0;
+	case CDSL_OP_LE:
+		return cmp <= 0;
+	case CDSL_OP_GE:
+		return cmp >= 0;
+	default:
+		return false;
+	}
+}
 /** @} */
 
 #endif
