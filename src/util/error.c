@@ -12,6 +12,42 @@
 #include <string.h>
 #include <stdio.h>
 
+#if defined(CDSL_TESTING) || !defined(NDEBUG)
+static cdsl_atomic_int_t g_oom_countdown = -1;
+
+void
+cdsl_test_set_oom_countdown(int countdown)
+{
+	CDSL_ATOMIC_STORE(&g_oom_countdown, countdown);
+}
+
+int
+cdsl_test_get_oom_countdown(void)
+{
+	return CDSL_ATOMIC_LOAD(&g_oom_countdown);
+}
+
+int
+cdsl_test_oom_check_and_decrement(void)
+{
+	int cd = CDSL_ATOMIC_LOAD(&g_oom_countdown);
+	while (cd >= 0) {
+		if (cd == 0) {
+			return 1; /* OOM triggered */
+		}
+#if !defined(CDSL_NO_STDATOMIC)
+		if (atomic_compare_exchange_weak(&g_oom_countdown, &cd, cd - 1)) {
+			return 0;
+		}
+#else
+		CDSL_ATOMIC_STORE(&g_oom_countdown, cd - 1);
+		return 0;
+#endif
+	}
+	return 0;
+}
+#endif
+
 /**
  * @brief Convert error kind to a printable string.
  * @param kind Error kind value

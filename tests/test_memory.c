@@ -8,6 +8,7 @@
 
 #include <cdsl/util/arena.h>
 #include <cdsl/util/hashmap.h>
+#include <cdsl/util/portability.h>
 #include <cdsl/schema.h>
 #include <cdsl/ast.h>
 #include <cdsl/execution.h>
@@ -551,12 +552,45 @@ test_memory_stress_test()
 	TEST_MEMORY_END();
 }
 
+static void
+test_cdsl_strdup_and_oom_hook(void)
+{
+	TEST_BEGIN("cdsl_strdup NULL tolerance and OOM injection hook");
+
+	/* Test NULL tolerance */
+	char* s_null = cdsl_strdup(NULL);
+	TEST_ASSERT_NULL(s_null, "cdsl_strdup(NULL) must return NULL");
+
+	/* Test normal duplication */
+	char* s_dup = cdsl_strdup("hello cdsl");
+	TEST_ASSERT_NOT_NULL(s_dup, "cdsl_strdup valid string must succeed");
+	TEST_ASSERT_STR(s_dup, "hello cdsl", "Duplicated string must match");
+	free(s_dup);
+
+	/* Test fault injection hook */
+	cdsl_test_set_oom_countdown(1); /* 1st call succeeds, 2nd call fails */
+	char* s1 = cdsl_strdup("first");
+	TEST_ASSERT_NOT_NULL(s1, "1st call before countdown reaches 0 must succeed");
+	free(s1);
+
+	char* s2 = cdsl_strdup("second");
+	TEST_ASSERT_NULL(s2, "2nd call when countdown hits 0 must return NULL");
+
+	cdsl_test_set_oom_countdown(-1); /* reset hook */
+	char* s3 = cdsl_strdup("third");
+	TEST_ASSERT_NOT_NULL(s3, "after hook reset, duplication must succeed");
+	free(s3);
+
+	TEST_END();
+}
+
 int
 main()
 {
 	printf("Running memory management tests...\n");
 
 	// Run all memory management tests
+	test_cdsl_strdup_and_oom_hook();
 	test_arena_allocator();
 	test_arena_large_allocations();
 	test_arena_boundary_conditions();

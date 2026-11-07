@@ -9,6 +9,7 @@
 #include <assert.h>
 #include <stdint.h>
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 #include <time.h>
 
@@ -91,6 +92,39 @@ typedef _Atomic int64_t cdsl_atomic_int64_t;
 #define CDSL_ATOMIC_STORE(p, v) atomic_store(p, v)
 #define CDSL_ATOMIC_FETCH_ADD(p, v) atomic_fetch_add(p, v)
 #define CDSL_ATOMIC_FETCH_SUB(p, v) atomic_fetch_sub(p, v)
+#endif
+
+#ifdef __cplusplus
+extern "C" {
+#endif
+
+#if defined(CDSL_TESTING) || !defined(NDEBUG)
+void cdsl_test_set_oom_countdown(int countdown);
+int cdsl_test_get_oom_countdown(void);
+int cdsl_test_oom_check_and_decrement(void);
+#endif
+
+/**
+ * @brief Duplicate a null-terminated string with NULL and allocation safety.
+ * @param s String to duplicate (may be NULL)
+ * @return Newly heap-allocated duplicate string, or NULL if input is NULL or malloc fails.
+ */
+static inline char*
+cdsl_strdup(const char* s)
+{
+#if defined(CDSL_TESTING) || !defined(NDEBUG)
+	if (cdsl_test_oom_check_and_decrement()) {
+		return NULL;
+	}
+#endif
+	if (!s) {
+		return NULL;
+	}
+	return strdup(s);
+}
+
+#ifdef __cplusplus
+}
 #endif
 
 #endif /* CDSL_PORTABILITY_H */
