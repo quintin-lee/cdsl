@@ -70,7 +70,7 @@ cdsl_vm_register_action(cdsl_vm_t* vm, const char* action_name, cdsl_action_cb_t
 		CDSL_RWLOCK_UNLOCK_WR(&vm->rwlock);
 		return;
 	}
-	e->action_name = strdup(action_name);
+	e->action_name = cdsl_strdup(action_name);
 	if (!e->action_name) {
 		free(e);
 		CDSL_RWLOCK_UNLOCK_WR(&vm->rwlock);
@@ -94,7 +94,7 @@ cdsl_vm_register_function(cdsl_vm_t* vm, const char* func_name, cdsl_func_cb_t c
 		CDSL_RWLOCK_UNLOCK_WR(&vm->rwlock);
 		return;
 	}
-	e->func_name = strdup(func_name);
+	e->func_name = cdsl_strdup(func_name);
 	if (!e->func_name) {
 		free(e);
 		CDSL_RWLOCK_UNLOCK_WR(&vm->rwlock);

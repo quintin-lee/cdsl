@@ -5,6 +5,7 @@
 
 #include "test.h"
 #include "cdsl/util/threads.h"
+#include "cdsl/util/portability.h"
 #include <cdsl/cdsl.h>
 #include <string.h>
 #include <stdlib.h>
@@ -400,10 +401,63 @@ test_vm_parallel_execute_concurrent(void)
 	TEST_END();
 }
 
+static void
+dummy_action_cb(const char* name, cdsl_arg_node_t* args, void* user_data)
+{
+	(void)name;
+	(void)args;
+	(void)user_data;
+}
+
+static cdsl_value_t
+dummy_func_cb(const char* func_name, cdsl_arg_node_t* args, cdsl_context_t* ctx, cdsl_vm_t* vm)
+{
+	(void)func_name;
+	(void)args;
+	(void)ctx;
+	(void)vm;
+	return (cdsl_value_t){.type = CDSL_TYPE_INT, .data.int_val = 0};
+}
+
+static void
+test_vm_register_callbacks_oom(void)
+{
+	TEST_BEGIN("vm register action and function OOM safety");
+
+	cdsl_schema_t* s = cdsl_schema_create();
+	cdsl_vm_t* vm = cdsl_vm_create(s);
+
+	/* Simulate OOM on action registration */
+	cdsl_test_set_oom_countdown(0);
+	cdsl_vm_register_action(vm, "block", dummy_action_cb);
+	TEST_ASSERT_NULL(vm->callbacks, "vm->callbacks remains clean");
+
+	/* Simulate OOM on func registration */
+	cdsl_test_set_oom_countdown(-1);
+	int initial_funcs = 0;
+	for (cdsl_func_entry_t* fn = vm->functions; fn; fn = fn->next) {
+		initial_funcs++;
+	}
+
+	cdsl_test_set_oom_countdown(0);
+	cdsl_vm_register_function(vm, "my_fn", dummy_func_cb);
+	int count_after = 0;
+	for (cdsl_func_entry_t* fn = vm->functions; fn; fn = fn->next) {
+		count_after++;
+	}
+	TEST_ASSERT_INT(count_after, initial_funcs, "vm->functions count unchanged on OOM");
+
+	cdsl_test_set_oom_countdown(-1);
+	cdsl_vm_free(vm);
+	cdsl_schema_free(s);
+	TEST_END();
+}
+
 int
 main()
 {
 	printf("Running VM config tests...\n");
+	test_vm_register_callbacks_oom();
 	test_vm_timeout_get_set();
 	test_vm_memory_limit_get_set();
 	test_vm_debug_mode();
