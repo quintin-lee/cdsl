@@ -5,6 +5,7 @@
 
 #include "cdsl/config_source.h"
 #include "cdsl/util/threads.h"
+#include "cdsl/util/portability.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -122,7 +123,7 @@ mem_driver_fetch(cdsl_config_source_t* src,
 				char vbuf[32];
 				snprintf(
 				    vbuf, sizeof(vbuf), "%llu", (unsigned long long)e->revision);
-				*out_version = strdup(vbuf);
+				*out_version = cdsl_strdup(vbuf);
 			}
 			CDSL_MUTEX_UNLOCK(&data->lock);
 			return 0;
@@ -158,7 +159,7 @@ mem_driver_publish(
 			CDSL_MUTEX_UNLOCK(&data->lock);
 			return -1;
 		}
-		target->key = strdup(key);
+		target->key = cdsl_strdup(key);
 		target->next = data->entries;
 		data->entries = target;
 	} else {
@@ -178,7 +179,7 @@ mem_driver_publish(
 	char vbuf[32];
 	snprintf(vbuf, sizeof(vbuf), "%llu", (unsigned long long)target->revision);
 	if (out_version) {
-		*out_version = strdup(vbuf);
+		*out_version = cdsl_strdup(vbuf);
 	}
 
 	/* Trigger watchers */
@@ -209,7 +210,7 @@ mem_driver_watch(cdsl_config_source_t* src,
 		CDSL_MUTEX_UNLOCK(&data->lock);
 		return -1;
 	}
-	w->key = strdup(key);
+	w->key = cdsl_strdup(key);
 	w->callback = callback;
 	w->user_data = user_data;
 	w->next = data->watchers;

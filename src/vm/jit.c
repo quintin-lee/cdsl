@@ -19,6 +19,13 @@
 #else
 #include <sys/mman.h>
 #include <unistd.h>
+#ifndef MAP_ANONYMOUS
+#ifdef MAP_ANON
+#define MAP_ANONYMOUS MAP_ANON
+#else
+#define MAP_ANONYMOUS 0x1000
+#endif
+#endif
 #endif
 
 /* Check CPU architecture */
@@ -335,8 +342,8 @@ cdsl_jit_compile(cdsl_vm_t* vm, const cdsl_bytecode_t* bc)
 	 */
 	instrs[n++] = 0xaa0203e3; /* mov x3, x2 */
 	instrs[n++] = 0xaa0103e2; /* mov x2, x1 */
-	instrs[n++] = 0x580000a1; /* ldr x1, #20 (pc + 20) */
-	instrs[n++] = 0x580000b0; /* ldr x16, #20 (pc + 20) */
+	instrs[n++] = 0x580000a1; /* ldr x1, #20 (pc + 20 -> bc_val) */
+	instrs[n++] = 0x580000d0; /* ldr x16, #24 (pc + 24 -> helper_val) */
 	instrs[n++] = 0xd63f0200; /* blr x16 */
 
 	/* Epilogue */

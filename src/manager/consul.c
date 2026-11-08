@@ -5,6 +5,7 @@
 
 #include "cdsl/config_source.h"
 #include "cdsl/util/threads.h"
+#include "cdsl/util/portability.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -74,7 +75,7 @@ consul_fetch(cdsl_config_source_t* src,
 				*out_len = e->len;
 			}
 			if (out_version && e->modify_index) {
-				*out_version = strdup(e->modify_index);
+				*out_version = cdsl_strdup(e->modify_index);
 			}
 			CDSL_MUTEX_UNLOCK(&d->lock);
 			return 0;
@@ -113,7 +114,7 @@ consul_publish(
 			CDSL_MUTEX_UNLOCK(&d->lock);
 			return -1;
 		}
-		target->key = strdup(key);
+		target->key = cdsl_strdup(key);
 		target->next = d->entries;
 		d->entries = target;
 	} else {
@@ -129,10 +130,10 @@ consul_publish(
 	memcpy(target->content, content, len);
 	target->content[len] = '\0';
 	target->len = len;
-	target->modify_index = strdup(vbuf);
+	target->modify_index = cdsl_strdup(vbuf);
 
 	if (out_version) {
-		*out_version = strdup(vbuf);
+		*out_version = cdsl_strdup(vbuf);
 	}
 
 	/* Notify watchers */
@@ -163,7 +164,7 @@ consul_watch(cdsl_config_source_t* src,
 		CDSL_MUTEX_UNLOCK(&d->lock);
 		return -1;
 	}
-	w->key = strdup(key);
+	w->key = cdsl_strdup(key);
 	w->callback = callback;
 	w->user_data = user_data;
 	w->next = d->watchers;
@@ -229,8 +230,8 @@ cdsl_config_source_create_consul(const char* endpoint, const char* key_prefix)
 		free(src);
 		return NULL;
 	}
-	d->endpoint = strdup(endpoint ? endpoint : "http://127.0.0.1:8500");
-	d->key_prefix = strdup(key_prefix ? key_prefix : "cdsl/rules/");
+	d->endpoint = cdsl_strdup(endpoint ? endpoint : "http://127.0.0.1:8500");
+	d->key_prefix = cdsl_strdup(key_prefix ? key_prefix : "cdsl/rules/");
 	CDSL_MUTEX_INIT(&d->lock);
 
 	src->ops = &s_consul_ops;

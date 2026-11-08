@@ -11,6 +11,12 @@
 #include <stdlib.h>
 #include <string.h>
 
+typedef struct cdsl_mgr_source_binding {
+	cdsl_manager_t* mgr;
+	char* key;
+	struct cdsl_mgr_source_binding* next;
+} cdsl_mgr_source_binding_t;
+
 struct cdsl_manager {
 	const cdsl_schema_t* schema;
 	_Atomic(cdsl_snapshot_t*) active;
@@ -18,6 +24,7 @@ struct cdsl_manager {
 	size_t history_count;
 	uint64_t next_version;
 	cdsl_mutex_t write_lock;
+	cdsl_mgr_source_binding_t* bindings;
 };
 
 static void
@@ -87,6 +94,17 @@ cdsl_manager_free(cdsl_manager_t* mgr)
 		}
 	}
 	mgr->history_count = 0;
+
+	cdsl_mgr_source_binding_t* b = mgr->bindings;
+	while (b) {
+		cdsl_mgr_source_binding_t* next = b->next;
+		if (b->key) {
+			free(b->key);
+		}
+		free(b);
+		b = next;
+	}
+	mgr->bindings = NULL;
 
 	CDSL_MUTEX_UNLOCK(&mgr->write_lock);
 	CDSL_MUTEX_DESTROY(&mgr->write_lock);
@@ -297,11 +315,6 @@ cdsl_manager_get_history(const cdsl_manager_t* mgr, uint64_t* out_versions, size
 	return count;
 }
 
-typedef struct cdsl_mgr_source_binding {
-	cdsl_manager_t* mgr;
-	char* key;
-} cdsl_mgr_source_binding_t;
-
 static void
 manager_config_source_cb(
     const char* key, const char* content, size_t len, const char* version, void* user_data)
@@ -345,7 +358,7 @@ cdsl_manager_attach_config_source(cdsl_manager_t* mgr, cdsl_config_source_t* src
 		return -1;
 	}
 	b->mgr = mgr;
-	b->key = strdup(key);
+	b->key = cdsl_strdup(key);
 
 	int rc = cdsl_config_source_watch(src, key, manager_config_source_cb, b);
 	if (rc != 0) {
@@ -353,5 +366,11 @@ cdsl_manager_attach_config_source(cdsl_manager_t* mgr, cdsl_config_source_t* src
 		free(b);
 		return -1;
 	}
+
+	CDSL_MUTEX_LOCK(&mgr->write_lock);
+	b->next = mgr->bindings;
+	mgr->bindings = b;
+	CDSL_MUTEX_UNLOCK(&mgr->write_lock);
+
 	return 0;
 }
