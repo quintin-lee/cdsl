@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.19)
-project(cdsl VERSION 1.4.0 LANGUAGES C CXX)
+project(cdsl VERSION 1.5.0 LANGUAGES C CXX)
 
 set(CMAKE_C_STANDARD 23)
 set(CMAKE_C_STANDARD_REQUIRED ON)
@@ -391,6 +391,9 @@ if(NOT MSVC)
             ${CMAKE_CURRENT_SOURCE_DIR}/include/cdsl/api.h
             ${CMAKE_CURRENT_SOURCE_DIR}/include/cdsl/vm.h
             ${CMAKE_CURRENT_SOURCE_DIR}/include/cdsl/util/threads.h
+            ${CMAKE_CURRENT_SOURCE_DIR}/include/cdsl/dtable.h
+            ${CMAKE_CURRENT_SOURCE_DIR}/include/cdsl/scorecard.h
+            ${CMAKE_CURRENT_SOURCE_DIR}/include/cdsl/pipeline.h
         COMMENT "Checking public headers standalone compilation under -std=c2x"
     )
 endif()

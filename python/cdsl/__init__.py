@@ -76,7 +76,7 @@ __all__ = [
     "codegen_ruleset_to_files", "codegen_ruleset_to_h", "codegen_ruleset_to_c",
     "to_dot", "to_dot_file", "ruleset_to_dot", "ruleset_to_dot_file",
 ]
-__version__ = "1.4.0"
+__version__ = "1.5.0"
 
 # ---- Locate the shared library ------------------------------------------------
 

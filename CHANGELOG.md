@@ -1,5 +1,29 @@
 # Changelog
 
+## [1.5.0] - 2026-11-08
+
+### Added
+- **Decision Table Engine (`include/cdsl/dtable.h`, `src/vm/dtable.c`)**:
+  - DMN-style multi-dimensional condition matching with column definitions for typed inputs and outputs.
+  - Implemented three core hit policies: `CDSL_HIT_FIRST` (first match terminates), `CDSL_HIT_RULE_ORDER` (all matches collected), and `CDSL_HIT_UNIQUE` (strict uniqueness constraint).
+  - Native wildcard cell support (`_`) matching any runtime value.
+  - Structured evaluation report (`cdsl_dtable_report_t`) recording matched row IDs and evaluated output vectors.
+  - Standalone DSL parser (`cdsl_dtable_parse_string`) and schema static validation (`cdsl_schema_verify_dtable`).
+- **Standard Scorecard Modeling Engine (`include/cdsl/scorecard.h`, `src/vm/scorecard.c`)**:
+  - Credit and risk scorecard modeling with baseline score initialization and multi-characteristic attribute binning.
+  - Range and inequality condition matching across feature dimensions with positive/negative score increments.
+  - Context variable injection for seamless downstream pipeline consumption.
+  - Comprehensive interpretability reports (`cdsl_scorecard_report_t`) detailing per-characteristic contribution deltas.
+  - Standalone DSL parser (`cdsl_scorecard_parse_string`) and schema verification (`cdsl_schema_verify_scorecard`).
+- **DAG Rule Pipeline Orchestration Engine (`include/cdsl/pipeline.h`, `src/vm/pipeline.c`)**:
+  - Multi-stage execution pipeline supporting rules, decision tables, and scorecards as first-class stage items.
+  - Dependency checking and topological scheduling between named stages.
+  - Context data flow propagation: outputs from earlier stages immediately available to downstream stages.
+  - Configurable failure policies (`CDSL_ON_FAIL_ABORT` vs `CDSL_ON_FAIL_CONTINUE`) with stage-level timing and execution reports (`cdsl_pipeline_report_t`).
+  - Standalone DSL parser (`cdsl_pipeline_parse_string`).
+- **Test Coverage**:
+  - Added test suites `tests/test_dtable.c`, `tests/test_scorecard.c`, and `tests/test_pipeline.c` expanding test suite to 42 test cases.
+
 ## [1.4.0] - 2026-11-08
 
 ### Added
