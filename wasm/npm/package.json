@@ -1,0 +1,21 @@
+{
+  "name": "@cdsl/engine",
+  "version": "1.6.0",
+  "description": "High-performance CDSL business rules, decision table, and scorecard engine for JavaScript/TypeScript and WebAssembly",
+  "main": "index.js",
+  "types": "index.d.ts",
+  "scripts": {
+    "test": "node test.js"
+  },
+  "keywords": [
+    "rules-engine",
+    "cdsl",
+    "wasm",
+    "webassembly",
+    "decision-table",
+    "scorecard",
+    "pipeline"
+  ],
+  "author": "Quintin Lee",
+  "license": "MIT"
+}
