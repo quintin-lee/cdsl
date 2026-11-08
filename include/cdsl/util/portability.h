@@ -60,6 +60,12 @@
 #define _CRT_SECURE_NO_WARNINGS
 #endif
 
+#if !defined(_SSIZE_T_DEFINED) && !defined(_SSIZE_T_)
+typedef ptrdiff_t ssize_t;
+#define _SSIZE_T_DEFINED
+#define _SSIZE_T_
+#endif
+
 #define strdup _strdup
 #define popen _popen
 #define pclose _pclose

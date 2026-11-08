@@ -12,6 +12,11 @@
 typedef SOCKET cdsl_socket_t;
 #define CDSL_INVALID_SOCKET INVALID_SOCKET
 #define CDSL_CLOSE_SOCKET(s) closesocket(s)
+#if !defined(_SSIZE_T_DEFINED) && !defined(_SSIZE_T_)
+typedef ptrdiff_t ssize_t;
+#define _SSIZE_T_DEFINED
+#define _SSIZE_T_
+#endif
 #else
 #include <sys/socket.h>
 #include <netinet/in.h>
