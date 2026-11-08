@@ -4,6 +4,24 @@
  *
  * Implements native trampoline code generation for x86-64 and AArch64 with W^X executable
  * memory management and per-compiled-rule caching to bridge native function calls to VM execution.
+ *
+ * Architecture & Relocation Notes:
+ * 1. 64-Bit Immediate Addressing:
+ *    The trampoline compiler explicitly generates 64-bit absolute immediate pointers
+ *    (`movabs rax, imm64` / literal pool `ldr x16, [pc, #offset]`) to reference
+ *    `cdsl_jit_native_helper` and `cdsl_bytecode_t`. This deliberate design eliminates
+ *    32-bit PC-relative displacement limitations (which constrain PLT/GOT stubs to ±2GB)
+ *    and enables JIT pages to be mapped arbitrarily in the 64-bit virtual address space.
+ * 2. Shared-Library & Dynamic Linking Lifecycle:
+ *    Because the trampoline embeds absolute function pointers resolved at runtime:
+ *    - Trampolines are strictly bound to the lifetime of the loaded shared library image
+ *      (`libcdsl.so` or `cdsl.dll`). If the library is unloaded via `dlclose()` or `FreeLibrary()`,
+ *      all existing trampolines become dangling pointers. Callers must destroy all `cdsl_jit_code_t`
+ *      handles before library teardown.
+ *    - Trampolines cannot be persisted or shared between processes due to ASLR.
+ * 3. Security (W^X):
+ *    Pages are mapped as RW, populated with instructions, transitioned to RX via
+ *    mprotect/VirtualProtect, and synchronized via architecture instruction cache flushing.
  */
 
 #include "cdsl/jit.h"

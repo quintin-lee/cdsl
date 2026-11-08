@@ -56,7 +56,8 @@
 - **Performance monitoring** — Per-VM execution statistics (counts, timing)
 - **Debug trace mode** — Step-by-step expression evaluation output
 - **Bytecode VM** — AST→bytecode compiler with 31-instruction ISA, constant folding, short-circuit evaluation
-- **Native machine code trampoline** — Architecture-specific W^X executable trampoline compiler (x86-64 / AArch64) for direct fast-path VM dispatch
+- **Native machine code trampoline** — Architecture-specific W^X executable trampoline compiler (x86-64 / AArch64) with 64-bit absolute address embedding for direct fast-path VM dispatch
+- **Cloud-native HTTP micro-daemon** — Built-in RESTful daemon with worker thread pool supporting true `max_concurrency` parallelism, dynamic response buffering, and Kubernetes health probes (`/healthz`, `/readyz`, `/metrics`)
 - **Sandboxing** — Per-execution timeout, memory limit, instruction quota, read-only variables
 
 ### AI Integration

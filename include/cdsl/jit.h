@@ -9,6 +9,22 @@
  * Trampoline stubs translate native function calls directly into the VM execution pipeline,
  * and are cached per compiled bytecode rule (`bc->jit_code`) to eliminate repeated compilation
  * overhead while offering seamless native C function pointer interop.
+ *
+ * @section jit_relocation Relocation & Shared-Library Constraints
+ * - 64-Bit Absolute Pointer Embedding: Trampolines embed absolute 64-bit immediate pointers
+ *   to `cdsl_jit_native_helper` and `cdsl_bytecode_t` data structures directly into machine code
+ *   (via `movabs rax, imm64` on x86-64 and literal pool `ldr x16, [pc, #offset]` on AArch64).
+ *   This avoids 32-bit PC-relative displacement overflow (such as ±2GB limits of PLT/GOT calls)
+ *   when executable pages are allocated in distant address spaces.
+ * - Dynamic Library Lifecycle Bounds: The embedded absolute addresses are valid only for the
+ *   lifetime of the loaded library image. If `libcdsl.so` or `cdsl.dll` is unloaded via
+ *   `dlclose()` or `FreeLibrary()`, any existing JIT trampolines become dangling pointers.
+ *   Callers must release all `cdsl_jit_code_t` handles before unloading the shared library.
+ * - Non-Serializable: Due to Address Space Layout Randomization (ASLR), compiled trampolines
+ *   cannot be serialized to persistent storage or shared across process address spaces.
+ * - W^X & Security Enforcement: On platforms with strict code signing or W^X memory policies,
+ *   if executable page allocation or permission transition fails, `cdsl_jit_compile()`
+ *   transparently degrades to an interpretive fallback with `is_native = false`.
  */
 
 #ifndef CDSL_JIT_H

@@ -1,5 +1,23 @@
 # Changelog
 
+## [2.0.2] - 2026-11-08
+
+### Added
+- **True Multi-Threaded Concurrency in Cloud-Native Server (`src/server/server.c`)**:
+  - Implemented a worker thread pool sized by `config.max_concurrency` backed by a bounded producer-consumer queue (`queue_lock`, `queue_not_empty`, `queue_not_full`).
+  - Added dedicated listener thread with non-blocking polling and graceful shutdown synchronization.
+  - Added cross-platform condition variable support (`cdsl_cond_t` with `pthread_cond` on POSIX and `CONDITION_VARIABLE` on Windows) in `include/cdsl/util/threads.h`.
+- **Dynamic Response Buffering (`src/server/server.c`)**:
+  - Eliminated all static stack response buffers (formerly 256B to 4096B) across `/healthz`, `/readyz`, `/metrics`, `/v1/evaluate`, and `/v1/rules/deploy`.
+  - Added dynamic response allocation and chunked socket send loop to completely prevent response truncation on large payloads or heavy telemetry.
+- **Predicate Cache Invalidation & Sequential Ruleset Auto-Binding (`include/cdsl/cse.h`, `src/vm/ruleset.c`)**:
+  - Formalized invalidation semantics for `cdsl_pred_cache_bind_context`: variable mutations trigger immediate, full cache clearing.
+  - Automatically bound `ctx` in `cdsl_vm_execute_ruleset` ensuring safe mutation invalidation across sequential rules.
+  - Documented parallel execution isolation semantics: worker VMs in `cdsl_vm_execute_ruleset_parallel` bypass shared caches to prevent cross-thread race conditions.
+- **JIT Shared-Library Relocation & Architecture Documentation (`include/cdsl/jit.h`, `src/vm/jit.c`)**:
+  - Clarified 64-bit absolute immediate pointer embedding (`movabs` / literal pool `ldr`) bypassing GOT/PLT indirection to avoid 32-bit displacement overflows.
+  - Documented shared-library lifecycle bounds (`dlclose` hazards), ASLR non-serializability, and W^X security transitions.
+
 ## [2.0.1] - 2026-11-08
 
 ### Fixed
