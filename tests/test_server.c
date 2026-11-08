@@ -346,6 +346,58 @@ test_server_dynamic_large_response(void)
 	cdsl_server_free(srv);
 }
 
+static void
+test_server_stop_drain(void)
+{
+	printf("Running test_server_stop_drain...\n");
+	cdsl_server_config_t config = {
+	    .port = 0,
+	    .max_concurrency = 2,
+	    .verbose = false,
+	};
+	cdsl_server_t* srv = cdsl_server_create(&config);
+	assert(srv != NULL);
+	assert(cdsl_server_start(srv) == 0);
+
+	int port = cdsl_server_get_port(srv);
+	assert(port > 0);
+
+	/* Connect two clients, send complete requests, defer reading responses */
+	cdsl_socket_t sock[2];
+	for (int i = 0; i < 2; i++) {
+		sock[i] = socket(AF_INET, SOCK_STREAM, 0);
+		assert(sock[i] != CDSL_INVALID_SOCKET);
+		struct sockaddr_in a;
+		memset(&a, 0, sizeof(a));
+		a.sin_family = AF_INET;
+		a.sin_port = htons((uint16_t)port);
+		a.sin_addr.s_addr = inet_addr("127.0.0.1");
+		assert(connect(sock[i], (struct sockaddr*)&a, sizeof(a)) == 0);
+		const char* req = "GET /healthz HTTP/1.1\r\nHost: localhost\r\n\r\n";
+		assert(send(sock[i], req, (int)strlen(req), 0) > 0);
+	}
+
+	/* Let the listener accept both connections and enqueue them (listener
+	 * polls at 100ms) before requesting stop, so the drain under test is
+	 * deterministic: both in-flight requests are already in the queue */
+	struct timespec ts = {.tv_sec = 0, .tv_nsec = 250L * 1000000L};
+	nanosleep(&ts, NULL);
+
+	/* stop must drain in-flight requests to completion, not drop them */
+	cdsl_server_stop(srv);
+
+	for (int i = 0; i < 2; i++) {
+		char buf[512] = {0};
+		ssize_t n = recv(sock[i], buf, sizeof(buf) - 1, 0);
+		assert(n > 0);
+		assert(strstr(buf, "200 OK") != NULL);
+		assert(strstr(buf, "\"status\":\"healthy\"") != NULL);
+		CDSL_CLOSE_SOCKET(sock[i]);
+	}
+
+	cdsl_server_free(srv);
+}
+
 int
 main(void)
 {
@@ -357,6 +409,7 @@ main(void)
 	test_server_socket_networking();
 	test_server_concurrency();
 	test_server_dynamic_large_response();
+	test_server_stop_drain();
 #ifdef _WIN32
 	WSACleanup();
 #endif

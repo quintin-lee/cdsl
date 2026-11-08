@@ -708,7 +708,10 @@ server_handle_client(cdsl_server_t* srv, cdsl_socket_t client_fd)
 	long content_len = -1;
 	const char* header_end = NULL;
 
-	while (server_is_running(srv)) {
+	/* In-flight connections must be drained to completion regardless of the
+	 * running flag: stop() only decides when the worker exits AFTER this
+	 * connection finishes, it must not abort the request read mid-flight */
+	while (1) {
 		if (len + 1024 >= cap) {
 			if (cap >= (size_t)10 * 1024 * 1024) { /* 10MB safety threshold */
 				break;
@@ -833,8 +836,22 @@ server_listener_routine(void* arg)
 			CDSL_COND_WAIT(&srv->queue_not_full, &srv->queue_lock);
 		}
 		if (!server_is_running(srv)) {
+			/* Graceful drain: hand off an already-accepted connection to a
+			 * worker instead of dropping it, so in-flight requests still
+			 * complete after stop() was requested. Only close when the queue
+			 * is full and no worker can take the fd. */
+			int enqueued = 0;
+			if (srv->queue_count < CDSL_SERVER_QUEUE_CAP) {
+				srv->queue[srv->queue_tail] = client_fd;
+				srv->queue_tail = (srv->queue_tail + 1) % CDSL_SERVER_QUEUE_CAP;
+				srv->queue_count++;
+				CDSL_COND_SIGNAL(&srv->queue_not_empty);
+				enqueued = 1;
+			}
 			CDSL_MUTEX_UNLOCK(&srv->queue_lock);
-			CDSL_CLOSE_SOCKET(client_fd);
+			if (!enqueued) {
+				CDSL_CLOSE_SOCKET(client_fd);
+			}
 			break;
 		}
 		srv->queue[srv->queue_tail] = client_fd;
