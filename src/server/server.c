@@ -3,14 +3,10 @@
  * @brief Cloud-native HTTP micro-daemon for CDSL evaluation and metrics.
  */
 
-#include "cdsl/server.h"
-#include "cdsl/cdsl.h"
-#include "cdsl/util/threads.h"
-#include <stdio.h>
-#include <stdlib.h>
-#include <string.h>
-
 #ifdef _WIN32
+#ifndef WIN32_LEAN_AND_MEAN
+#define WIN32_LEAN_AND_MEAN
+#endif
 #include <winsock2.h>
 #include <ws2tcpip.h>
 typedef SOCKET cdsl_socket_t;
@@ -27,6 +23,13 @@ typedef int cdsl_socket_t;
 #define CDSL_INVALID_SOCKET (-1)
 #define CDSL_CLOSE_SOCKET(s) close(s)
 #endif
+
+#include "cdsl/server.h"
+#include "cdsl/cdsl.h"
+#include "cdsl/util/threads.h"
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
 
 typedef struct cdsl_server_metrics {
 	uint64_t requests_total;

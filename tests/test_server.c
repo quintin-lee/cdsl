@@ -2,12 +2,11 @@
 #undef NDEBUG
 #endif
 #include <assert.h>
-#include "cdsl/server.h"
-#include <stdio.h>
-#include <stdlib.h>
-#include <string.h>
 
 #ifdef _WIN32
+#ifndef WIN32_LEAN_AND_MEAN
+#define WIN32_LEAN_AND_MEAN
+#endif
 #include <winsock2.h>
 #include <ws2tcpip.h>
 typedef SOCKET cdsl_socket_t;
@@ -22,6 +21,11 @@ typedef int cdsl_socket_t;
 #define CDSL_INVALID_SOCKET (-1)
 #define CDSL_CLOSE_SOCKET(s) close(s)
 #endif
+
+#include "cdsl/server.h"
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
 
 static void
 test_server_direct_dispatch(void)
@@ -148,8 +152,15 @@ test_server_socket_networking(void)
 int
 main(void)
 {
+#ifdef _WIN32
+	WSADATA wsa;
+	(void)WSAStartup(MAKEWORD(2, 2), &wsa);
+#endif
 	test_server_direct_dispatch();
 	test_server_socket_networking();
+#ifdef _WIN32
+	WSACleanup();
+#endif
 	printf("All server tests passed successfully!\n");
 	return 0;
 }
