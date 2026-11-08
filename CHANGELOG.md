@@ -1,10 +1,23 @@
 # Changelog
 
+## [2.0.1] - 2026-11-08
+
+### Fixed
+- **Watch Callback Deadlock Elimination (`src/manager/`)**:
+  - Implemented Snapshot-and-Unlock pattern in generic in-memory driver (`src/manager/config_source.c`), Etcd simulation driver (`src/manager/etcd.c`), and Consul simulation driver (`src/manager/consul.c`).
+  - Released driver mutexes before dispatching user callbacks, eliminating same-thread reentrancy deadlocks (`fetch`/`publish`/`watch` inside callbacks) and cross-thread AB-BA lock inversion deadlocks.
+- **Server Strict Request Validation & Explicit 400 Rejections (`src/server/server.c`)**:
+  - Eliminated silent dummy rule generation (`default_eval` / `default_rule`) that erroneously returned 200 OK approvals for empty payloads.
+  - Required explicit rule/evaluation definitions; empty or malformed requests now strictly return `HTTP/1.1 400 Bad Request`.
+  - Added HTTP status code alignment ensuring parser and validation errors return 400 Bad Request instead of 200 OK.
+- **JIT Terminology Accuracy (`include/cdsl/jit.h`, `README.md`)**:
+  - Refined technical phrasing to accurately reflect the Native Trampoline & Direct Threading Fast-Path execution model.
+
 ## [2.0.0] - 2026-11-08
 
 ### Added
-- **Native Machine Code JIT Engine (`include/cdsl/jit.h`, `src/vm/jit.c`)**:
-  - Pure C machine code JIT engine compiling CDSL bytecode to native machine instructions.
+- **Native Machine Code Trampoline Fast-Path (`include/cdsl/jit.h`, `src/vm/jit.c`)**:
+  - Pure C native trampoline generation compiling ABI bridges to native machine instructions for direct fast-path execution.
   - Multi-architecture native support for x86-64 (System V AMD64 and Windows x64) and AArch64 (Linux and macOS ARM64).
   - W^X executable memory protection with page-aligned mmap / VirtualProtect and automatic instruction cache synchronization.
   - Safe automatic fallback to threaded bytecode interpreter for non-supported architectures and sandboxed environments.

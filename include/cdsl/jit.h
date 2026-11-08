@@ -55,7 +55,7 @@ struct cdsl_jit_code {
 bool cdsl_jit_is_supported(void);
 
 /**
- * @brief Compile a bytecode chunk into native machine code or JIT trampoline.
+ * @brief Compile a bytecode chunk into a native machine code trampoline for direct fast-path execution.
  * @param vm Virtual machine instance
  * @param bc Bytecode chunk to compile
  * @return Compiled JIT code object, or NULL on allocation error
