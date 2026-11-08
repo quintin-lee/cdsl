@@ -91,11 +91,11 @@ test_server_direct_dispatch(void)
 	assert(strstr(resp7, "\"type\":\"pipeline\"") != NULL);
 	free(resp7);
 
-	/* 8. POST /v1/rules/deploy */
+	/* 8. POST /v1/rules/deploy with empty body should be rejected with 400 */
 	char* resp8 = cdsl_server_handle_request(srv, "POST /v1/rules/deploy HTTP/1.1\r\n\r\n{}");
 	assert(resp8 != NULL);
-	assert(strstr(resp8, "200 OK") != NULL);
-	assert(strstr(resp8, "\"status\":\"deployed\"") != NULL);
+	assert(strstr(resp8, "400 Bad Request") != NULL);
+	assert(strstr(resp8, "\"status\":\"rejected\"") != NULL);
 	free(resp8);
 
 	/* 8b. POST /v1/rules/deploy with valid rule and tag */
@@ -118,6 +118,24 @@ test_server_direct_dispatch(void)
 	assert(strstr(resp8c, "400 Bad Request") != NULL);
 	assert(strstr(resp8c, "\"status\":\"rejected\"") != NULL);
 	free(resp8c);
+
+	/* 8d. Negative test: POST /v1/evaluate with empty payload when no rule provided */
+	cdsl_server_t* srv_fresh = cdsl_server_create(NULL);
+	char* resp_empty =
+	    cdsl_server_handle_request(srv_fresh, "POST /v1/evaluate HTTP/1.1\r\n\r\n");
+	assert(resp_empty != NULL);
+	assert(strstr(resp_empty, "400 Bad Request") != NULL);
+	assert(strstr(resp_empty, "\"bad_request\"") != NULL);
+	free(resp_empty);
+
+	/* 8e. Negative test: POST /v1/evaluate with invalid syntax */
+	const char* malformed_eval = "POST /v1/evaluate HTTP/1.1\r\n\r\n"
+				     "RULE bad { WHEN >>> 100 }";
+	char* resp_malformed = cdsl_server_handle_request(srv_fresh, malformed_eval);
+	assert(resp_malformed != NULL);
+	assert(strstr(resp_malformed, "400 Bad Request") != NULL);
+	free(resp_malformed);
+	cdsl_server_free(srv_fresh);
 
 	/* 8d. JSON field-based routing for /v1/evaluate */
 	const char* json_eval_rule =

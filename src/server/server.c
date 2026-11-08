@@ -178,6 +178,26 @@ cdsl_server_get_manager(cdsl_server_t* srv)
 	return srv->mgr;
 }
 
+static char*
+server_http_json_response(int status_code, const char* status_text, const char* json_body)
+{
+	size_t body_len = json_body ? strlen(json_body) : 0;
+	size_t cap = body_len + 256;
+	char* resp = malloc(cap);
+	if (!resp) {
+		return NULL;
+	}
+	snprintf(resp,
+		 cap,
+		 "HTTP/1.1 %d %s\r\nContent-Type: application/json\r\nContent-Length: "
+		 "%zu\r\nConnection: close\r\n\r\n%s",
+		 status_code,
+		 status_text,
+		 body_len,
+		 json_body ? json_body : "");
+	return resp;
+}
+
 char*
 cdsl_server_handle_request(cdsl_server_t* srv, const char* http_request)
 {
@@ -335,10 +355,64 @@ cdsl_server_handle_request(cdsl_server_t* srv, const char* http_request)
 			cdsl_context_load_json(ctx, body_start);
 		}
 
-		const char* effective_dsl = target_dsl ? target_dsl : body_start;
+		const char* effective_dsl = target_dsl;
+		if (!effective_dsl) {
+			if (strstr(body_start, "RULE") != NULL ||
+			    strstr(body_start, "DECISION_TABLE") != NULL ||
+			    strstr(body_start, "SCORECARD") != NULL ||
+			    strstr(body_start, "PIPELINE") != NULL) {
+				effective_dsl = body_start;
+			}
+		}
+
+		/* If still no effective DSL, check if srv->mgr has an active ruleset */
+		if (!effective_dsl || strlen(effective_dsl) == 0) {
+			if (srv->mgr && cdsl_manager_get_active_version(srv->mgr) > 0) {
+				cdsl_vm_t* local_vm = cdsl_vm_create(NULL);
+				cdsl_ruleset_report_t* rpt =
+				    cdsl_manager_execute(srv->mgr, local_vm, ctx);
+				cdsl_vm_free(local_vm);
+				if (json_root) {
+					cdsl_json_free(json_root);
+				}
+				cdsl_context_free(ctx);
+				if (rpt) {
+					char body[256];
+					snprintf(body,
+						 sizeof(body),
+						 "{\"status\":\"%s\",\"total_passed\":%d,"
+						 "\"total_failed\":%d}\n",
+						 (rpt->total_failed == 0 && rpt->total_error == 0)
+						     ? "PASSED"
+						     : "FAILED",
+						 rpt->total_passed,
+						 rpt->total_failed);
+					cdsl_ruleset_report_free(rpt);
+					return server_http_json_response(200, "OK", body);
+				} else {
+					return server_http_json_response(
+					    500,
+					    "Internal Server Error",
+					    "{\"error\":\"evaluation_failed\"}\n");
+				}
+			}
+			/* No active ruleset and no DSL in request -> reject with 400 */
+			if (json_root) {
+				cdsl_json_free(json_root);
+			}
+			cdsl_context_free(ctx);
+			return server_http_json_response(
+			    400,
+			    "Bad Request",
+			    "{\"error\":\"bad_request\",\"message\":\"missing rule definition or "
+			    "evaluation target\"}\n");
+		}
 
 		/* Determine evaluation target via JSON field "type", with fallback to DSL prefix */
 		char json_result[1024];
+		int status_code = 200;
+		const char* status_text = "OK";
+
 		if ((target_type && (strcmp(target_type, "dtable") == 0 ||
 				     strcmp(target_type, "decision_table") == 0)) ||
 		    (!target_type && strstr(effective_dsl, "DECISION_TABLE") != NULL)) {
@@ -354,16 +428,23 @@ cdsl_server_handle_request(cdsl_server_t* srv, const char* http_request)
 						 rpt->matched ? "true" : "false",
 						 rpt->num_matches);
 					cdsl_dtable_report_free(rpt);
+					status_code = 200;
+					status_text = "OK";
 				} else {
 					snprintf(json_result,
 						 sizeof(json_result),
-						 "{\"error\":\"evaluation failed\"}\n");
+						 "{\"error\":\"evaluation_failed\"}\n");
+					status_code = 500;
+					status_text = "Internal Server Error";
 				}
 				cdsl_dtable_free(dt);
 			} else {
 				snprintf(json_result,
 					 sizeof(json_result),
-					 "{\"error\":\"failed to parse decision table\"}\n");
+					 "{\"error\":\"parse_error\",\"message\":\"failed to parse "
+					 "decision table\"}\n");
+				status_code = 400;
+				status_text = "Bad Request";
 			}
 		} else if ((target_type && strcmp(target_type, "scorecard") == 0) ||
 			   (!target_type && strstr(effective_dsl, "SCORECARD") != NULL)) {
@@ -379,16 +460,23 @@ cdsl_server_handle_request(cdsl_server_t* srv, const char* http_request)
 						 rpt->baseline_score,
 						 rpt->final_score);
 					cdsl_scorecard_report_free(rpt);
+					status_code = 200;
+					status_text = "OK";
 				} else {
 					snprintf(json_result,
 						 sizeof(json_result),
-						 "{\"error\":\"evaluation failed\"}\n");
+						 "{\"error\":\"evaluation_failed\"}\n");
+					status_code = 500;
+					status_text = "Internal Server Error";
 				}
 				cdsl_scorecard_free(sc);
 			} else {
 				snprintf(json_result,
 					 sizeof(json_result),
-					 "{\"error\":\"failed to parse scorecard\"}\n");
+					 "{\"error\":\"parse_error\",\"message\":\"failed to parse "
+					 "scorecard\"}\n");
+				status_code = 400;
+				status_text = "Bad Request";
 			}
 		} else if ((target_type && strcmp(target_type, "pipeline") == 0) ||
 			   (!target_type && strstr(effective_dsl, "PIPELINE") != NULL)) {
@@ -406,26 +494,30 @@ cdsl_server_handle_request(cdsl_server_t* srv, const char* http_request)
 						 rpt->status,
 						 rpt->num_stages);
 					cdsl_pipeline_report_free(rpt);
+					status_code = 200;
+					status_text = "OK";
 				} else {
 					snprintf(json_result,
 						 sizeof(json_result),
-						 "{\"error\":\"execution failed\"}\n");
+						 "{\"error\":\"execution_failed\"}\n");
+					status_code = 500;
+					status_text = "Internal Server Error";
 				}
 				cdsl_vm_free(local_vm);
 				cdsl_pipeline_free(p);
 			} else {
 				snprintf(json_result,
 					 sizeof(json_result),
-					 "{\"error\":\"failed to parse pipeline\"}\n");
+					 "{\"error\":\"parse_error\",\"message\":\"failed to parse "
+					 "pipeline\"}\n");
+				status_code = 400;
+				status_text = "Bad Request";
 			}
 		} else {
 			/* Standard Rule */
 			const char* rule_dsl = strstr(effective_dsl, "RULE");
 			if (!rule_dsl) {
 				rule_dsl = effective_dsl;
-			}
-			if (!rule_dsl || strlen(rule_dsl) == 0) {
-				rule_dsl = "RULE default_eval { WHEN true THEN approve() }";
 			}
 			cdsl_rule_t* rule = cdsl_parse_string(rule_dsl, NULL);
 			if (rule) {
@@ -443,17 +535,24 @@ cdsl_server_handle_request(cdsl_server_t* srv, const char* http_request)
 							 "{\"status\":\"PASSED\"}\n");
 					}
 					cdsl_report_free(rpt);
+					status_code = 200;
+					status_text = "OK";
 				} else {
 					snprintf(json_result,
 						 sizeof(json_result),
-						 "{\"error\":\"evaluation failed\"}\n");
+						 "{\"error\":\"evaluation_failed\"}\n");
+					status_code = 500;
+					status_text = "Internal Server Error";
 				}
 				cdsl_vm_free(local_vm);
 				cdsl_free_rule(rule);
 			} else {
 				snprintf(json_result,
 					 sizeof(json_result),
-					 "{\"error\":\"failed to parse rule\"}\n");
+					 "{\"error\":\"parse_error\",\"message\":\"failed to parse "
+					 "rule\"}\n");
+				status_code = 400;
+				status_text = "Bad Request";
 			}
 		}
 
@@ -462,18 +561,7 @@ cdsl_server_handle_request(cdsl_server_t* srv, const char* http_request)
 		}
 		cdsl_context_free(ctx);
 
-		size_t len = strlen(json_result);
-		char* resp = malloc(len + 256);
-		if (!resp) {
-			return NULL;
-		}
-		snprintf(resp,
-			 len + 256,
-			 "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: "
-			 "%zu\r\nConnection: close\r\n\r\n%s",
-			 len,
-			 json_result);
-		return resp;
+		return server_http_json_response(status_code, status_text, json_result);
 	}
 
 	/* Rule deploy endpoint */
@@ -510,7 +598,14 @@ cdsl_server_handle_request(cdsl_server_t* srv, const char* http_request)
 		}
 
 		if (!dsl_text || strlen(dsl_text) == 0) {
-			dsl_text = "RULE canary_default { WHEN true THEN approve() }";
+			if (json_root) {
+				cdsl_json_free(json_root);
+			}
+			return server_http_json_response(
+			    400,
+			    "Bad Request",
+			    "{\"status\":\"rejected\",\"code\":1,\"error\":\"missing rule dsl to "
+			    "deploy\"}\n");
 		}
 
 		CDSL_MUTEX_LOCK(&srv->lock);
