@@ -37,12 +37,34 @@ struct cdsl_server {
 	cdsl_server_config_t config;
 	cdsl_socket_t server_fd;
 	int actual_port;
-	volatile bool running;
+	bool running;
 	cdsl_thread_t worker_thread;
 	cdsl_mutex_t lock;
 	cdsl_server_metrics_t metrics;
-	cdsl_vm_t* vm;
 };
+
+static bool
+server_is_running(cdsl_server_t* srv)
+{
+	if (!srv) {
+		return false;
+	}
+	CDSL_MUTEX_LOCK(&srv->lock);
+	bool r = srv->running;
+	CDSL_MUTEX_UNLOCK(&srv->lock);
+	return r;
+}
+
+static void
+server_set_running(cdsl_server_t* srv, bool running)
+{
+	if (!srv) {
+		return;
+	}
+	CDSL_MUTEX_LOCK(&srv->lock);
+	srv->running = running;
+	CDSL_MUTEX_UNLOCK(&srv->lock);
+}
 
 cdsl_server_t*
 cdsl_server_create(const cdsl_server_config_t* config)
@@ -64,7 +86,6 @@ cdsl_server_create(const cdsl_server_config_t* config)
 	srv->actual_port = 0;
 	srv->running = false;
 	CDSL_MUTEX_INIT(&srv->lock);
-	srv->vm = cdsl_vm_create(NULL);
 
 #ifdef _WIN32
 	WSADATA wsa;
@@ -80,12 +101,8 @@ cdsl_server_free(cdsl_server_t* srv)
 	if (!srv) {
 		return;
 	}
-	if (srv->running) {
+	if (server_is_running(srv)) {
 		cdsl_server_stop(srv);
-	}
-	if (srv->vm) {
-		cdsl_vm_free(srv->vm);
-		srv->vm = NULL;
 	}
 	CDSL_MUTEX_DESTROY(&srv->lock);
 	free(srv);
@@ -245,8 +262,9 @@ cdsl_server_handle_request(cdsl_server_t* srv, const char* http_request)
 		} else if (strstr(body_start, "PIPELINE") != NULL) {
 			cdsl_pipeline_t* p = cdsl_pipeline_parse_string(body_start, NULL);
 			if (p) {
+				cdsl_vm_t* local_vm = cdsl_vm_create(NULL);
 				cdsl_pipeline_report_t* rpt =
-				    cdsl_pipeline_execute(p, srv->vm, ctx);
+				    cdsl_pipeline_execute(p, local_vm, ctx);
 				if (rpt) {
 					snprintf(json_result,
 						 sizeof(json_result),
@@ -261,6 +279,7 @@ cdsl_server_handle_request(cdsl_server_t* srv, const char* http_request)
 						 sizeof(json_result),
 						 "{\"error\":\"execution failed\"}\n");
 				}
+				cdsl_vm_free(local_vm);
 				cdsl_pipeline_free(p);
 			} else {
 				snprintf(json_result,
@@ -275,7 +294,8 @@ cdsl_server_handle_request(cdsl_server_t* srv, const char* http_request)
 			}
 			cdsl_rule_t* rule = cdsl_parse_string(rule_dsl, NULL);
 			if (rule) {
-				cdsl_rule_report_t* rpt = cdsl_vm_execute(srv->vm, rule, ctx);
+				cdsl_vm_t* local_vm = cdsl_vm_create(NULL);
+				cdsl_rule_report_t* rpt = cdsl_vm_execute(local_vm, rule, ctx);
 				if (rpt) {
 					char* j = cdsl_report_to_json(rpt);
 					if (j) {
@@ -293,6 +313,7 @@ cdsl_server_handle_request(cdsl_server_t* srv, const char* http_request)
 						 sizeof(json_result),
 						 "{\"error\":\"evaluation failed\"}\n");
 				}
+				cdsl_vm_free(local_vm);
 				cdsl_free_rule(rule);
 			} else {
 				snprintf(json_result,
@@ -339,7 +360,7 @@ server_worker_loop(void* arg)
 {
 	cdsl_server_t* srv = (cdsl_server_t*)arg;
 
-	while (srv->running) {
+	while (server_is_running(srv)) {
 #ifdef _WIN32
 		fd_set readfds;
 		FD_ZERO(&readfds);
@@ -350,7 +371,7 @@ server_worker_loop(void* arg)
 		struct pollfd pfd = {.fd = srv->server_fd, .events = POLLIN, .revents = 0};
 		int r = poll(&pfd, 1, 100);
 #endif
-		if (r <= 0 || !srv->running) {
+		if (r <= 0 || !server_is_running(srv)) {
 			continue;
 		}
 
@@ -381,7 +402,7 @@ server_worker_loop(void* arg)
 int
 cdsl_server_start(cdsl_server_t* srv)
 {
-	if (!srv || srv->running) {
+	if (!srv || server_is_running(srv)) {
 		return -1;
 	}
 
@@ -424,9 +445,9 @@ cdsl_server_start(cdsl_server_t* srv)
 		srv->actual_port = srv->config.port;
 	}
 
-	srv->running = true;
+	server_set_running(srv, true);
 	if (CDSL_THREAD_CREATE(&srv->worker_thread, server_worker_loop, srv) != 0) {
-		srv->running = false;
+		server_set_running(srv, false);
 		CDSL_CLOSE_SOCKET(srv->server_fd);
 		srv->server_fd = CDSL_INVALID_SOCKET;
 		return -1;
@@ -438,10 +459,10 @@ cdsl_server_start(cdsl_server_t* srv)
 void
 cdsl_server_stop(cdsl_server_t* srv)
 {
-	if (!srv || !srv->running) {
+	if (!srv || !server_is_running(srv)) {
 		return;
 	}
-	srv->running = false;
+	server_set_running(srv, false);
 	CDSL_THREAD_JOIN(srv->worker_thread);
 	if (srv->server_fd != CDSL_INVALID_SOCKET) {
 		CDSL_CLOSE_SOCKET(srv->server_fd);
