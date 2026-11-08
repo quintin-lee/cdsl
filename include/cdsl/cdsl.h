@@ -36,6 +36,11 @@
 #include "cdsl/metrics.h"
 #include "cdsl/trace.h"
 
+/* Advanced Business Modeling & Orchestration (v1.5.0) */
+#include "cdsl/dtable.h"
+#include "cdsl/scorecard.h"
+#include "cdsl/pipeline.h"
+
 /* AI bridge */
 #include "cdsl/ai.h"
 
