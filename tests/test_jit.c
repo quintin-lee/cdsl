@@ -213,6 +213,61 @@ test_jit_bytecode_caching(void)
 	cdsl_schema_free(schema);
 }
 
+#if defined(__aarch64__)
+/* AArch64-only: verify the native trampoline's LDR literal pool offsets are
+ * consistent with the actual layout by comparing native vs threaded results
+ * for a rule with multiple comparisons + action. */
+static void
+test_jit_aarch64_pool_offsets(void)
+{
+	printf("Running test_jit_aarch64_pool_offsets...\n");
+	cdsl_schema_t* schema = cdsl_schema_create();
+	assert(schema != NULL);
+	cdsl_schema_register_var(schema, "v", CDSL_TYPE_INT);
+	cdsl_schema_register_var(schema, "w", CDSL_TYPE_INT);
+	cdsl_schema_register_action(schema, "act", CDSL_TYPE_VOID, 0);
+
+	cdsl_vm_t* vm = cdsl_vm_create(schema);
+	assert(vm != NULL);
+	const char* dsl = "RULE r_pool { WHEN v > 10 && w < 100 THEN act() }";
+	cdsl_rule_t* rule = cdsl_parse_string(dsl, NULL);
+	assert(rule != NULL);
+
+	cdsl_bytecode_t bc = {0};
+	assert(cdsl_bytecode_compile(rule, schema, &bc) == 1);
+
+	cdsl_jit_code_t* jit = cdsl_jit_compile(vm, &bc);
+	assert(jit != NULL);
+	assert(jit->is_native == true);
+
+	/* native entry execution result must match the threaded engine */
+	cdsl_context_t* ctx = cdsl_context_create(schema);
+	cdsl_context_set_int(ctx, "v", 42);
+	cdsl_context_set_int(ctx, "w", 90);
+	cdsl_value_t v_threaded = cdsl_bytecode_execute_threaded(vm, &bc, ctx);
+	cdsl_value_t v_jit;
+	assert(cdsl_jit_execute(jit, vm, ctx, &v_jit) == 0);
+	assert(v_jit.type == CDSL_TYPE_BOOL);
+	assert(v_threaded.type == CDSL_TYPE_BOOL);
+	assert(v_jit.data.bool_val == v_threaded.data.bool_val);
+	assert(v_jit.data.bool_val == 1);
+
+	/* flip one operand so the rule fails: both engines must agree on 0 */
+	cdsl_context_set_int(ctx, "v", 5);
+	v_threaded = cdsl_bytecode_execute_threaded(vm, &bc, ctx);
+	assert(cdsl_jit_execute(jit, vm, ctx, &v_jit) == 0);
+	assert(v_jit.data.bool_val == 0);
+	assert(v_threaded.data.bool_val == 0);
+
+	cdsl_context_free(ctx);
+	cdsl_jit_code_free(jit);
+	cdsl_bytecode_free(&bc);
+	cdsl_free_rule(rule);
+	cdsl_vm_free(vm);
+	cdsl_schema_free(schema);
+}
+#endif /* __aarch64__ */
+
 int
 main(void)
 {
@@ -220,6 +275,9 @@ main(void)
 	test_penta_engine_equivalence();
 	test_jit_vm_integration();
 	test_jit_bytecode_caching();
+#if defined(__aarch64__)
+	test_jit_aarch64_pool_offsets();
+#endif
 	printf("All JIT tests passed successfully!\n");
 	return 0;
 }

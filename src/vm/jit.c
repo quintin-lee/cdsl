@@ -22,6 +22,12 @@
  * 3. Security (W^X):
  *    Pages are mapped as RW, populated with instructions, transitioned to RX via
  *    mprotect/VirtualProtect, and synchronized via architecture instruction cache flushing.
+ * 4. AArch64 Layout-Computed Pool Offsets:
+ *    The two LDR (literal) instructions in the AArch64 trampoline use imm9 values
+ *    that are back-filled from the actual prologue layout (imm9 = n - idx, where n
+ *    is the prologue instruction count and idx is the LDR's index). This removes
+ *    the historical risk of hand-filled offsets (#20/#24) silently desynchronizing
+ *    when prologue instructions are added or removed.
  */
 
 #include "cdsl/jit.h"
@@ -357,19 +363,40 @@ cdsl_jit_compile(cdsl_vm_t* vm, const cdsl_bytecode_t* bc)
 	 * Arrange args for helper(x0=vm, x1=bc, x2=ctx, x3=out_result)
 	 *   mov x3, x2      ; out_result
 	 *   mov x2, x1      ; ctx
-	 *   ldr x1, [pc, #offset_to_bc]
-	 *   ldr x16, [pc, #offset_to_helper]
+	 *   ldr x1, [pc, #imm9*4]  ; bc_val (imm9 back-filled below)
+	 *   ldr x16, [pc, #imm9*4]  ; helper_val (imm9 back-filled below)
 	 *   blr x16
 	 */
 	instrs[n++] = 0xaa0203e3; /* mov x3, x2 */
 	instrs[n++] = 0xaa0103e2; /* mov x2, x1 */
-	instrs[n++] = 0x580000a1; /* ldr x1, #20 (pc + 20 -> bc_val) */
-	instrs[n++] = 0x580000d0; /* ldr x16, #24 (pc + 24 -> helper_val) */
-	instrs[n++] = 0xd63f0200; /* blr x16 */
+
+	/* LDR (literal) placeholders; imm9 is back-filled after the prologue is
+	 * final, computed from the actual layout so adding/removing prologue
+	 * instructions cannot silently desynchronize the offsets */
+	size_t idx_bc = n;
+	instrs[n++] = 0x58000000u; /* ldr x1, [pc, #imm9*4] */
+	size_t idx_helper = n;
+	instrs[n++] = 0x58000000u; /* ldr x16, [pc, #imm9*4] */
+	instrs[n++] = 0xd63f0200;  /* blr x16 */
 
 	/* Epilogue */
 	instrs[n++] = 0xa8c27bfd; /* ldp x29, x30, [sp], #32 */
 	instrs[n++] = 0xd65f03c0; /* ret */
+
+	/*
+	 * The literal pool sits at byte offset 4*n (immediately after the
+	 * prologue). AArch64 LDR (literal) resolves PC as the address of the
+	 * LDR instruction itself, so imm9 = (pool - ldr_pc)/4 = n - idx.
+	 */
+	uint32_t imm9_bc = (uint32_t)(n - idx_bc);
+	uint32_t imm9_helper = (uint32_t)(n - idx_helper);
+	if (imm9_bc > 4095u || imm9_helper > 4095u) {
+		jit_free_pages(page, actual_size);
+		free(jit);
+		return NULL;
+	}
+	instrs[idx_bc] = 0x58000000u | (imm9_bc << 10) | 0x01u;		/* rt = x1 */
+	instrs[idx_helper] = 0x58000000u | (imm9_helper << 10) | 0x10u; /* rt = x16 */
 
 	/* Literal pool */
 	memcpy(code, instrs, n * sizeof(uint32_t));
