@@ -146,6 +146,10 @@ cdsl_vm_execute_ruleset(cdsl_vm_t* vm, cdsl_ruleset_t* set, cdsl_context_t* ctx)
 		vm->pred_cache = cdsl_pred_cache_create(256);
 		temp_cache = 1;
 	}
+	int bound_ctx = 0;
+	if (ctx && vm->pred_cache) {
+		bound_ctx = cdsl_pred_cache_bind_context(vm->pred_cache, ctx);
+	}
 
 	int idx = 0;
 	for (cdsl_ruleset_entry_t* e = set->entries; e; e = e->next, idx++) {
@@ -173,6 +177,9 @@ cdsl_vm_execute_ruleset(cdsl_vm_t* vm, cdsl_ruleset_t* set, cdsl_context_t* ctx)
 		}
 	}
 
+	if (bound_ctx && vm->pred_cache && ctx) {
+		cdsl_pred_cache_unbind_context(vm->pred_cache, ctx);
+	}
 	if (temp_cache && vm->pred_cache) {
 		cdsl_pred_cache_free(vm->pred_cache);
 		vm->pred_cache = NULL;
@@ -234,7 +241,10 @@ parallel_worker(void* arg)
 {
 	parallel_worker_arg_t* a = (parallel_worker_arg_t*)arg;
 
-	/* Create worker VM with snapshot callbacks/functions */
+	/* Create worker VM with snapshot callbacks/functions.
+	 * Note: cdsl_pred_cache_t and cdsl_context_t change hooks are thread-confined.
+	 * Worker VMs deliberately operate with wvm->pred_cache = NULL to ensure
+	 * thread isolation and prevent cross-thread cache races. */
 	cdsl_vm_t* wvm = calloc(1, sizeof(*wvm));
 	if (!wvm) {
 		return NULL;

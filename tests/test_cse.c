@@ -204,6 +204,62 @@ test_cse_context_invalidation(void)
 	TEST_END();
 }
 
+static cdsl_context_t* s_mutation_ctx = NULL;
+
+static void
+cb_mutate_ctx(const char* action_name, cdsl_arg_node_t* args, void* user_data)
+{
+	(void)action_name;
+	(void)args;
+	(void)user_data;
+	if (s_mutation_ctx) {
+		cdsl_context_set_int(s_mutation_ctx, "tier", 1);
+	}
+}
+
+static void
+test_cse_ruleset_auto_bind_invalidation(void)
+{
+	TEST_BEGIN("cse: ruleset sequential execution auto-binds context for safe invalidation");
+	cdsl_ruleset_t* rs = cdsl_ruleset_create();
+
+	/* Rule 1: when tier >= 3, execute mutate() which drops tier to 1 */
+	cdsl_rule_t* r1 = cdsl_parse_string("RULE r1 { WHEN tier >= 3 THEN mutate() }", NULL);
+	cdsl_ruleset_add(rs, r1, 1);
+
+	/* Rule 2: same expression "tier >= 3". If cache were stale, this would pass. With invalidation, it fails. */
+	cdsl_rule_t* r2 = cdsl_parse_string("RULE r2 { WHEN tier >= 3 THEN grant() }", NULL);
+	cdsl_ruleset_add(rs, r2, 2);
+
+	cdsl_vm_t* vm = cdsl_vm_create(NULL);
+	cdsl_vm_register_action(vm, "mutate", cb_mutate_ctx);
+
+	cdsl_pred_cache_t* cache = cdsl_pred_cache_create(16);
+	cdsl_vm_set_pred_cache(vm, cache);
+
+	cdsl_context_t* ctx = cdsl_context_create(NULL);
+	cdsl_context_set_int(ctx, "tier", 4);
+	s_mutation_ctx = ctx;
+
+	cdsl_ruleset_report_t* rep = cdsl_vm_execute_ruleset(vm, rs, ctx);
+	TEST_ASSERT_NOT_NULL(rep, "batch report");
+	/* Rule 1 triggered and executed mutate() */
+	TEST_ASSERT_INT(
+	    rep->rule_reports[0]->status, CDSL_STATUS_FAILED, "rule 1 triggered violation action");
+	/* Rule 2 condition re-evaluated as false because cache was invalidated when mutate() updated tier to 1 */
+	TEST_ASSERT_INT(rep->rule_reports[1]->status,
+			CDSL_STATUS_PASSED,
+			"rule 2 condition re-evaluated to false after context mutation");
+
+	s_mutation_ctx = NULL;
+	cdsl_ruleset_report_free(rep);
+	cdsl_context_free(ctx);
+	cdsl_pred_cache_free(cache);
+	cdsl_vm_free(vm);
+	cdsl_ruleset_free(rs);
+	TEST_END();
+}
+
 int
 main(void)
 {
@@ -211,6 +267,7 @@ main(void)
 	test_cse_ast_hash_and_equal();
 	test_cse_cache_lifecycle();
 	test_cse_context_invalidation();
+	test_cse_ruleset_auto_bind_invalidation();
 	test_cse_vm_shared_eval();
 	test_cse_ruleset_batch();
 	TEST_SUMMARY();

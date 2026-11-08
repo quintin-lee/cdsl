@@ -112,11 +112,26 @@ int cdsl_pred_cache_put(cdsl_pred_cache_t* cache,
 /**
  * @brief Bind a predicate cache to a context for automatic mutation invalidation.
  *
- * Automatically clears the cache whenever the context variables are modified.
+ * Attaches an invalidation hook to the given evaluation context. Whenever any
+ * variable within @p ctx is modified (via cdsl_context_set_* or JSON loading),
+ * the predicate cache is automatically flushed (cleared) to prevent stale
+ * subexpression evaluations across sequential rule evaluations.
  *
- * @param cache Predicate cache
+ * @note Invalidation & Thread-Safety Semantics:
+ * - Mutation Invalidation: Any variable update in @p ctx triggers an immediate, full
+ *   invalidation of all cached predicate expressions in @p cache.
+ * - Thread Isolation: Both cdsl_pred_cache_t and cdsl_context_t hook callbacks are
+ *   thread-confined (non-thread-safe without external synchronization).
+ * - Parallel Ruleset Execution: In parallel ruleset execution routines
+ *   (e.g., cdsl_vm_execute_ruleset_parallel), parent predicate caches are intentionally
+ *   bypassed per-worker VM to avoid cross-thread cache races and lock contention.
+ *   Predicate caching with context binding is fully active in sequential execution
+ *   (cdsl_vm_execute_ruleset), where @p ctx is automatically bound to the execution
+ *   cache for the duration of the ruleset.
+ *
+ * @param cache Predicate cache instance
  * @param ctx Context to listen to
- * @return 1 on success, 0 on failure
+ * @return 1 on success, 0 on failure (e.g., NULL pointers or out of memory)
  */
 int cdsl_pred_cache_bind_context(cdsl_pred_cache_t* cache, cdsl_context_t* ctx);
 
