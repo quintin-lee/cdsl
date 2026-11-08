@@ -184,6 +184,11 @@ typedef struct bc_metric_ctx {
 } bc_metric_ctx_t;
 
 /**
+ * @brief Helper to convert a cdsl_value_t to a temporary AST expr node for function/action dispatch.
+ */
+cdsl_expr_node_t* cdsl_val_to_temp_expr_internal(const cdsl_value_t* av);
+
+/**
  * @brief Core instruction execution loop shared by both executors.
  *
  * Runs the bytecode instruction loop (stack machine) with sandbox
@@ -236,6 +241,21 @@ void cdsl_vm_set_last_error(cdsl_vm_t* vm,
 			    int column,
 			    const char* message,
 			    const char* hint);
+
+/**
+ * @brief Stack underflow error reporting helper.
+ */
+static inline cdsl_value_t
+cdsl_bc_stack_underflow(cdsl_vm_t* vm)
+{
+	if (vm && !CDSL_ATOMIC_LOAD(&vm->error_state)) {
+		cdsl_vm_set_last_error(
+		    vm, CDSL_ERR_RUNTIME, 0, 0, "Bytecode stack underflow", NULL);
+		CDSL_ATOMIC_STORE(&vm->error_state, 1);
+	}
+	cdsl_value_t void_val = {.type = CDSL_TYPE_VOID};
+	return void_val;
+}
 
 /**
  * @brief Initialize a parallel worker VM with parent configuration and snapshots.

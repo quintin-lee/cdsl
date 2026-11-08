@@ -49,6 +49,8 @@ typedef struct cdsl_pred_cache_entry {
 	struct cdsl_pred_cache_entry* next;
 } cdsl_pred_cache_entry_t;
 
+struct cdsl_pred_bound_ctx;
+
 /**
  * @brief Predicate cache structure.
  */
@@ -58,6 +60,7 @@ typedef struct cdsl_pred_cache {
 	size_t count;
 	int64_t hits;
 	int64_t misses;
+	struct cdsl_pred_bound_ctx* bound_contexts;
 } cdsl_pred_cache_t;
 
 /**
@@ -105,6 +108,24 @@ cdsl_pred_cache_get(cdsl_pred_cache_t* cache, const cdsl_expr_node_t* expr, cdsl
 int cdsl_pred_cache_put(cdsl_pred_cache_t* cache,
 			const cdsl_expr_node_t* expr,
 			const cdsl_value_t* val);
+
+/**
+ * @brief Bind a predicate cache to a context for automatic mutation invalidation.
+ *
+ * Automatically clears the cache whenever the context variables are modified.
+ *
+ * @param cache Predicate cache
+ * @param ctx Context to listen to
+ * @return 1 on success, 0 on failure
+ */
+int cdsl_pred_cache_bind_context(cdsl_pred_cache_t* cache, cdsl_context_t* ctx);
+
+/**
+ * @brief Unbind a predicate cache from a context.
+ * @param cache Predicate cache
+ * @param ctx Context to unbind
+ */
+void cdsl_pred_cache_unbind_context(cdsl_pred_cache_t* cache, cdsl_context_t* ctx);
 
 #ifdef __cplusplus
 }

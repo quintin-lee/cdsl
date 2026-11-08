@@ -66,6 +66,15 @@ void cdsl_server_free(cdsl_server_t* srv);
  */
 int cdsl_server_get_port(const cdsl_server_t* srv);
 
+struct cdsl_manager;
+
+/**
+ * @brief Retrieve internal rule manager instance.
+ * @param srv Server instance
+ * @return Internal manager pointer, or NULL
+ */
+struct cdsl_manager* cdsl_server_get_manager(cdsl_server_t* srv);
+
 /**
  * @brief Directly dispatch an HTTP request string and return the HTTP response string.
  * @param srv Server instance

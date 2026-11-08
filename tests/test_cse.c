@@ -158,12 +158,59 @@ test_cse_ruleset_batch(void)
 	TEST_END();
 }
 
+static void
+test_cse_context_invalidation(void)
+{
+	TEST_BEGIN("cse: context mutation hook invalidates predicate cache");
+	cdsl_pred_cache_t* cache = cdsl_pred_cache_create(16);
+	TEST_ASSERT_NOT_NULL(cache, "create cache");
+
+	cdsl_schema_t* schema = cdsl_schema_create();
+	cdsl_schema_register_var(schema, "score", CDSL_TYPE_INT);
+	cdsl_context_t* ctx = cdsl_context_create(schema);
+	cdsl_context_set_int(ctx, "score", 50);
+
+	TEST_ASSERT_INT(cdsl_pred_cache_bind_context(cache, ctx), 1, "bind context");
+
+	cdsl_rule_t* r = cdsl_parse_string("RULE r { WHEN score >= 60 THEN pass() }", NULL);
+	TEST_ASSERT_NOT_NULL(r, "parse rule");
+
+	cdsl_value_t v = {.type = CDSL_TYPE_BOOL, .data.bool_val = 1};
+	TEST_ASSERT_INT(cdsl_pred_cache_put(cache, r->when_expr, &v), 1, "cache put");
+	TEST_ASSERT_INT((int)cache->count, 1, "cache count is 1");
+
+	/* Modifying context variable must automatically invalidate cache */
+	cdsl_context_set_int(ctx, "score", 95);
+	TEST_ASSERT_INT((int)cache->count, 0, "cache count is 0 after context update");
+
+	/* Put again, then remove variable */
+	TEST_ASSERT_INT(cdsl_pred_cache_put(cache, r->when_expr, &v), 1, "cache put again");
+	TEST_ASSERT_INT((int)cache->count, 1, "cache count is 1");
+	cdsl_context_remove(ctx, "score");
+	TEST_ASSERT_INT((int)cache->count, 0, "cache count is 0 after context remove");
+
+	/* Unbind context; subsequent mutations should not clear cache */
+	cdsl_pred_cache_unbind_context(cache, ctx);
+	TEST_ASSERT_INT(cdsl_pred_cache_put(cache, r->when_expr, &v), 1, "cache put while unbound");
+	TEST_ASSERT_INT((int)cache->count, 1, "cache count is 1");
+	cdsl_context_set_int(ctx, "score", 88);
+	TEST_ASSERT_INT((int)cache->count, 1, "cache count remains 1 while unbound");
+
+	cdsl_pred_cache_bind_context(cache, ctx);
+	cdsl_free_rule(r);
+	cdsl_pred_cache_free(cache);
+	cdsl_context_free(ctx);
+	cdsl_schema_free(schema);
+	TEST_END();
+}
+
 int
 main(void)
 {
 	printf("Running Common Subexpression Elimination & Predicate Cache tests...\n");
 	test_cse_ast_hash_and_equal();
 	test_cse_cache_lifecycle();
+	test_cse_context_invalidation();
 	test_cse_vm_shared_eval();
 	test_cse_ruleset_batch();
 	TEST_SUMMARY();

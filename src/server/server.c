@@ -26,10 +26,52 @@ typedef int cdsl_socket_t;
 
 #include "cdsl/server.h"
 #include "cdsl/cdsl.h"
+#include "cdsl/canary.h"
+#include "cdsl/manager.h"
+#include "cdsl/util/json.h"
 #include "cdsl/util/threads.h"
+#include <ctype.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+
+static inline int
+cdsl_http_strncasecmp(const char* s1, const char* s2, size_t n)
+{
+	for (size_t i = 0; i < n; i++) {
+		unsigned char c1 = (unsigned char)s1[i];
+		unsigned char c2 = (unsigned char)s2[i];
+		if (tolower(c1) != tolower(c2)) {
+			return tolower(c1) - tolower(c2);
+		}
+		if (c1 == '\0') {
+			break;
+		}
+	}
+	return 0;
+}
+
+static long
+http_get_content_length(const char* buf, size_t len)
+{
+	const char* p = buf;
+	const char* end = buf + len;
+	while (p < end) {
+		if (cdsl_http_strncasecmp(p, "Content-Length:", 15) == 0) {
+			p += 15;
+			while (p < end && (*p == ' ' || *p == '\t')) {
+				p++;
+			}
+			return atol(p);
+		}
+		const char* next = memchr(p, '\n', (size_t)(end - p));
+		if (!next) {
+			break;
+		}
+		p = next + 1;
+	}
+	return -1;
+}
 
 typedef struct cdsl_server_metrics {
 	uint64_t requests_total;
@@ -44,6 +86,7 @@ struct cdsl_server {
 	cdsl_thread_t worker_thread;
 	cdsl_mutex_t lock;
 	cdsl_server_metrics_t metrics;
+	cdsl_manager_t* mgr;
 };
 
 static bool
@@ -95,6 +138,8 @@ cdsl_server_create(const cdsl_server_config_t* config)
 	(void)WSAStartup(MAKEWORD(2, 2), &wsa);
 #endif
 
+	srv->mgr = cdsl_manager_create(NULL);
+
 	return srv;
 }
 
@@ -107,6 +152,10 @@ cdsl_server_free(cdsl_server_t* srv)
 	if (server_is_running(srv)) {
 		cdsl_server_stop(srv);
 	}
+	if (srv->mgr) {
+		cdsl_manager_free(srv->mgr);
+		srv->mgr = NULL;
+	}
 	CDSL_MUTEX_DESTROY(&srv->lock);
 	free(srv);
 }
@@ -118,6 +167,15 @@ cdsl_server_get_port(const cdsl_server_t* srv)
 		return 0;
 	}
 	return srv->actual_port;
+}
+
+cdsl_manager_t*
+cdsl_server_get_manager(cdsl_server_t* srv)
+{
+	if (!srv) {
+		return NULL;
+	}
+	return srv->mgr;
 }
 
 char*
@@ -208,14 +266,83 @@ cdsl_server_handle_request(cdsl_server_t* srv, const char* http_request)
 		}
 
 		cdsl_context_t* ctx = cdsl_context_create(NULL);
-		if (strlen(body_start) > 0) {
+		cdsl_json_value_t* json_root = cdsl_json_parse(body_start);
+		const char* target_type = NULL;
+		const char* target_dsl = NULL;
+
+		if (json_root && json_root->type == CDSL_JSON_OBJECT) {
+			/* Check for "type" field */
+			cdsl_json_value_t* v_type = cdsl_json_get_object(json_root, "type");
+			if (v_type && v_type->type == CDSL_JSON_STRING) {
+				target_type = v_type->value.string_val;
+			}
+
+			/* Check for rule / source / dsl / dtable / scorecard / pipeline fields */
+			cdsl_json_value_t* v_dsl = cdsl_json_get_object(json_root, "rule");
+			if (!v_dsl) {
+				v_dsl = cdsl_json_get_object(json_root, "dsl");
+			}
+			if (!v_dsl) {
+				v_dsl = cdsl_json_get_object(json_root, "source");
+			}
+			if (!v_dsl) {
+				v_dsl = cdsl_json_get_object(json_root, "content");
+			}
+			if (!v_dsl) {
+				v_dsl = cdsl_json_get_object(json_root, "dtable");
+			}
+			if (!v_dsl) {
+				v_dsl = cdsl_json_get_object(json_root, "scorecard");
+			}
+			if (!v_dsl) {
+				v_dsl = cdsl_json_get_object(json_root, "pipeline");
+			}
+			if (v_dsl && v_dsl->type == CDSL_JSON_STRING) {
+				target_dsl = v_dsl->value.string_val;
+			}
+
+			/* Populate context from "context" or "data" object, or flat root */
+			cdsl_json_value_t* v_ctx = cdsl_json_get_object(json_root, "context");
+			if (!v_ctx) {
+				v_ctx = cdsl_json_get_object(json_root, "data");
+			}
+			if (v_ctx && v_ctx->type == CDSL_JSON_OBJECT) {
+				for (cdsl_json_value_t* it = v_ctx->value.object.items; it;
+				     it = it->next) {
+					if (it->type == CDSL_JSON_NUMBER) {
+						if ((double)(int64_t)it->value.number_val ==
+						    it->value.number_val) {
+							cdsl_context_set_long(
+							    ctx,
+							    it->key,
+							    (int64_t)it->value.number_val);
+						} else {
+							cdsl_context_set_float(
+							    ctx, it->key, it->value.number_val);
+						}
+					} else if (it->type == CDSL_JSON_BOOL) {
+						cdsl_context_set_bool(
+						    ctx, it->key, it->value.bool_val);
+					} else if (it->type == CDSL_JSON_STRING) {
+						cdsl_context_set_string(
+						    ctx, it->key, it->value.string_val);
+					}
+				}
+			} else {
+				cdsl_context_load_json(ctx, body_start);
+			}
+		} else if (strlen(body_start) > 0) {
 			cdsl_context_load_json(ctx, body_start);
 		}
 
-		/* Determine evaluation target */
+		const char* effective_dsl = target_dsl ? target_dsl : body_start;
+
+		/* Determine evaluation target via JSON field "type", with fallback to DSL prefix */
 		char json_result[1024];
-		if (strstr(body_start, "DECISION_TABLE") != NULL) {
-			cdsl_dtable_t* dt = cdsl_dtable_parse_string(body_start, NULL);
+		if ((target_type && (strcmp(target_type, "dtable") == 0 ||
+				     strcmp(target_type, "decision_table") == 0)) ||
+		    (!target_type && strstr(effective_dsl, "DECISION_TABLE") != NULL)) {
+			cdsl_dtable_t* dt = cdsl_dtable_parse_string(effective_dsl, NULL);
 			if (dt) {
 				cdsl_dtable_report_t* rpt = cdsl_dtable_eval(dt, ctx);
 				if (rpt) {
@@ -238,8 +365,9 @@ cdsl_server_handle_request(cdsl_server_t* srv, const char* http_request)
 					 sizeof(json_result),
 					 "{\"error\":\"failed to parse decision table\"}\n");
 			}
-		} else if (strstr(body_start, "SCORECARD") != NULL) {
-			cdsl_scorecard_t* sc = cdsl_scorecard_parse_string(body_start, NULL);
+		} else if ((target_type && strcmp(target_type, "scorecard") == 0) ||
+			   (!target_type && strstr(effective_dsl, "SCORECARD") != NULL)) {
+			cdsl_scorecard_t* sc = cdsl_scorecard_parse_string(effective_dsl, NULL);
 			if (sc) {
 				cdsl_scorecard_report_t* rpt = cdsl_scorecard_eval(sc, ctx);
 				if (rpt) {
@@ -262,8 +390,9 @@ cdsl_server_handle_request(cdsl_server_t* srv, const char* http_request)
 					 sizeof(json_result),
 					 "{\"error\":\"failed to parse scorecard\"}\n");
 			}
-		} else if (strstr(body_start, "PIPELINE") != NULL) {
-			cdsl_pipeline_t* p = cdsl_pipeline_parse_string(body_start, NULL);
+		} else if ((target_type && strcmp(target_type, "pipeline") == 0) ||
+			   (!target_type && strstr(effective_dsl, "PIPELINE") != NULL)) {
+			cdsl_pipeline_t* p = cdsl_pipeline_parse_string(effective_dsl, NULL);
 			if (p) {
 				cdsl_vm_t* local_vm = cdsl_vm_create(NULL);
 				cdsl_pipeline_report_t* rpt =
@@ -291,8 +420,11 @@ cdsl_server_handle_request(cdsl_server_t* srv, const char* http_request)
 			}
 		} else {
 			/* Standard Rule */
-			const char* rule_dsl = strstr(body_start, "RULE");
+			const char* rule_dsl = strstr(effective_dsl, "RULE");
 			if (!rule_dsl) {
+				rule_dsl = effective_dsl;
+			}
+			if (!rule_dsl || strlen(rule_dsl) == 0) {
 				rule_dsl = "RULE default_eval { WHEN true THEN approve() }";
 			}
 			cdsl_rule_t* rule = cdsl_parse_string(rule_dsl, NULL);
@@ -325,6 +457,9 @@ cdsl_server_handle_request(cdsl_server_t* srv, const char* http_request)
 			}
 		}
 
+		if (json_root) {
+			cdsl_json_free(json_root);
+		}
 		cdsl_context_free(ctx);
 
 		size_t len = strlen(json_result);
@@ -343,14 +478,79 @@ cdsl_server_handle_request(cdsl_server_t* srv, const char* http_request)
 
 	/* Rule deploy endpoint */
 	if (strcmp(method, "POST") == 0 && strcmp(path, "/v1/rules/deploy") == 0) {
-		const char* body = "{\"status\":\"deployed\",\"code\":0}\n";
-		char resp[256];
+		const char* body_start = strstr(http_request, "\r\n\r\n");
+		if (body_start) {
+			body_start += 4;
+		} else {
+			body_start = "";
+		}
+
+		const char* dsl_text = NULL;
+		const char* tag = NULL;
+		cdsl_json_value_t* json_root = cdsl_json_parse(body_start);
+		if (json_root && json_root->type == CDSL_JSON_OBJECT) {
+			cdsl_json_value_t* v_rule = cdsl_json_get_object(json_root, "rule");
+			if (!v_rule) {
+				v_rule = cdsl_json_get_object(json_root, "dsl");
+			}
+			if (!v_rule) {
+				v_rule = cdsl_json_get_object(json_root, "source");
+			}
+			if (v_rule && v_rule->type == CDSL_JSON_STRING) {
+				dsl_text = v_rule->value.string_val;
+			}
+			cdsl_json_value_t* v_tag = cdsl_json_get_object(json_root, "tag");
+			if (v_tag && v_tag->type == CDSL_JSON_STRING) {
+				tag = v_tag->value.string_val;
+			}
+		}
+
+		if (!dsl_text && strstr(body_start, "RULE") != NULL) {
+			dsl_text = body_start;
+		}
+
+		if (!dsl_text || strlen(dsl_text) == 0) {
+			dsl_text = "RULE canary_default { WHEN true THEN approve() }";
+		}
+
+		CDSL_MUTEX_LOCK(&srv->lock);
+		cdsl_canary_report_t rpt = {0};
+		uint64_t version = 0;
+		int ok = 0;
+		if (srv->mgr) {
+			ok = cdsl_manager_deploy_canary(
+			    srv->mgr, dsl_text, tag, NULL, 0, &rpt, &version);
+		}
+		CDSL_MUTEX_UNLOCK(&srv->lock);
+
+		if (json_root) {
+			cdsl_json_free(json_root);
+		}
+
+		char resp_body[512];
+		if (ok) {
+			snprintf(resp_body,
+				 sizeof(resp_body),
+				 "{\"status\":\"deployed\",\"version\":%llu,\"code\":0}\n",
+				 (unsigned long long)version);
+		} else {
+			snprintf(resp_body,
+				 sizeof(resp_body),
+				 "{\"status\":\"rejected\",\"code\":1,\"error\":\"%s\"}\n",
+				 (rpt.message && strlen(rpt.message) > 0)
+				     ? rpt.message
+				     : "canary deployment failed");
+		}
+		cdsl_canary_report_free(&rpt);
+
+		char resp[768];
 		snprintf(resp,
 			 sizeof(resp),
-			 "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: "
+			 "HTTP/1.1 %s\r\nContent-Type: application/json\r\nContent-Length: "
 			 "%zu\r\nConnection: close\r\n\r\n%s",
-			 strlen(body),
-			 body);
+			 ok ? "200 OK" : "400 Bad Request",
+			 strlen(resp_body),
+			 resp_body);
 		return cdsl_strdup(resp);
 	}
 
@@ -386,16 +586,64 @@ server_worker_loop(void* arg)
 			continue;
 		}
 
-		char req_buf[8192] = {0};
-		int n = recv(client_fd, req_buf, (int)sizeof(req_buf) - 1, 0);
-		if (n > 0) {
-			req_buf[n] = '\0';
+		size_t cap = 4096;
+		size_t len = 0;
+		char* req_buf = malloc(cap);
+		if (!req_buf) {
+			CDSL_CLOSE_SOCKET(client_fd);
+			continue;
+		}
+
+		long content_len = -1;
+		const char* header_end = NULL;
+
+		while (server_is_running(srv)) {
+			if (len + 1024 >= cap) {
+				if (cap >= 10 * 1024 * 1024) { /* 10MB safety threshold */
+					break;
+				}
+				cap *= 2;
+				char* new_buf = realloc(req_buf, cap);
+				if (!new_buf) {
+					break;
+				}
+				req_buf = new_buf;
+			}
+			int n = recv(client_fd, req_buf + len, (int)(cap - 1 - len), 0);
+			if (n <= 0) {
+				break;
+			}
+			len += (size_t)n;
+			req_buf[len] = '\0';
+
+			if (!header_end) {
+				header_end = strstr(req_buf, "\r\n\r\n");
+				if (!header_end) {
+					header_end = strstr(req_buf, "\n\n");
+				}
+				if (header_end) {
+					content_len = http_get_content_length(
+					    req_buf, (size_t)(header_end - req_buf));
+				}
+			}
+
+			if (header_end) {
+				size_t h_len = (size_t)(header_end - req_buf) +
+					       (header_end[0] == '\r' ? 4 : 2);
+				if (content_len <= 0 || len >= h_len + (size_t)content_len) {
+					break;
+				}
+			}
+		}
+
+		if (len > 0) {
 			char* resp = cdsl_server_handle_request(srv, req_buf);
 			if (resp) {
 				(void)send(client_fd, resp, (int)strlen(resp), 0);
 				free(resp);
 			}
 		}
+		free(req_buf);
 		CDSL_CLOSE_SOCKET(client_fd);
 	}
 

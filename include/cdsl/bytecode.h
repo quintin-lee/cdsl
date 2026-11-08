@@ -90,6 +90,8 @@ typedef struct bc_inst {
 	} operand;
 } bc_inst_t;
 
+struct cdsl_jit_code;
+
 /**
  * @brief Compiled bytecode chunk for a single expression or rule.
  */
@@ -108,6 +110,8 @@ typedef struct cdsl_bytecode {
 	int is_metric_rule;
 	bc_metric_info_t* metric_infos;
 	int metric_info_count;
+	struct cdsl_jit_code*
+	    jit_code; /**< Cached native JIT trampoline instance (per-compiled-rule) */
 } cdsl_bytecode_t;
 
 /**

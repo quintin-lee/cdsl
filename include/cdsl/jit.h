@@ -1,10 +1,14 @@
 /**
  * @file include/cdsl/jit.h
- * @brief Machine code JIT compiler for CDSL bytecode.
+ * @brief Native machine code JIT trampoline compiler and dispatch layer for CDSL bytecode.
  *
- * Compiles CDSL linear bytecode into native machine code (x86-64 and AArch64)
- * with W^X executable memory protection and automatic fallback to threaded
- * execution.
+ * Implements an architecture-specific native trampoline layer for x86-64 (System V AMD64
+ * and Windows x64) and AArch64 (Linux and macOS Apple Silicon ARM64) with portable W^X
+ * executable memory protection.
+ *
+ * Trampoline stubs translate native function calls directly into the VM execution pipeline,
+ * and are cached per compiled bytecode rule (`bc->jit_code`) to eliminate repeated compilation
+ * overhead while offering seamless native C function pointer interop.
  */
 
 #ifndef CDSL_JIT_H

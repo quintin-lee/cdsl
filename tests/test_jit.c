@@ -171,12 +171,55 @@ test_jit_vm_integration(void)
 	cdsl_schema_free(schema);
 }
 
+static void
+test_jit_bytecode_caching(void)
+{
+	printf("Running test_jit_bytecode_caching...\n");
+	cdsl_schema_t* schema = cdsl_schema_create();
+	cdsl_schema_register_var(schema, "val", CDSL_TYPE_INT);
+	cdsl_schema_register_action(schema, "act", CDSL_TYPE_VOID, 0);
+
+	cdsl_vm_t* vm = cdsl_vm_create(schema);
+	cdsl_vm_set_jit_enabled(vm, 1);
+
+	const char* dsl = "RULE r_cache { WHEN val > 42 THEN act() }";
+	cdsl_rule_t* rule = cdsl_parse_string(dsl, NULL);
+	assert(rule != NULL);
+
+	cdsl_bytecode_t bc = {0};
+	assert(cdsl_bytecode_compile(rule, schema, &bc) == 1);
+	assert(bc.jit_code == NULL);
+
+	cdsl_context_t* ctx = cdsl_context_create(schema);
+	cdsl_context_set_int(ctx, "val", 50);
+
+	/* First execution populates bc.jit_code */
+	cdsl_value_t res1 = cdsl_bytecode_execute(vm, &bc, ctx);
+	assert(res1.type == CDSL_TYPE_BOOL && res1.data.bool_val == 1);
+	assert(bc.jit_code != NULL);
+	cdsl_jit_code_t* cached_ptr = bc.jit_code;
+
+	/* Second execution reuses existing cached trampoline */
+	cdsl_context_set_int(ctx, "val", 10);
+	cdsl_value_t res2 = cdsl_bytecode_execute(vm, &bc, ctx);
+	assert(res2.type == CDSL_TYPE_BOOL && res2.data.bool_val == 0);
+	assert(bc.jit_code == cached_ptr);
+
+	cdsl_context_free(ctx);
+	cdsl_bytecode_free(&bc);
+	assert(bc.jit_code == NULL);
+	cdsl_free_rule(rule);
+	cdsl_vm_free(vm);
+	cdsl_schema_free(schema);
+}
+
 int
 main(void)
 {
 	test_jit_basic_execution();
 	test_penta_engine_equivalence();
 	test_jit_vm_integration();
+	test_jit_bytecode_caching();
 	printf("All JIT tests passed successfully!\n");
 	return 0;
 }

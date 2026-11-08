@@ -129,10 +129,12 @@ evaluate_condition(cdsl_expr_node_t* expr,
 	if (bc && bc->code) {
 		(void)debug;
 		if (vm && vm->jit_enabled) {
-			cdsl_jit_code_t* jit = cdsl_jit_compile(vm, bc);
-			if (jit) {
-				cdsl_jit_execute(jit, vm, ctx, &res);
-				cdsl_jit_code_free(jit);
+			cdsl_bytecode_t* mutable_bc = (cdsl_bytecode_t*)bc;
+			if (!mutable_bc->jit_code) {
+				mutable_bc->jit_code = cdsl_jit_compile(vm, bc);
+			}
+			if (mutable_bc->jit_code) {
+				cdsl_jit_execute(mutable_bc->jit_code, vm, ctx, &res);
 			} else {
 				res = cdsl_bytecode_execute(vm, bc, ctx);
 			}

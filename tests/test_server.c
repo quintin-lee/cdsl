@@ -98,6 +98,47 @@ test_server_direct_dispatch(void)
 	assert(strstr(resp8, "\"status\":\"deployed\"") != NULL);
 	free(resp8);
 
+	/* 8b. POST /v1/rules/deploy with valid rule and tag */
+	const char* deploy_req =
+	    "POST /v1/rules/deploy HTTP/1.1\r\n"
+	    "Content-Type: application/json\r\n\r\n"
+	    "{\"rule\":\"RULE can1 { WHEN true THEN approve() }\",\"tag\":\"v1.0\"}";
+	char* resp8b = cdsl_server_handle_request(srv, deploy_req);
+	assert(resp8b != NULL);
+	assert(strstr(resp8b, "200 OK") != NULL);
+	assert(strstr(resp8b, "\"status\":\"deployed\"") != NULL);
+	assert(strstr(resp8b, "\"version\":") != NULL);
+	free(resp8b);
+
+	/* 8c. POST /v1/rules/deploy with invalid syntax */
+	const char* bad_deploy = "POST /v1/rules/deploy HTTP/1.1\r\n\r\n"
+				 "{\"rule\":\"INVALID SYNTAX !!!\"}";
+	char* resp8c = cdsl_server_handle_request(srv, bad_deploy);
+	assert(resp8c != NULL);
+	assert(strstr(resp8c, "400 Bad Request") != NULL);
+	assert(strstr(resp8c, "\"status\":\"rejected\"") != NULL);
+	free(resp8c);
+
+	/* 8d. JSON field-based routing for /v1/evaluate */
+	const char* json_eval_rule =
+	    "POST /v1/evaluate HTTP/1.1\r\n\r\n"
+	    "{\"type\":\"rule\",\"rule\":\"RULE r_json { WHEN score > 80 THEN pass() "
+	    "}\",\"context\":{\"score\":90}}";
+	char* resp8d = cdsl_server_handle_request(srv, json_eval_rule);
+	assert(resp8d != NULL);
+	assert(strstr(resp8d, "200 OK") != NULL);
+	free(resp8d);
+
+	const char* json_eval_dtable =
+	    "POST /v1/evaluate HTTP/1.1\r\n\r\n"
+	    "{\"type\":\"dtable\",\"dtable\":\"DECISION_TABLE dt_json\\nINPUTS (x: "
+	    "INT)\\nOUTPUTS (y: INT)\\nHIT_POLICY: FIRST\\nROW: _ -> 10\\nEND\\n\"}";
+	char* resp8e = cdsl_server_handle_request(srv, json_eval_dtable);
+	assert(resp8e != NULL);
+	assert(strstr(resp8e, "200 OK") != NULL);
+	assert(strstr(resp8e, "\"type\":\"dtable\"") != NULL);
+	free(resp8e);
+
 	/* 9. 404 */
 	char* resp9 = cdsl_server_handle_request(srv, "GET /unknown HTTP/1.1\r\n\r\n");
 	assert(resp9 != NULL);
@@ -144,6 +185,33 @@ test_server_socket_networking(void)
 	assert(strstr(buf, "\"status\":\"healthy\"") != NULL);
 
 	CDSL_CLOSE_SOCKET(sock);
+
+	/* Connect again and send POST with Content-Length split across two chunks */
+	cdsl_socket_t sock2 = socket(AF_INET, SOCK_STREAM, 0);
+	assert(sock2 != CDSL_INVALID_SOCKET);
+	assert(connect(sock2, (struct sockaddr*)&serv_addr, sizeof(serv_addr)) == 0);
+
+	const char* body =
+	    "{\"type\":\"rule\",\"rule\":\"RULE r_net { WHEN true THEN approve() }\"}";
+	char hdr[256];
+	snprintf(hdr,
+		 sizeof(hdr),
+		 "POST /v1/evaluate HTTP/1.1\r\nHost: localhost\r\nContent-Length: "
+		 "%zu\r\n\r\n",
+		 strlen(body));
+
+	/* Send header first */
+	assert(send(sock2, hdr, (int)strlen(hdr), 0) > 0);
+	/* Send body second */
+	assert(send(sock2, body, (int)strlen(body), 0) > 0);
+
+	memset(buf, 0, sizeof(buf));
+	n = recv(sock2, buf, sizeof(buf) - 1, 0);
+	assert(n > 0);
+	assert(strstr(buf, "200 OK") != NULL);
+	assert(strstr(buf, "\"status\":") != NULL);
+	assert(strstr(buf, "r_net") != NULL);
+	CDSL_CLOSE_SOCKET(sock2);
 
 	cdsl_server_stop(srv);
 	cdsl_server_free(srv);

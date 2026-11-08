@@ -226,6 +226,22 @@ cdsl_expr_equal(const cdsl_expr_node_t* a, const cdsl_expr_node_t* b)
 	return 0;
 }
 
+typedef struct cdsl_pred_bound_ctx {
+	cdsl_context_t* ctx;
+	struct cdsl_pred_bound_ctx* next;
+} cdsl_pred_bound_ctx_t;
+
+static void
+pred_cache_on_context_change(cdsl_context_t* ctx, const char* var_name, void* user_data)
+{
+	(void)ctx;
+	(void)var_name;
+	cdsl_pred_cache_t* cache = (cdsl_pred_cache_t*)user_data;
+	if (cache) {
+		cdsl_pred_cache_clear(cache);
+	}
+}
+
 cdsl_pred_cache_t*
 cdsl_pred_cache_create(size_t initial_buckets)
 {
@@ -269,6 +285,14 @@ cdsl_pred_cache_free(cdsl_pred_cache_t* cache)
 	if (!cache) {
 		return;
 	}
+	cdsl_pred_bound_ctx_t* b = cache->bound_contexts;
+	while (b) {
+		cdsl_pred_bound_ctx_t* next = b->next;
+		cdsl_context_remove_change_hook(b->ctx, pred_cache_on_context_change, cache);
+		free(b);
+		b = next;
+	}
+	cache->bound_contexts = NULL;
 	cdsl_pred_cache_clear(cache);
 	free(cache->buckets);
 	free(cache);
@@ -323,4 +347,50 @@ cdsl_pred_cache_put(cdsl_pred_cache_t* cache, const cdsl_expr_node_t* expr, cons
 	cache->buckets[bucket] = entry;
 	cache->count++;
 	return 1;
+}
+
+int
+cdsl_pred_cache_bind_context(cdsl_pred_cache_t* cache, cdsl_context_t* ctx)
+{
+	if (!cache || !ctx) {
+		return 0;
+	}
+	for (cdsl_pred_bound_ctx_t* b = cache->bound_contexts; b; b = b->next) {
+		if (b->ctx == ctx) {
+			return 1;
+		}
+	}
+	if (!cdsl_context_add_change_hook(ctx, pred_cache_on_context_change, cache)) {
+		return 0;
+	}
+	cdsl_pred_bound_ctx_t* node = calloc(1, sizeof(*node));
+	if (!node) {
+		cdsl_context_remove_change_hook(ctx, pred_cache_on_context_change, cache);
+		return 0;
+	}
+	node->ctx = ctx;
+	node->next = cache->bound_contexts;
+	cache->bound_contexts = node;
+	return 1;
+}
+
+void
+cdsl_pred_cache_unbind_context(cdsl_pred_cache_t* cache, cdsl_context_t* ctx)
+{
+	if (!cache || !ctx) {
+		return;
+	}
+	cdsl_pred_bound_ctx_t* prev = NULL;
+	for (cdsl_pred_bound_ctx_t* b = cache->bound_contexts; b; prev = b, b = b->next) {
+		if (b->ctx == ctx) {
+			if (prev) {
+				prev->next = b->next;
+			} else {
+				cache->bound_contexts = b->next;
+			}
+			free(b);
+			cdsl_context_remove_change_hook(ctx, pred_cache_on_context_change, cache);
+			return;
+		}
+	}
 }

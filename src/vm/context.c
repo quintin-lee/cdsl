@@ -53,6 +53,65 @@ cdsl_context_get_entry_internal(cdsl_context_t* ctx, const char* name)
 	return (cdsl_context_entry_t*)cdsl_hashmap_get(ctx->map, name);
 }
 
+typedef struct cdsl_context_hook_node {
+	cdsl_context_change_hook_fn hook;
+	void* user_data;
+	struct cdsl_context_hook_node* next;
+} cdsl_context_hook_node_t;
+
+int
+cdsl_context_add_change_hook(cdsl_context_t* ctx, cdsl_context_change_hook_fn hook, void* user_data)
+{
+	if (!ctx || !hook) {
+		return 0;
+	}
+	cdsl_context_hook_node_t* node = calloc(1, sizeof(*node));
+	if (!node) {
+		return 0;
+	}
+	node->hook = hook;
+	node->user_data = user_data;
+	node->next = ctx->hooks;
+	ctx->hooks = node;
+	return 1;
+}
+
+int
+cdsl_context_remove_change_hook(cdsl_context_t* ctx,
+				cdsl_context_change_hook_fn hook,
+				void* user_data)
+{
+	if (!ctx || !hook) {
+		return 0;
+	}
+	cdsl_context_hook_node_t* prev = NULL;
+	for (cdsl_context_hook_node_t* curr = ctx->hooks; curr; prev = curr, curr = curr->next) {
+		if (curr->hook == hook && curr->user_data == user_data) {
+			if (prev) {
+				prev->next = curr->next;
+			} else {
+				ctx->hooks = curr->next;
+			}
+			free(curr);
+			return 1;
+		}
+	}
+	return 0;
+}
+
+void
+cdsl_context_notify_change(cdsl_context_t* ctx, const char* var_name)
+{
+	if (!ctx) {
+		return;
+	}
+	for (cdsl_context_hook_node_t* curr = ctx->hooks; curr; curr = curr->next) {
+		if (curr->hook) {
+			curr->hook(ctx, var_name, curr->user_data);
+		}
+	}
+}
+
 cdsl_context_t*
 cdsl_context_create(const cdsl_schema_t* schema)
 {
@@ -107,6 +166,14 @@ cdsl_context_free(cdsl_context_t* ctx)
 		free(e);
 		e = next;
 	}
+	cdsl_context_notify_change(ctx, NULL);
+	cdsl_context_hook_node_t* h = ctx->hooks;
+	while (h) {
+		cdsl_context_hook_node_t* next = h->next;
+		free(h);
+		h = next;
+	}
+	ctx->hooks = NULL;
 	free(ctx);
 }
 
@@ -506,6 +573,7 @@ cdsl_context_set_map(cdsl_context_t* ctx, const char* name, cdsl_map_t* val)
 		ctx->entries = e;
 		cdsl_hashmap_put(ctx->map, name, e);
 	}
+	cdsl_context_notify_change(ctx, name);
 }
 
 cdsl_map_t*
@@ -537,6 +605,7 @@ cdsl_context_push_var(cdsl_context_t* ctx, const char* name, cdsl_value_t val)
 	e->next = ctx->entries;
 	ctx->entries = e;
 	cdsl_hashmap_put(ctx->map, name, e);
+	cdsl_context_notify_change(ctx, name);
 	return 1;
 }
 
@@ -575,6 +644,7 @@ cdsl_context_pop_var(cdsl_context_t* ctx, const char* name)
 		free(target->name);
 		cdsl_value_free(&target->value);
 		free(target);
+		cdsl_context_notify_change(ctx, name);
 	}
 }
 
@@ -609,6 +679,7 @@ cdsl_context_set_int(cdsl_context_t* ctx, const char* name, int val)
 		ctx->entries = ne;
 		cdsl_hashmap_put(ctx->map, name, ne);
 	}
+	cdsl_context_notify_change(ctx, name);
 }
 
 void
@@ -643,6 +714,7 @@ cdsl_context_set_float(cdsl_context_t* ctx, const char* name, double val)
 		ctx->entries = ne;
 		cdsl_hashmap_put(ctx->map, name, ne);
 	}
+	cdsl_context_notify_change(ctx, name);
 }
 
 void
@@ -677,6 +749,7 @@ cdsl_context_set_bool(cdsl_context_t* ctx, const char* name, int val)
 		ctx->entries = ne;
 		cdsl_hashmap_put(ctx->map, name, ne);
 	}
+	cdsl_context_notify_change(ctx, name);
 }
 
 void
@@ -719,6 +792,7 @@ cdsl_context_set_string(cdsl_context_t* ctx, const char* name, const char* val)
 		ctx->entries = ne;
 		cdsl_hashmap_put(ctx->map, name, ne);
 	}
+	cdsl_context_notify_change(ctx, name);
 }
 
 void
@@ -753,6 +827,7 @@ cdsl_context_set_date(cdsl_context_t* ctx, const char* name, time_t val)
 		ctx->entries = ne;
 		cdsl_hashmap_put(ctx->map, name, ne);
 	}
+	cdsl_context_notify_change(ctx, name);
 }
 
 void
@@ -787,6 +862,7 @@ cdsl_context_set_long(cdsl_context_t* ctx, const char* name, int64_t val)
 		ctx->entries = ne;
 		cdsl_hashmap_put(ctx->map, name, ne);
 	}
+	cdsl_context_notify_change(ctx, name);
 }
 
 int
@@ -908,6 +984,7 @@ cdsl_context_remove(cdsl_context_t* ctx, const char* name)
 			free(e->name);
 			cdsl_value_free(&e->value);
 			free(e);
+			cdsl_context_notify_change(ctx, name);
 			return 1;
 		}
 	}

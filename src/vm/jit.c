@@ -1,6 +1,9 @@
 /**
  * @file src/vm/jit.c
- * @brief Machine code JIT compiler for CDSL bytecode.
+ * @brief Architecture-specific native machine-code JIT trampoline compiler and dispatch layer.
+ *
+ * Implements native trampoline code generation for x86-64 and AArch64 with W^X executable
+ * memory management and per-compiled-rule caching to bridge native function calls to VM execution.
  */
 
 #include "cdsl/jit.h"

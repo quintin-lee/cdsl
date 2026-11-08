@@ -69,6 +69,8 @@ typedef struct cdsl_context_entry {
 	struct cdsl_context_entry* next;
 } cdsl_context_entry_t;
 
+struct cdsl_context_hook_node;
+
 /**
  * @brief Execution context holding all variable bindings.
  */
@@ -76,7 +78,47 @@ typedef struct cdsl_context {
 	const cdsl_schema_t* schema;
 	cdsl_context_entry_t* entries;
 	cdsl_hashmap_t* map;
+	struct cdsl_context_hook_node* hooks;
 } cdsl_context_t;
+
+/**
+ * @brief Callback invoked when context variables are modified or cleared.
+ * @param ctx Context that underwent modification
+ * @param var_name Variable name that was modified (or NULL if cleared/mass updated)
+ * @param user_data User pointer supplied during hook registration
+ */
+typedef void (*cdsl_context_change_hook_fn)(cdsl_context_t* ctx,
+					    const char* var_name,
+					    void* user_data);
+
+/**
+ * @brief Register a context change invalidation hook.
+ * @param ctx Target execution context
+ * @param hook Callback function
+ * @param user_data Custom pointer passed to callback
+ * @return 1 on success, 0 on failure
+ */
+int cdsl_context_add_change_hook(cdsl_context_t* ctx,
+				 cdsl_context_change_hook_fn hook,
+				 void* user_data);
+
+/**
+ * @brief Unregister a previously registered context change hook.
+ * @param ctx Target execution context
+ * @param hook Callback function
+ * @param user_data Custom pointer
+ * @return 1 if removed, 0 if not found
+ */
+int cdsl_context_remove_change_hook(cdsl_context_t* ctx,
+				    cdsl_context_change_hook_fn hook,
+				    void* user_data);
+
+/**
+ * @brief Broadcast change event to all registered invalidation hooks.
+ * @param ctx Mutated context
+ * @param var_name Changed variable name (or NULL)
+ */
+void cdsl_context_notify_change(cdsl_context_t* ctx, const char* var_name);
 
 /**
  * @brief Create a new execution context bound to a schema.
