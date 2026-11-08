@@ -44,6 +44,11 @@
 /* Cloud-Native Server & Micro-Daemon (v1.6.0) */
 #include "cdsl/server.h"
 
+/* Native JIT & Distributed Governance (v2.0.0) */
+#include "cdsl/jit.h"
+#include "cdsl/config_source.h"
+#include "cdsl/util/sha256.h"
+
 /* AI bridge */
 #include "cdsl/ai.h"
 

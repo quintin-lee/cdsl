@@ -22,6 +22,7 @@
 #include <string.h>
 #include <stdio.h>
 #include "cdsl/util/threads.h"
+#include "cdsl/util/sha256.h"
 
 /**
  * @brief Create an empty ruleset.
@@ -840,4 +841,115 @@ cdsl_ruleset_topo_sort(cdsl_ruleset_t* set)
 	free((void*)sorted_arr);
 	return 1;
 }
+
+static void
+sha256_expr_node(cdsl_sha256_ctx_t* ctx, const cdsl_expr_node_t* expr)
+{
+	if (!expr) {
+		uint8_t zero = 0;
+		cdsl_sha256_update(ctx, &zero, 1);
+		return;
+	}
+	cdsl_sha256_update(ctx, &expr->type, sizeof(expr->type));
+	switch (expr->type) {
+	case CDSL_EXPR_ID:
+		if (expr->data.id_val) {
+			cdsl_sha256_update(ctx, expr->data.id_val, strlen(expr->data.id_val));
+		}
+		break;
+	case CDSL_EXPR_INT:
+		cdsl_sha256_update(ctx, &expr->data.int_val, sizeof(expr->data.int_val));
+		break;
+	case CDSL_EXPR_FLOAT:
+		cdsl_sha256_update(ctx, &expr->data.float_val, sizeof(expr->data.float_val));
+		break;
+	case CDSL_EXPR_BOOL:
+		cdsl_sha256_update(ctx, &expr->data.bool_val, sizeof(expr->data.bool_val));
+		break;
+	case CDSL_EXPR_STRING:
+		if (expr->data.string_val) {
+			cdsl_sha256_update(
+			    ctx, expr->data.string_val, strlen(expr->data.string_val));
+		}
+		break;
+	case CDSL_EXPR_DATE:
+		cdsl_sha256_update(ctx, &expr->data.date_val, sizeof(expr->data.date_val));
+		break;
+	case CDSL_EXPR_LONG:
+		cdsl_sha256_update(ctx, &expr->data.long_val, sizeof(expr->data.long_val));
+		break;
+	case CDSL_EXPR_UNARY:
+		cdsl_sha256_update(ctx, &expr->data.unary.op, sizeof(expr->data.unary.op));
+		sha256_expr_node(ctx, expr->data.unary.expr);
+		break;
+	case CDSL_EXPR_BINARY:
+		cdsl_sha256_update(ctx, &expr->data.binary.op, sizeof(expr->data.binary.op));
+		sha256_expr_node(ctx, expr->data.binary.left);
+		sha256_expr_node(ctx, expr->data.binary.right);
+		break;
+	case CDSL_EXPR_CALL:
+		if (expr->data.call.func_name) {
+			cdsl_sha256_update(
+			    ctx, expr->data.call.func_name, strlen(expr->data.call.func_name));
+		}
+		for (const cdsl_arg_node_t* arg = expr->data.call.args; arg; arg = arg->next) {
+			sha256_expr_node(ctx, arg->expr);
+		}
+		break;
+	default:
+		break;
+	}
+}
+
+int
+cdsl_rule_hash(const cdsl_rule_t* rule, char hex_out[65])
+{
+	if (!rule || !hex_out) {
+		return -1;
+	}
+	cdsl_sha256_ctx_t ctx;
+	cdsl_sha256_init(&ctx);
+	if (rule->name) {
+		cdsl_sha256_update(&ctx, rule->name, strlen(rule->name));
+	}
+	sha256_expr_node(&ctx, rule->when_expr);
+
+	uint8_t digest[32];
+	cdsl_sha256_final(&ctx, digest);
+	static const char hex_chars[] = "0123456789abcdef";
+	for (int i = 0; i < 32; i++) {
+		hex_out[i * 2] = hex_chars[(digest[i] >> 4) & 0x0f];
+		hex_out[i * 2 + 1] = hex_chars[digest[i] & 0x0f];
+	}
+	hex_out[64] = '\0';
+	return 0;
+}
+
+int
+cdsl_ruleset_hash(const cdsl_ruleset_t* set, char hex_out[65])
+{
+	if (!set || !hex_out) {
+		return -1;
+	}
+	cdsl_sha256_ctx_t ctx;
+	cdsl_sha256_init(&ctx);
+	for (cdsl_ruleset_entry_t* e = set->entries; e; e = e->next) {
+		if (e->rule) {
+			char r_hash[65];
+			if (cdsl_rule_hash(e->rule, r_hash) == 0) {
+				cdsl_sha256_update(&ctx, r_hash, 64);
+			}
+		}
+	}
+	uint8_t digest[32];
+	cdsl_sha256_final(&ctx, digest);
+	static const char hex_chars[] = "0123456789abcdef";
+	for (int i = 0; i < 32; i++) {
+		hex_out[i * 2] = hex_chars[(digest[i] >> 4) & 0x0f];
+		hex_out[i * 2 + 1] = hex_chars[digest[i] & 0x0f];
+	}
+	hex_out[64] = '\0';
+	return 0;
+}
+
 /** @} */

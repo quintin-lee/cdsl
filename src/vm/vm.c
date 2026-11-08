@@ -216,6 +216,20 @@ cdsl_vm_set_max_expr_depth(cdsl_vm_t* vm, int depth)
 	}
 }
 
+void
+cdsl_vm_set_jit_enabled(cdsl_vm_t* vm, int enabled)
+{
+	if (vm) {
+		vm->jit_enabled = enabled ? 1 : 0;
+	}
+}
+
+int
+cdsl_vm_is_jit_enabled(const cdsl_vm_t* vm)
+{
+	return vm ? vm->jit_enabled : 0;
+}
+
 cdsl_stats_t*
 cdsl_vm_get_stats(const cdsl_vm_t* vm)
 {

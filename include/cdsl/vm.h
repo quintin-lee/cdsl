@@ -150,6 +150,7 @@ typedef struct cdsl_vm {
 	/* ---- Predicate cache / CSE ---- */
 	struct cdsl_pred_cache* pred_cache; /**< Shared predicate evaluation cache */
 	int pred_cache_owned;		    /**< 1 if pred_cache owned and freed with VM */
+	int jit_enabled;		    /**< 1 if native machine code JIT is enabled */
 } cdsl_vm_t;
 
 /* ---- Context Handle ---- */
@@ -417,6 +418,22 @@ int cdsl_vm_get_max_expr_depth(const cdsl_vm_t* vm);
  * @param depth New limit (values <= 0 are ignored)
  */
 void cdsl_vm_set_max_expr_depth(cdsl_vm_t* vm, int depth);
+
+/* ---- Native JIT Execution ---- */
+
+/**
+ * @brief Enable or disable native machine code JIT execution in the VM.
+ * @param vm Target VM
+ * @param enabled 1 to enable, 0 to disable
+ */
+void cdsl_vm_set_jit_enabled(cdsl_vm_t* vm, int enabled);
+
+/**
+ * @brief Check if JIT is enabled in the VM.
+ * @param vm VM (NULL returns 0)
+ * @return 1 if enabled, 0 otherwise
+ */
+int cdsl_vm_is_jit_enabled(const cdsl_vm_t* vm);
 
 /* ---- Statistics ---- */
 

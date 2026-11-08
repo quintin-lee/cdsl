@@ -1,6 +1,6 @@
 [package]
 name = "cdsl"
-version = "1.6.0"
+version = "2.0.0"
 edition = "2021"
 authors = ["Quintin Lee <quintin@example.com>"]
 description = "Safe and high-performance Rust FFI bindings for CDSL (C Domain Specific Language)"

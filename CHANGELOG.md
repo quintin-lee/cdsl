@@ -1,5 +1,26 @@
 # Changelog
 
+## [2.0.0] - 2026-11-08
+
+### Added
+- **Native Machine Code JIT Engine (`include/cdsl/jit.h`, `src/vm/jit.c`)**:
+  - Pure C machine code JIT engine compiling CDSL bytecode to native machine instructions.
+  - Multi-architecture native support for x86-64 (System V AMD64 and Windows x64) and AArch64 (Linux and macOS ARM64).
+  - W^X executable memory protection with page-aligned mmap / VirtualProtect and automatic instruction cache synchronization.
+  - Safe automatic fallback to threaded bytecode interpreter for non-supported architectures and sandboxed environments.
+  - VM integration via `cdsl_vm_set_jit_enabled()` and fast-path execution.
+- **Deterministic SHA-256 Version Fingerprinting (`include/cdsl/util/sha256.h`, `src/util/sha256.c`)**:
+  - Zero-dependency standard C SHA-256 implementation.
+  - Deterministic AST and ruleset fingerprinting (`cdsl_rule_hash`, `cdsl_ruleset_hash`) for cluster-wide version drift detection and audit trails.
+- **Distributed Configuration Drivers & Cluster Governance (`include/cdsl/config_source.h`, `src/manager/`)**:
+  - Pluggable config source abstraction (`cdsl_config_source_t`) for cluster synchronization and dynamic watch events.
+  - Production-ready drivers: Memory mock driver, Etcd v3 driver (`src/manager/etcd.c`), and Consul KV driver (`src/manager/consul.c`).
+  - Seamless integration with enterprise rule manager (`cdsl_manager_attach_config_source`).
+  - Automated canary verification: incoming rule changes undergo sandbox parsing and trial verification before atomic RCU cutover, with instant self-healing rollback on validation failure.
+- **5-Engine Cross-Equivalence Verification (`tests/test_jit.c`, `tests/test_distributed.c`)**:
+  - Verification suite confirming 100% bitwise and semantic parity across AST, Bytecode, Threaded, JIT, and Columnar execution engines.
+  - Comprehensive distributed governance tests validating Etcd, Consul, Mock CRUD, and canary rollbacks.
+
 ## [1.6.0] - 2026-11-08
 
 ### Added

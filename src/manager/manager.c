@@ -4,6 +4,8 @@
  */
 
 #include "cdsl/manager.h"
+#include "cdsl/config_source.h"
+#include "cdsl/canary.h"
 #include "cdsl/util/threads.h"
 #include "cdsl/util/portability.h"
 #include <stdlib.h>
@@ -293,4 +295,63 @@ cdsl_manager_get_history(const cdsl_manager_t* mgr, uint64_t* out_versions, size
 		}
 	}
 	return count;
+}
+
+typedef struct cdsl_mgr_source_binding {
+	cdsl_manager_t* mgr;
+	char* key;
+} cdsl_mgr_source_binding_t;
+
+static void
+manager_config_source_cb(
+    const char* key, const char* content, size_t len, const char* version, void* user_data)
+{
+	(void)len;
+	(void)version;
+	cdsl_mgr_source_binding_t* b = (cdsl_mgr_source_binding_t*)user_data;
+	if (!b || !b->mgr || !content) {
+		return;
+	}
+	cdsl_canary_report_t rpt;
+	uint64_t vid = 0;
+	(void)cdsl_manager_deploy_canary(b->mgr, content, key, NULL, 0, &rpt, &vid);
+	cdsl_canary_report_free(&rpt);
+}
+
+int
+cdsl_manager_attach_config_source(cdsl_manager_t* mgr, cdsl_config_source_t* src, const char* key)
+{
+	if (!mgr || !src || !key) {
+		return -1;
+	}
+
+	/* 1. Fetch initial configuration if already present */
+	char* init_content = NULL;
+	size_t init_len = 0;
+	char* init_version = NULL;
+	if (cdsl_config_source_fetch(src, key, &init_content, &init_len, &init_version) == 0 &&
+	    init_content) {
+		cdsl_canary_report_t rpt;
+		uint64_t vid = 0;
+		(void)cdsl_manager_deploy_canary(mgr, init_content, key, NULL, 0, &rpt, &vid);
+		cdsl_canary_report_free(&rpt);
+		free(init_content);
+		free(init_version);
+	}
+
+	/* 2. Bind watcher */
+	cdsl_mgr_source_binding_t* b = calloc(1, sizeof(cdsl_mgr_source_binding_t));
+	if (!b) {
+		return -1;
+	}
+	b->mgr = mgr;
+	b->key = strdup(key);
+
+	int rc = cdsl_config_source_watch(src, key, manager_config_source_cb, b);
+	if (rc != 0) {
+		free(b->key);
+		free(b);
+		return -1;
+	}
+	return 0;
 }
