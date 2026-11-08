@@ -158,6 +158,23 @@ cdsl_manager_execute(cdsl_manager_t* mgr, cdsl_vm_t* vm, cdsl_context_t* ctx);
 size_t
 cdsl_manager_get_history(const cdsl_manager_t* mgr, uint64_t* out_versions, size_t max_count);
 
+struct cdsl_config_source;
+
+/**
+ * @brief Attach a distributed configuration source (Etcd/Consul/Memory) to the rule manager.
+ *
+ * Automatically fetches the initial rule configuration, executes canary pre-flight validation,
+ * deploys the verified ruleset, and registers a real-time watch handler for zero-downtime updates.
+ *
+ * @param mgr Rule manager instance
+ * @param src Configuration source driver
+ * @param key Configuration key to fetch and watch
+ * @return 0 on success, negative on error
+ */
+int cdsl_manager_attach_config_source(cdsl_manager_t* mgr,
+				      struct cdsl_config_source* src,
+				      const char* key);
+
 #ifdef __cplusplus
 }
 #endif

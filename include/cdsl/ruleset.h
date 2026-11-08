@@ -58,6 +58,22 @@ cdsl_ruleset_report_t* cdsl_vm_execute_ruleset_parallel(struct cdsl_vm* vm,
 							int thread_count);
 void cdsl_ruleset_report_free(cdsl_ruleset_report_t* report);
 void cdsl_ruleset_report_print(const cdsl_ruleset_report_t* report);
+
+/**
+ * @brief Compute deterministic SHA-256 fingerprint for a ruleset.
+ * @param set The ruleset to hash
+ * @param hex_out Output buffer of at least 65 bytes
+ * @return 0 on success, negative on error
+ */
+int cdsl_ruleset_hash(const cdsl_ruleset_t* set, char hex_out[65]);
+
+/**
+ * @brief Compute deterministic SHA-256 fingerprint for a single rule.
+ * @param rule The rule to hash
+ * @param hex_out Output buffer of at least 65 bytes
+ * @return 0 on success, negative on error
+ */
+int cdsl_rule_hash(const cdsl_rule_t* rule, char hex_out[65]);
 int cdsl_ruleset_load_file(cdsl_ruleset_t* set,
 			   const char* filepath,
 			   int priority,

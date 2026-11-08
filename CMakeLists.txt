@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.19)
-project(cdsl VERSION 1.6.0 LANGUAGES C CXX)
+project(cdsl VERSION 2.0.0 LANGUAGES C CXX)
 
 set(CMAKE_C_STANDARD 23)
 set(CMAKE_C_STANDARD_REQUIRED ON)
@@ -171,7 +171,7 @@ endif()
 set_target_properties(cdsl_shared PROPERTIES
     OUTPUT_NAME cdsl
     VERSION ${PROJECT_VERSION}
-    SOVERSION 1
+    SOVERSION 2
 )
 
 # 10. Build-tree aliases

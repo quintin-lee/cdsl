@@ -1,0 +1,194 @@
+#ifdef NDEBUG
+#undef NDEBUG
+#endif
+#include <assert.h>
+#include "cdsl/cdsl.h"
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+
+static void
+test_sha256_known_vector(void)
+{
+	printf("Running test_sha256_known_vector...\n");
+	char hex[65];
+
+	/* SHA-256("") */
+	cdsl_sha256_hash_string("", hex);
+	assert(strcmp(hex, "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855") ==
+	       0);
+
+	/* SHA-256("hello") */
+	cdsl_sha256_hash_string("hello", hex);
+	assert(strcmp(hex, "2cf24dba5fb0a30e26e83b2ac5b9e29e1b161e5c1fa7425e73043362938b9824") ==
+	       0);
+}
+
+static void
+test_ruleset_fingerprinting(void)
+{
+	printf("Running test_ruleset_fingerprinting...\n");
+	const char* dsl1 = "RULE r { WHEN amount > 100 THEN accept() }";
+	const char* dsl2 = "RULE r { WHEN amount > 100 THEN accept() }";
+	const char* dsl3 = "RULE r { WHEN amount > 200 THEN accept() }";
+
+	cdsl_rule_t* r1 = cdsl_parse_string(dsl1, NULL);
+	cdsl_rule_t* r2 = cdsl_parse_string(dsl2, NULL);
+	cdsl_rule_t* r3 = cdsl_parse_string(dsl3, NULL);
+	assert(r1 && r2 && r3);
+
+	char h1[65], h2[65], h3[65];
+	assert(cdsl_rule_hash(r1, h1) == 0);
+	assert(cdsl_rule_hash(r2, h2) == 0);
+	assert(cdsl_rule_hash(r3, h3) == 0);
+
+	/* Identical rules produce identical SHA-256 hash */
+	assert(strcmp(h1, h2) == 0);
+	/* Different threshold produces different hash */
+	assert(strcmp(h1, h3) != 0);
+
+	cdsl_ruleset_t* s1 = cdsl_ruleset_create();
+	cdsl_ruleset_t* s2 = cdsl_ruleset_create();
+	cdsl_ruleset_add(s1, r1, 10);
+	cdsl_ruleset_add(s2, r2, 10);
+
+	char sh1[65], sh2[65];
+	assert(cdsl_ruleset_hash(s1, sh1) == 0);
+	assert(cdsl_ruleset_hash(s2, sh2) == 0);
+	assert(strcmp(sh1, sh2) == 0);
+
+	cdsl_ruleset_free(s1);
+	cdsl_ruleset_free(s2);
+	cdsl_free_rule(r3);
+}
+
+static int s_watch_invoked = 0;
+static void
+test_watch_callback(
+    const char* key, const char* content, size_t len, const char* version, void* user_data)
+{
+	(void)key;
+	(void)content;
+	(void)len;
+	(void)version;
+	int* flag = (int*)user_data;
+	if (flag) {
+		(*flag)++;
+	}
+	s_watch_invoked++;
+}
+
+static void
+test_drivers_crud(void)
+{
+	printf("Running test_drivers_crud (Memory, Etcd, Consul)...\n");
+	cdsl_config_source_t* sources[] = {
+	    cdsl_config_source_create_mem(),
+	    cdsl_config_source_create_etcd("http://127.0.0.1:2379", "/cdsl/rules/"),
+	    cdsl_config_source_create_consul("http://127.0.0.1:8500", "cdsl/rules/"),
+	};
+
+	for (size_t i = 0; i < 3; i++) {
+		cdsl_config_source_t* src = sources[i];
+		assert(src != NULL);
+
+		const char* key = "rules/finance";
+		int watch_flag = 0;
+		assert(cdsl_config_source_watch(src, key, test_watch_callback, &watch_flag) == 0);
+
+		const char* content1 = "RULE finance { WHEN balance >= 1000 THEN approve() }";
+		char* ver1 = NULL;
+
+		assert(cdsl_config_source_publish(src, key, content1, strlen(content1), &ver1) ==
+		       0);
+		assert(ver1 != NULL);
+		assert(watch_flag == 1);
+
+		char* fetched = NULL;
+		size_t fetched_len = 0;
+		char* ver2 = NULL;
+		assert(cdsl_config_source_fetch(src, key, &fetched, &fetched_len, &ver2) == 0);
+		assert(fetched != NULL);
+		assert(strcmp(fetched, content1) == 0);
+		assert(fetched_len == strlen(content1));
+		assert(strcmp(ver1, ver2) == 0);
+
+		free(ver1);
+		free(ver2);
+		free(fetched);
+
+		cdsl_config_source_free(src);
+	}
+}
+
+static void
+test_canary_auto_reload_and_rollback(void)
+{
+	printf("Running test_canary_auto_reload_and_rollback...\n");
+	cdsl_config_source_t* src = cdsl_config_source_create_mem();
+	assert(src != NULL);
+
+	cdsl_manager_t* mgr = cdsl_manager_create(NULL);
+	assert(mgr != NULL);
+
+	const char* key = "cluster_rules";
+	const char* dsl_v1 = "RULE r { WHEN score > 50 THEN pass() }";
+
+	/* 1. Initial publish */
+	assert(cdsl_config_source_publish(src, key, dsl_v1, strlen(dsl_v1), NULL) == 0);
+
+	/* 2. Attach config source to manager */
+	assert(cdsl_manager_attach_config_source(mgr, src, key) == 0);
+
+	cdsl_vm_t* vm = cdsl_vm_create(NULL);
+	cdsl_context_t* ctx = cdsl_context_create(NULL);
+	cdsl_context_set_int(ctx, "score", 80);
+
+	/* 1. v1: score 80 triggers score > 50 -> total_failed == 1 */
+	cdsl_ruleset_report_t* rpt1 = cdsl_manager_execute(mgr, vm, ctx);
+	assert(rpt1 != NULL);
+	assert(rpt1->total_failed == 1);
+	cdsl_ruleset_report_free(rpt1);
+
+	/* 3. Hot-reload valid v2: score 80 does not trigger score > 90 -> total_passed == 1 */
+	const char* dsl_v2 = "RULE r { WHEN score > 90 THEN pass() }";
+	assert(cdsl_config_source_publish(src, key, dsl_v2, strlen(dsl_v2), NULL) == 0);
+
+	cdsl_ruleset_report_t* rpt2 = cdsl_manager_execute(mgr, vm, ctx);
+	assert(rpt2 != NULL);
+	assert(rpt2->total_passed == 1);
+	cdsl_ruleset_report_free(rpt2);
+
+	/* 4. Malformed update v3 (syntax error): canary rejects it and preserves v2 */
+	const char* dsl_v3_bad = "RULE r { WHEN score >> 100 SYNTAX_ERROR }";
+	assert(cdsl_config_source_publish(src, key, dsl_v3_bad, strlen(dsl_v3_bad), NULL) == 0);
+
+	/* Active version remains v2 */
+	cdsl_ruleset_report_t* rpt3 = cdsl_manager_execute(mgr, vm, ctx);
+	assert(rpt3 != NULL);
+	assert(rpt3->total_passed == 1);
+	cdsl_ruleset_report_free(rpt3);
+
+	/* 5. Rollback to version 1 */
+	assert(cdsl_manager_rollback(mgr, 1) == 1);
+	cdsl_ruleset_report_t* rpt4 = cdsl_manager_execute(mgr, vm, ctx);
+	assert(rpt4 != NULL);
+	assert(rpt4->total_failed == 1);
+	cdsl_ruleset_report_free(rpt4);
+
+	cdsl_context_free(ctx);
+	cdsl_vm_free(vm);
+	cdsl_manager_free(mgr);
+	cdsl_config_source_free(src);
+}
+
+int
+main(void)
+{
+	test_sha256_known_vector();
+	test_ruleset_fingerprinting();
+	test_drivers_crud();
+	test_canary_auto_reload_and_rollback();
+	printf("All distributed configuration tests passed successfully!\n");
+	return 0;
+}

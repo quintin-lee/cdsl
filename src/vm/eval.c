@@ -34,6 +34,7 @@
 #include "internal.h"
 #include "value_ops.h"
 #include "cdsl/cache.h"
+#include "cdsl/jit.h"
 #include "cdsl/util/portability.h"
 #include <stdlib.h>
 #include <string.h>
@@ -127,7 +128,17 @@ evaluate_condition(cdsl_expr_node_t* expr,
 	cdsl_value_t res;
 	if (bc && bc->code) {
 		(void)debug;
-		res = cdsl_bytecode_execute(vm, bc, ctx);
+		if (vm && vm->jit_enabled) {
+			cdsl_jit_code_t* jit = cdsl_jit_compile(vm, bc);
+			if (jit) {
+				cdsl_jit_execute(jit, vm, ctx, &res);
+				cdsl_jit_code_free(jit);
+			} else {
+				res = cdsl_bytecode_execute(vm, bc, ctx);
+			}
+		} else {
+			res = cdsl_bytecode_execute(vm, bc, ctx);
+		}
 	} else {
 		res = cdsl_eval_expr_internal(expr, ctx, vm, debug, 0);
 	}
