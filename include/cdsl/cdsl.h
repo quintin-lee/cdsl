@@ -41,6 +41,9 @@
 #include "cdsl/scorecard.h"
 #include "cdsl/pipeline.h"
 
+/* Cloud-Native Server & Micro-Daemon (v1.6.0) */
+#include "cdsl/server.h"
+
 /* AI bridge */
 #include "cdsl/ai.h"
 

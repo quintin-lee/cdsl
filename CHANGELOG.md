@@ -1,8 +1,27 @@
 # Changelog
 
-## [1.5.0] - 2026-11-08
+## [1.6.0] - 2026-11-08
 
 ### Added
+- **Idiomatic Go CGO Binding (`bindings/go/`)**:
+  - Full Go package `cdsl` providing safe memory management with `runtime.SetFinalizer`.
+  - Complete wrappers for `Engine`, `Context`, `Rule`, `DecisionTable`, `Scorecard`, and `Pipeline`.
+  - Comprehensive Go unit test suite (`bindings/go/cdsl_test.go`).
+- **Memory-Safe Rust FFI Crate (`bindings/rust/`)**:
+  - Full Rust crate `cdsl` with RAII `Drop` safety and thread-safe abstractions (`Send + Sync`).
+  - Safe wrappers for `Engine`, `Context`, `Rule`, `DecisionTable`, `Scorecard`, and `Pipeline`.
+  - Integration test suite (`bindings/rust/tests/integration_test.rs`).
+- **WebAssembly / WASI Build & NPM Package (`wasm/`)**:
+  - Exportable C bridge `wasm/cdsl_wasm.c` for WASI and Emscripten with JSON I/O.
+  - Proxy-Wasm Envoy filter and API gateway support for sub-50 microsecond edge evaluation.
+  - `@cdsl/engine` NPM package (`wasm/npm/`) with TypeScript declarations and Node.js/browser test suite.
+- **Standalone Cloud-Native HTTP Micro-Daemon (`server/`, `src/server/server.c`, `include/cdsl/server.h`)**:
+  - Lightweight embedded HTTP server (`cdsl-server`) with non-blocking socket I/O.
+  - RESTful evaluation endpoint `POST /v1/evaluate` for rules, decision tables, scorecards, and pipelines.
+  - Dynamic rule deployment endpoint `POST /v1/rules/deploy`.
+  - Prometheus metrics exporter `GET /metrics` (`cdsl_http_requests_total`, `cdsl_evaluations_total`).
+  - Kubernetes liveness probe `GET /healthz` and readiness probe `GET /readyz`.
+  - Unit and integration tests in `tests/test_server.c`.
 - **Decision Table Engine (`include/cdsl/dtable.h`, `src/vm/dtable.c`)**:
   - DMN-style multi-dimensional condition matching with column definitions for typed inputs and outputs.
   - Implemented three core hit policies: `CDSL_HIT_FIRST` (first match terminates), `CDSL_HIT_RULE_ORDER` (all matches collected), and `CDSL_HIT_UNIQUE` (strict uniqueness constraint).

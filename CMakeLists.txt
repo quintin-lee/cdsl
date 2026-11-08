@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.19)
-project(cdsl VERSION 1.5.0 LANGUAGES C CXX)
+project(cdsl VERSION 1.6.0 LANGUAGES C CXX)
 
 set(CMAKE_C_STANDARD 23)
 set(CMAKE_C_STANDARD_REQUIRED ON)
@@ -194,6 +194,11 @@ add_executable(cdsl_official_review demo/official_review.c)
 cdsl_add_warning_flags(cdsl_official_review)
 target_link_libraries(cdsl_official_review PRIVATE cdsl_static)
 install(TARGETS cdsl_official_review RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR} COMPONENT demos)
+
+add_executable(cdsl-server server/main.c)
+cdsl_add_warning_flags(cdsl-server)
+target_link_libraries(cdsl-server PRIVATE cdsl_static)
+install(TARGETS cdsl-server RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR} COMPONENT daemons)
 
 if(CDSL_USE_LIBREOFFICE)
     add_executable(cdsl_word_parser demo/word_parser.c)
@@ -394,6 +399,7 @@ if(NOT MSVC)
             ${CMAKE_CURRENT_SOURCE_DIR}/include/cdsl/dtable.h
             ${CMAKE_CURRENT_SOURCE_DIR}/include/cdsl/scorecard.h
             ${CMAKE_CURRENT_SOURCE_DIR}/include/cdsl/pipeline.h
+            ${CMAKE_CURRENT_SOURCE_DIR}/include/cdsl/server.h
         COMMENT "Checking public headers standalone compilation under -std=c2x"
     )
 endif()
