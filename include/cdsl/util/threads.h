@@ -16,11 +16,18 @@
 typedef HANDLE cdsl_thread_t;
 typedef CRITICAL_SECTION cdsl_mutex_t;
 typedef SRWLOCK cdsl_rwlock_t;
+typedef CONDITION_VARIABLE cdsl_cond_t;
 
 #define CDSL_MUTEX_INIT(m) (InitializeCriticalSection(m), 0)
 #define CDSL_MUTEX_LOCK(m) EnterCriticalSection(m)
 #define CDSL_MUTEX_UNLOCK(m) LeaveCriticalSection(m)
 #define CDSL_MUTEX_DESTROY(m) DeleteCriticalSection(m)
+
+#define CDSL_COND_INIT(c) (InitializeConditionVariable(c), 0)
+#define CDSL_COND_WAIT(c, m) SleepConditionVariableCS(c, m, INFINITE)
+#define CDSL_COND_SIGNAL(c) WakeConditionVariable(c)
+#define CDSL_COND_BROADCAST(c) WakeAllConditionVariable(c)
+#define CDSL_COND_DESTROY(c) ((void)0)
 
 /* InitializeSRWLock returns void; yield 0 to match pthread_rwlock_init semantics */
 #define CDSL_RWLOCK_INIT(l) (InitializeSRWLock(l), 0)
@@ -70,11 +77,18 @@ cdsl_internal_once_wrapper(PINIT_ONCE once, PVOID param, PVOID* context)
 typedef pthread_t cdsl_thread_t;
 typedef pthread_mutex_t cdsl_mutex_t;
 typedef pthread_rwlock_t cdsl_rwlock_t;
+typedef pthread_cond_t cdsl_cond_t;
 
 #define CDSL_MUTEX_INIT(m) pthread_mutex_init(m, NULL)
 #define CDSL_MUTEX_LOCK(m) pthread_mutex_lock(m)
 #define CDSL_MUTEX_UNLOCK(m) pthread_mutex_unlock(m)
 #define CDSL_MUTEX_DESTROY(m) pthread_mutex_destroy(m)
+
+#define CDSL_COND_INIT(c) pthread_cond_init(c, NULL)
+#define CDSL_COND_WAIT(c, m) pthread_cond_wait(c, m)
+#define CDSL_COND_SIGNAL(c) pthread_cond_signal(c)
+#define CDSL_COND_BROADCAST(c) pthread_cond_broadcast(c)
+#define CDSL_COND_DESTROY(c) pthread_cond_destroy(c)
 
 #define CDSL_RWLOCK_INIT(l) pthread_rwlock_init(l, NULL)
 #define CDSL_RWLOCK_RDLOCK(l) pthread_rwlock_rdlock(l)

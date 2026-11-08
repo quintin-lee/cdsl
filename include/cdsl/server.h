@@ -41,7 +41,7 @@ CDSL_NODISCARD
 cdsl_server_t* cdsl_server_create(const cdsl_server_config_t* config);
 
 /**
- * @brief Start the server (non-blocking in a background thread).
+ * @brief Start the server (non-blocking listener thread and max_concurrency worker thread pool).
  * @param srv Server instance
  * @return 0 on success, negative on error
  */

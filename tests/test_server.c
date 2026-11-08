@@ -23,6 +23,7 @@ typedef int cdsl_socket_t;
 #endif
 
 #include "cdsl/server.h"
+#include "cdsl/util/threads.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -197,7 +198,7 @@ test_server_socket_networking(void)
 	assert(send(sock, http_req, (int)strlen(http_req), 0) > 0);
 
 	char buf[1024] = {0};
-	int n = recv(sock, buf, sizeof(buf) - 1, 0);
+	ssize_t n = recv(sock, buf, sizeof(buf) - 1, 0);
 	assert(n > 0);
 	assert(strstr(buf, "200 OK") != NULL);
 	assert(strstr(buf, "\"status\":\"healthy\"") != NULL);
@@ -235,6 +236,111 @@ test_server_socket_networking(void)
 	cdsl_server_free(srv);
 }
 
+typedef struct client_thread_arg {
+	int port;
+	int count;
+	int success_count;
+} client_thread_arg_t;
+
+static void*
+client_worker(void* arg)
+{
+	client_thread_arg_t* c = (client_thread_arg_t*)arg;
+	for (int i = 0; i < c->count; i++) {
+		cdsl_socket_t sock = socket(AF_INET, SOCK_STREAM, 0);
+		if (sock == CDSL_INVALID_SOCKET) {
+			continue;
+		}
+		struct sockaddr_in serv_addr;
+		memset(&serv_addr, 0, sizeof(serv_addr));
+		serv_addr.sin_family = AF_INET;
+		serv_addr.sin_port = htons((uint16_t)c->port);
+		serv_addr.sin_addr.s_addr = inet_addr("127.0.0.1");
+
+		if (connect(sock, (struct sockaddr*)&serv_addr, sizeof(serv_addr)) != 0) {
+			CDSL_CLOSE_SOCKET(sock);
+			continue;
+		}
+
+		const char* req =
+		    (i % 2 == 0)
+			? "GET /healthz HTTP/1.1\r\nHost: localhost\r\n\r\n"
+			: "POST /v1/evaluate HTTP/1.1\r\nHost: localhost\r\nContent-Length: "
+			  "60\r\n\r\n"
+			  "{\"type\":\"rule\",\"rule\":\"RULE conc { WHEN true THEN approve() "
+			  "}\"}";
+
+		if (send(sock, req, (int)strlen(req), 0) > 0) {
+			char resp[512] = {0};
+			ssize_t n = recv(sock, resp, sizeof(resp) - 1, 0);
+			if (n > 0 && strstr(resp, "200 OK") != NULL) {
+				c->success_count++;
+			}
+		}
+		CDSL_CLOSE_SOCKET(sock);
+	}
+	return NULL;
+}
+
+static void
+test_server_concurrency(void)
+{
+	cdsl_server_config_t config = {
+	    .port = 0,
+	    .max_concurrency = 4,
+	    .verbose = false,
+	};
+	cdsl_server_t* srv = cdsl_server_create(&config);
+	assert(srv != NULL);
+	assert(cdsl_server_start(srv) == 0);
+
+	int port = cdsl_server_get_port(srv);
+	assert(port > 0);
+
+	const int num_threads = 6;
+	const int reqs_per_thread = 8;
+	cdsl_thread_t threads[6];
+	client_thread_arg_t args[6];
+
+	for (int i = 0; i < num_threads; i++) {
+		args[i].port = port;
+		args[i].count = reqs_per_thread;
+		args[i].success_count = 0;
+		assert(CDSL_THREAD_CREATE(&threads[i], client_worker, &args[i]) == 0);
+	}
+
+	int total_success = 0;
+	for (int i = 0; i < num_threads; i++) {
+		CDSL_THREAD_JOIN(threads[i]);
+		total_success += args[i].success_count;
+	}
+
+	assert(total_success == num_threads * reqs_per_thread);
+
+	cdsl_server_stop(srv);
+	cdsl_server_free(srv);
+}
+
+static void
+test_server_dynamic_large_response(void)
+{
+	cdsl_server_t* srv = cdsl_server_create(NULL);
+	assert(srv != NULL);
+
+	const char* large_rule = "POST /v1/evaluate HTTP/1.1\r\n\r\n"
+				 "RULE large_check {\n"
+				 "  WHEN score > 50\n"
+				 "  THEN approve()\n"
+				 "}";
+	char* resp = cdsl_server_handle_request(srv, large_rule);
+	assert(resp != NULL);
+	assert(strstr(resp, "200 OK") != NULL);
+	assert(strstr(resp, "Content-Length:") != NULL);
+	free(resp);
+
+	cdsl_server_free(srv);
+}
+
 int
 main(void)
 {
@@ -244,6 +350,8 @@ main(void)
 #endif
 	test_server_direct_dispatch();
 	test_server_socket_networking();
+	test_server_concurrency();
+	test_server_dynamic_large_response();
 #ifdef _WIN32
 	WSACleanup();
 #endif

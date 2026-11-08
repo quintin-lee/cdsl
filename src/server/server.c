@@ -62,7 +62,7 @@ http_get_content_length(const char* buf, size_t len)
 			while (p < end && (*p == ' ' || *p == '\t')) {
 				p++;
 			}
-			return atol(p);
+			return strtol(p, NULL, 10);
 		}
 		const char* next = memchr(p, '\n', (size_t)(end - p));
 		if (!next) {
@@ -78,15 +78,28 @@ typedef struct cdsl_server_metrics {
 	uint64_t evaluations_total;
 } cdsl_server_metrics_t;
 
+#define CDSL_SERVER_QUEUE_CAP 128
+
 struct cdsl_server {
 	cdsl_server_config_t config;
 	cdsl_socket_t server_fd;
 	int actual_port;
 	bool running;
-	cdsl_thread_t worker_thread;
+	cdsl_thread_t listener_thread;
+	cdsl_thread_t* worker_threads;
+	size_t num_workers;
 	cdsl_mutex_t lock;
 	cdsl_server_metrics_t metrics;
 	cdsl_manager_t* mgr;
+
+	/* Bounded connection queue for max_concurrency workers */
+	cdsl_socket_t queue[CDSL_SERVER_QUEUE_CAP];
+	size_t queue_head;
+	size_t queue_tail;
+	size_t queue_count;
+	cdsl_mutex_t queue_lock;
+	cdsl_cond_t queue_not_empty;
+	cdsl_cond_t queue_not_full;
 };
 
 static bool
@@ -128,10 +141,22 @@ cdsl_server_create(const cdsl_server_config_t* config)
 		srv->config.verbose = false;
 	}
 
+	if (srv->config.max_concurrency == 0) {
+		srv->config.max_concurrency = 4;
+	}
+
 	srv->server_fd = CDSL_INVALID_SOCKET;
 	srv->actual_port = 0;
 	srv->running = false;
 	CDSL_MUTEX_INIT(&srv->lock);
+	CDSL_MUTEX_INIT(&srv->queue_lock);
+	CDSL_COND_INIT(&srv->queue_not_empty);
+	CDSL_COND_INIT(&srv->queue_not_full);
+	srv->queue_head = 0;
+	srv->queue_tail = 0;
+	srv->queue_count = 0;
+	srv->worker_threads = NULL;
+	srv->num_workers = 0;
 
 #ifdef _WIN32
 	WSADATA wsa;
@@ -157,6 +182,9 @@ cdsl_server_free(cdsl_server_t* srv)
 		srv->mgr = NULL;
 	}
 	CDSL_MUTEX_DESTROY(&srv->lock);
+	CDSL_MUTEX_DESTROY(&srv->queue_lock);
+	CDSL_COND_DESTROY(&srv->queue_not_empty);
+	CDSL_COND_DESTROY(&srv->queue_not_full);
 	free(srv);
 }
 
@@ -179,23 +207,37 @@ cdsl_server_get_manager(cdsl_server_t* srv)
 }
 
 static char*
-server_http_json_response(int status_code, const char* status_text, const char* json_body)
+server_http_response(int status_code,
+		     const char* status_text,
+		     const char* content_type,
+		     const char* body)
 {
-	size_t body_len = json_body ? strlen(json_body) : 0;
-	size_t cap = body_len + 256;
+	size_t body_len = body ? strlen(body) : 0;
+	size_t hdr_est = 256 + (content_type ? strlen(content_type) : 0) +
+			 (status_text ? strlen(status_text) : 0);
+	size_t cap = body_len + hdr_est;
 	char* resp = malloc(cap);
 	if (!resp) {
 		return NULL;
 	}
 	snprintf(resp,
 		 cap,
-		 "HTTP/1.1 %d %s\r\nContent-Type: application/json\r\nContent-Length: "
-		 "%zu\r\nConnection: close\r\n\r\n%s",
+		 "HTTP/1.1 %d %s\r\n"
+		 "Content-Type: %s\r\n"
+		 "Content-Length: %zu\r\n"
+		 "Connection: close\r\n\r\n%s",
 		 status_code,
-		 status_text,
+		 status_text ? status_text : "OK",
+		 content_type ? content_type : "application/json",
 		 body_len,
-		 json_body ? json_body : "");
+		 body ? body : "");
 	return resp;
+}
+
+static char*
+server_http_json_response(int status_code, const char* status_text, const char* json_body)
+{
+	return server_http_response(status_code, status_text, "application/json", json_body);
 }
 
 char*
@@ -219,28 +261,12 @@ cdsl_server_handle_request(cdsl_server_t* srv, const char* http_request)
 
 	/* Health check endpoint */
 	if (strcmp(method, "GET") == 0 && strcmp(path, "/healthz") == 0) {
-		const char* body = "{\"status\":\"healthy\"}\n";
-		char resp[256];
-		snprintf(resp,
-			 sizeof(resp),
-			 "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: "
-			 "%zu\r\nConnection: close\r\n\r\n%s",
-			 strlen(body),
-			 body);
-		return cdsl_strdup(resp);
+		return server_http_json_response(200, "OK", "{\"status\":\"healthy\"}\n");
 	}
 
 	/* Readiness probe */
 	if (strcmp(method, "GET") == 0 && strcmp(path, "/readyz") == 0) {
-		const char* body = "{\"status\":\"ready\"}\n";
-		char resp[256];
-		snprintf(resp,
-			 sizeof(resp),
-			 "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: "
-			 "%zu\r\nConnection: close\r\n\r\n%s",
-			 strlen(body),
-			 body);
-		return cdsl_strdup(resp);
+		return server_http_json_response(200, "OK", "{\"status\":\"ready\"}\n");
 	}
 
 	/* Prometheus metrics */
@@ -250,9 +276,14 @@ cdsl_server_handle_request(cdsl_server_t* srv, const char* http_request)
 		uint64_t evals = srv->metrics.evaluations_total;
 		CDSL_MUTEX_UNLOCK(&srv->lock);
 
-		char body[512];
+		size_t body_cap = 512;
+		char* body = malloc(body_cap);
+		if (!body) {
+			return server_http_response(
+			    500, "Internal Server Error", "text/plain", "OOM\n");
+		}
 		snprintf(body,
-			 sizeof(body),
+			 body_cap,
 			 "# HELP cdsl_http_requests_total Total HTTP requests processed\n"
 			 "# TYPE cdsl_http_requests_total counter\n"
 			 "cdsl_http_requests_total %llu\n"
@@ -262,14 +293,9 @@ cdsl_server_handle_request(cdsl_server_t* srv, const char* http_request)
 			 (unsigned long long)reqs,
 			 (unsigned long long)evals);
 
-		char resp[1024];
-		snprintf(resp,
-			 sizeof(resp),
-			 "HTTP/1.1 200 OK\r\nContent-Type: text/plain; "
-			 "version=0.0.4\r\nContent-Length: %zu\r\nConnection: close\r\n\r\n%s",
-			 strlen(body),
-			 body);
-		return cdsl_strdup(resp);
+		char* resp = server_http_response(200, "OK", "text/plain; version=0.0.4", body);
+		free(body);
+		return resp;
 	}
 
 	/* Rule evaluate endpoint */
@@ -377,18 +403,28 @@ cdsl_server_handle_request(cdsl_server_t* srv, const char* http_request)
 				}
 				cdsl_context_free(ctx);
 				if (rpt) {
-					char body[256];
-					snprintf(body,
-						 sizeof(body),
-						 "{\"status\":\"%s\",\"total_passed\":%d,"
-						 "\"total_failed\":%d}\n",
-						 (rpt->total_failed == 0 && rpt->total_error == 0)
-						     ? "PASSED"
-						     : "FAILED",
-						 rpt->total_passed,
-						 rpt->total_failed);
+					size_t body_cap = 256;
+					char* body = malloc(body_cap);
+					if (body) {
+						snprintf(body,
+							 body_cap,
+							 "{\"status\":\"%s\",\"total_passed\":%d,"
+							 "\"total_failed\":%d}\n",
+							 (rpt->total_failed == 0 &&
+							  rpt->total_error == 0)
+							     ? "PASSED"
+							     : "FAILED",
+							 rpt->total_passed,
+							 rpt->total_failed);
+						char* resp =
+						    server_http_json_response(200, "OK", body);
+						free(body);
+						cdsl_ruleset_report_free(rpt);
+						return resp;
+					}
 					cdsl_ruleset_report_free(rpt);
-					return server_http_json_response(200, "OK", body);
+					return server_http_json_response(
+					    500, "Internal Server Error", "{\"error\":\"oom\"}\n");
 				}
 				return server_http_json_response(
 				    500,
@@ -408,9 +444,9 @@ cdsl_server_handle_request(cdsl_server_t* srv, const char* http_request)
 		}
 
 		/* Determine evaluation target via JSON field "type", with fallback to DSL prefix */
-		char json_result[1024];
-		int status_code;
-		const char* status_text;
+		char* json_result = NULL;
+		int status_code = 500;
+		const char* status_text = "Internal Server Error";
 
 		if ((target_type && (strcmp(target_type, "dtable") == 0 ||
 				     strcmp(target_type, "decision_table") == 0)) ||
@@ -419,31 +455,30 @@ cdsl_server_handle_request(cdsl_server_t* srv, const char* http_request)
 			if (dt) {
 				cdsl_dtable_report_t* rpt = cdsl_dtable_eval(dt, ctx);
 				if (rpt) {
-					snprintf(json_result,
-						 sizeof(json_result),
-						 "{\"type\":\"dtable\",\"table_name\":\"%s\","
-						 "\"matched\":%s,\"num_matches\":%zu}\n",
-						 rpt->table_name ? rpt->table_name : "",
-						 rpt->matched ? "true" : "false",
-						 rpt->num_matches);
+					size_t cap =
+					    256 + (rpt->table_name ? strlen(rpt->table_name) : 0);
+					json_result = malloc(cap);
+					if (json_result) {
+						snprintf(
+						    json_result,
+						    cap,
+						    "{\"type\":\"dtable\",\"table_name\":\"%s\","
+						    "\"matched\":%s,\"num_matches\":%zu}\n",
+						    rpt->table_name ? rpt->table_name : "",
+						    rpt->matched ? "true" : "false",
+						    rpt->num_matches);
+						status_code = 200;
+						status_text = "OK";
+					}
 					cdsl_dtable_report_free(rpt);
-					status_code = 200;
-					status_text = "OK";
-				} else {
-					snprintf(json_result,
-						 sizeof(json_result),
-						 "{\"error\":\"evaluation_failed\"}\n");
-					status_code = 500;
-					status_text = "Internal Server Error";
 				}
 				cdsl_dtable_free(dt);
 			} else {
-				snprintf(json_result,
-					 sizeof(json_result),
-					 "{\"error\":\"parse_error\",\"message\":\"failed to parse "
-					 "decision table\"}\n");
 				status_code = 400;
 				status_text = "Bad Request";
+				json_result = cdsl_strdup(
+				    "{\"error\":\"parse_error\",\"message\":\"failed to parse "
+				    "decision table\"}\n");
 			}
 		} else if ((target_type && strcmp(target_type, "scorecard") == 0) ||
 			   (!target_type && strstr(effective_dsl, "SCORECARD") != NULL)) {
@@ -451,31 +486,31 @@ cdsl_server_handle_request(cdsl_server_t* srv, const char* http_request)
 			if (sc) {
 				cdsl_scorecard_report_t* rpt = cdsl_scorecard_eval(sc, ctx);
 				if (rpt) {
-					snprintf(json_result,
-						 sizeof(json_result),
-						 "{\"type\":\"scorecard\",\"scorecard_name\":\"%"
-						 "s\",\"baseline\":%.2f,\"score\":%.2f}\n",
-						 rpt->scorecard_name ? rpt->scorecard_name : "",
-						 rpt->baseline_score,
-						 rpt->final_score);
+					size_t cap =
+					    256 +
+					    (rpt->scorecard_name ? strlen(rpt->scorecard_name) : 0);
+					json_result = malloc(cap);
+					if (json_result) {
+						snprintf(
+						    json_result,
+						    cap,
+						    "{\"type\":\"scorecard\",\"scorecard_name\":\"%"
+						    "s\",\"baseline\":%.2f,\"score\":%.2f}\n",
+						    rpt->scorecard_name ? rpt->scorecard_name : "",
+						    rpt->baseline_score,
+						    rpt->final_score);
+						status_code = 200;
+						status_text = "OK";
+					}
 					cdsl_scorecard_report_free(rpt);
-					status_code = 200;
-					status_text = "OK";
-				} else {
-					snprintf(json_result,
-						 sizeof(json_result),
-						 "{\"error\":\"evaluation_failed\"}\n");
-					status_code = 500;
-					status_text = "Internal Server Error";
 				}
 				cdsl_scorecard_free(sc);
 			} else {
-				snprintf(json_result,
-					 sizeof(json_result),
-					 "{\"error\":\"parse_error\",\"message\":\"failed to parse "
-					 "scorecard\"}\n");
 				status_code = 400;
 				status_text = "Bad Request";
+				json_result = cdsl_strdup(
+				    "{\"error\":\"parse_error\",\"message\":\"failed to parse "
+				    "scorecard\"}\n");
 			}
 		} else if ((target_type && strcmp(target_type, "pipeline") == 0) ||
 			   (!target_type && strstr(effective_dsl, "PIPELINE") != NULL)) {
@@ -485,32 +520,33 @@ cdsl_server_handle_request(cdsl_server_t* srv, const char* http_request)
 				cdsl_pipeline_report_t* rpt =
 				    cdsl_pipeline_execute(p, local_vm, ctx);
 				if (rpt) {
-					snprintf(json_result,
-						 sizeof(json_result),
-						 "{\"type\":\"pipeline\",\"pipeline_name\":\"%s\","
-						 "\"status\":%d,\"stages\":%zu}\n",
-						 rpt->pipeline_name ? rpt->pipeline_name : "",
-						 rpt->status,
-						 rpt->num_stages);
+					size_t cap =
+					    256 +
+					    (rpt->pipeline_name ? strlen(rpt->pipeline_name) : 0);
+					json_result = malloc(cap);
+					if (json_result) {
+						snprintf(json_result,
+							 cap,
+							 "{\"type\":\"pipeline\",\"pipeline_name\":"
+							 "\"%s\","
+							 "\"status\":%d,\"stages\":%zu}\n",
+							 rpt->pipeline_name ? rpt->pipeline_name
+									    : "",
+							 rpt->status,
+							 rpt->num_stages);
+						status_code = 200;
+						status_text = "OK";
+					}
 					cdsl_pipeline_report_free(rpt);
-					status_code = 200;
-					status_text = "OK";
-				} else {
-					snprintf(json_result,
-						 sizeof(json_result),
-						 "{\"error\":\"execution_failed\"}\n");
-					status_code = 500;
-					status_text = "Internal Server Error";
 				}
 				cdsl_vm_free(local_vm);
 				cdsl_pipeline_free(p);
 			} else {
-				snprintf(json_result,
-					 sizeof(json_result),
-					 "{\"error\":\"parse_error\",\"message\":\"failed to parse "
-					 "pipeline\"}\n");
 				status_code = 400;
 				status_text = "Bad Request";
+				json_result = cdsl_strdup(
+				    "{\"error\":\"parse_error\",\"message\":\"failed to parse "
+				    "pipeline\"}\n");
 			}
 		} else {
 			/* Standard Rule */
@@ -525,34 +561,35 @@ cdsl_server_handle_request(cdsl_server_t* srv, const char* http_request)
 				if (rpt) {
 					char* j = cdsl_report_to_json(rpt);
 					if (j) {
-						snprintf(
-						    json_result, sizeof(json_result), "%s\n", j);
+						size_t jlen = strlen(j);
+						json_result = malloc(jlen + 2);
+						if (json_result) {
+							memcpy(json_result, j, jlen);
+							json_result[jlen] = '\n';
+							json_result[jlen + 1] = '\0';
+						}
 						free(j);
 					} else {
-						snprintf(json_result,
-							 sizeof(json_result),
-							 "{\"status\":\"PASSED\"}\n");
+						json_result =
+						    cdsl_strdup("{\"status\":\"PASSED\"}\n");
 					}
 					cdsl_report_free(rpt);
 					status_code = 200;
 					status_text = "OK";
-				} else {
-					snprintf(json_result,
-						 sizeof(json_result),
-						 "{\"error\":\"evaluation_failed\"}\n");
-					status_code = 500;
-					status_text = "Internal Server Error";
 				}
 				cdsl_vm_free(local_vm);
 				cdsl_free_rule(rule);
 			} else {
-				snprintf(json_result,
-					 sizeof(json_result),
-					 "{\"error\":\"parse_error\",\"message\":\"failed to parse "
-					 "rule\"}\n");
 				status_code = 400;
 				status_text = "Bad Request";
+				json_result = cdsl_strdup(
+				    "{\"error\":\"parse_error\",\"message\":\"failed to parse "
+				    "rule\"}\n");
 			}
+		}
+
+		if (!json_result) {
+			json_result = cdsl_strdup("{\"error\":\"evaluation_failed\"}\n");
 		}
 
 		if (json_root) {
@@ -560,7 +597,9 @@ cdsl_server_handle_request(cdsl_server_t* srv, const char* http_request)
 		}
 		cdsl_context_free(ctx);
 
-		return server_http_json_response(status_code, status_text, json_result);
+		char* resp = server_http_json_response(status_code, status_text, json_result);
+		free(json_result);
+		return resp;
 	}
 
 	/* Rule deploy endpoint */
@@ -621,43 +660,147 @@ cdsl_server_handle_request(cdsl_server_t* srv, const char* http_request)
 			cdsl_json_free(json_root);
 		}
 
-		char resp_body[512];
-		if (ok) {
-			snprintf(resp_body,
-				 sizeof(resp_body),
-				 "{\"status\":\"deployed\",\"version\":%llu,\"code\":0}\n",
-				 (unsigned long long)version);
-		} else {
-			snprintf(resp_body,
-				 sizeof(resp_body),
-				 "{\"status\":\"rejected\",\"code\":1,\"error\":\"%s\"}\n",
-				 (rpt.message && strlen(rpt.message) > 0)
-				     ? rpt.message
-				     : "canary deployment failed");
+		size_t resp_cap = 512 + (rpt.message ? strlen(rpt.message) : 0);
+		char* resp_body = malloc(resp_cap);
+		if (resp_body) {
+			if (ok) {
+				snprintf(resp_body,
+					 resp_cap,
+					 "{\"status\":\"deployed\",\"version\":%llu,\"code\":0}\n",
+					 (unsigned long long)version);
+			} else {
+				snprintf(resp_body,
+					 resp_cap,
+					 "{\"status\":\"rejected\",\"code\":1,\"error\":\"%s\"}\n",
+					 (rpt.message && strlen(rpt.message) > 0)
+					     ? rpt.message
+					     : "canary deployment failed");
+			}
 		}
 		cdsl_canary_report_free(&rpt);
 
-		char resp[768];
-		snprintf(resp,
-			 sizeof(resp),
-			 "HTTP/1.1 %s\r\nContent-Type: application/json\r\nContent-Length: "
-			 "%zu\r\nConnection: close\r\n\r\n%s",
-			 ok ? "200 OK" : "400 Bad Request",
-			 strlen(resp_body),
-			 resp_body);
-		return cdsl_strdup(resp);
+		char* resp = server_http_json_response(
+		    ok ? 200 : 400, ok ? "OK" : "Bad Request", resp_body ? resp_body : "");
+		free(resp_body);
+		return resp;
 	}
 
 	return cdsl_strdup(
 	    "HTTP/1.1 404 Not Found\r\nContent-Length: 0\r\nConnection: close\r\n\r\n");
 }
 
+static void
+server_handle_client(cdsl_server_t* srv, cdsl_socket_t client_fd)
+{
+	size_t cap = 4096;
+	size_t len = 0;
+	char* req_buf = malloc(cap);
+	if (!req_buf) {
+		CDSL_CLOSE_SOCKET(client_fd);
+		return;
+	}
+
+	long content_len = -1;
+	const char* header_end = NULL;
+
+	while (server_is_running(srv)) {
+		if (len + 1024 >= cap) {
+			if (cap >= (size_t)10 * 1024 * 1024) { /* 10MB safety threshold */
+				break;
+			}
+			cap *= 2;
+			char* new_buf = realloc(req_buf, cap);
+			if (!new_buf) {
+				break;
+			}
+			req_buf = new_buf;
+		}
+		ssize_t n = recv(client_fd, req_buf + len, (int)(cap - 1 - len), 0);
+		if (n <= 0) {
+			break;
+		}
+		len += (size_t)n;
+		req_buf[len] = '\0';
+
+		if (!header_end) {
+			header_end = strstr(req_buf, "\r\n\r\n");
+			if (!header_end) {
+				header_end = strstr(req_buf, "\n\n");
+			}
+			if (header_end) {
+				content_len = http_get_content_length(
+				    req_buf, (size_t)(header_end - req_buf));
+			}
+		}
+
+		if (header_end) {
+			size_t h_len =
+			    (size_t)(header_end - req_buf) + (header_end[0] == '\r' ? 4 : 2);
+			if (content_len <= 0 || len >= h_len + (size_t)content_len) {
+				break;
+			}
+		}
+	}
+
+	if (len > 0) {
+		char* resp = cdsl_server_handle_request(srv, req_buf);
+		if (resp) {
+			size_t total_to_send = strlen(resp);
+			size_t sent = 0;
+			while (sent < total_to_send) {
+				ssize_t n =
+				    send(client_fd, resp + sent, (int)(total_to_send - sent), 0);
+				if (n <= 0) {
+					break;
+				}
+				sent += (size_t)n;
+			}
+			free(resp);
+		}
+	}
+	free(req_buf);
+	CDSL_CLOSE_SOCKET(client_fd);
+}
+
 static void*
-server_worker_loop(void* arg)
+server_worker_routine(void* arg)
+{
+	cdsl_server_t* srv = (cdsl_server_t*)arg;
+
+	while (1) {
+		cdsl_socket_t client_fd = CDSL_INVALID_SOCKET;
+
+		CDSL_MUTEX_LOCK(&srv->queue_lock);
+		while (server_is_running(srv) && srv->queue_count == 0) {
+			CDSL_COND_WAIT(&srv->queue_not_empty, &srv->queue_lock);
+		}
+		if (!server_is_running(srv) && srv->queue_count == 0) {
+			CDSL_MUTEX_UNLOCK(&srv->queue_lock);
+			break;
+		}
+		client_fd = srv->queue[srv->queue_head];
+		srv->queue_head = (srv->queue_head + 1) % CDSL_SERVER_QUEUE_CAP;
+		srv->queue_count--;
+		CDSL_COND_SIGNAL(&srv->queue_not_full);
+		CDSL_MUTEX_UNLOCK(&srv->queue_lock);
+
+		if (client_fd != CDSL_INVALID_SOCKET) {
+			server_handle_client(srv, client_fd);
+		}
+	}
+
+	return NULL;
+}
+
+static void*
+server_listener_routine(void* arg)
 {
 	cdsl_server_t* srv = (cdsl_server_t*)arg;
 
 	while (server_is_running(srv)) {
+		if (srv->server_fd == CDSL_INVALID_SOCKET) {
+			break;
+		}
 #ifdef _WIN32
 		fd_set readfds;
 		FD_ZERO(&readfds);
@@ -680,65 +823,20 @@ server_worker_loop(void* arg)
 			continue;
 		}
 
-		size_t cap = 4096;
-		size_t len = 0;
-		char* req_buf = malloc(cap);
-		if (!req_buf) {
+		CDSL_MUTEX_LOCK(&srv->queue_lock);
+		while (server_is_running(srv) && srv->queue_count == CDSL_SERVER_QUEUE_CAP) {
+			CDSL_COND_WAIT(&srv->queue_not_full, &srv->queue_lock);
+		}
+		if (!server_is_running(srv)) {
+			CDSL_MUTEX_UNLOCK(&srv->queue_lock);
 			CDSL_CLOSE_SOCKET(client_fd);
-			continue;
+			break;
 		}
-
-		long content_len = -1;
-		const char* header_end = NULL;
-
-		while (server_is_running(srv)) {
-			if (len + 1024 >= cap) {
-				if (cap >= 10 * 1024 * 1024) { /* 10MB safety threshold */
-					break;
-				}
-				cap *= 2;
-				char* new_buf = realloc(req_buf, cap);
-				if (!new_buf) {
-					break;
-				}
-				req_buf = new_buf;
-			}
-			int n = recv(client_fd, req_buf + len, (int)(cap - 1 - len), 0);
-			if (n <= 0) {
-				break;
-			}
-			len += (size_t)n;
-			req_buf[len] = '\0';
-
-			if (!header_end) {
-				header_end = strstr(req_buf, "\r\n\r\n");
-				if (!header_end) {
-					header_end = strstr(req_buf, "\n\n");
-				}
-				if (header_end) {
-					content_len = http_get_content_length(
-					    req_buf, (size_t)(header_end - req_buf));
-				}
-			}
-
-			if (header_end) {
-				size_t h_len = (size_t)(header_end - req_buf) +
-					       (header_end[0] == '\r' ? 4 : 2);
-				if (content_len <= 0 || len >= h_len + (size_t)content_len) {
-					break;
-				}
-			}
-		}
-
-		if (len > 0) {
-			char* resp = cdsl_server_handle_request(srv, req_buf);
-			if (resp) {
-				(void)send(client_fd, resp, (int)strlen(resp), 0);
-				free(resp);
-			}
-		}
-		free(req_buf);
-		CDSL_CLOSE_SOCKET(client_fd);
+		srv->queue[srv->queue_tail] = client_fd;
+		srv->queue_tail = (srv->queue_tail + 1) % CDSL_SERVER_QUEUE_CAP;
+		srv->queue_count++;
+		CDSL_COND_SIGNAL(&srv->queue_not_empty);
+		CDSL_MUTEX_UNLOCK(&srv->queue_lock);
 	}
 
 	return NULL;
@@ -791,8 +889,43 @@ cdsl_server_start(cdsl_server_t* srv)
 	}
 
 	server_set_running(srv, true);
-	if (CDSL_THREAD_CREATE(&srv->worker_thread, server_worker_loop, srv) != 0) {
+
+	size_t workers = srv->config.max_concurrency > 0 ? srv->config.max_concurrency : 4;
+	srv->worker_threads = calloc(workers, sizeof(cdsl_thread_t));
+	if (!srv->worker_threads) {
 		server_set_running(srv, false);
+		CDSL_CLOSE_SOCKET(srv->server_fd);
+		srv->server_fd = CDSL_INVALID_SOCKET;
+		return -1;
+	}
+
+	srv->num_workers = 0;
+	for (size_t i = 0; i < workers; i++) {
+		if (CDSL_THREAD_CREATE(&srv->worker_threads[i], server_worker_routine, srv) == 0) {
+			srv->num_workers++;
+		}
+	}
+
+	if (srv->num_workers == 0) {
+		server_set_running(srv, false);
+		free(srv->worker_threads);
+		srv->worker_threads = NULL;
+		CDSL_CLOSE_SOCKET(srv->server_fd);
+		srv->server_fd = CDSL_INVALID_SOCKET;
+		return -1;
+	}
+
+	if (CDSL_THREAD_CREATE(&srv->listener_thread, server_listener_routine, srv) != 0) {
+		server_set_running(srv, false);
+		CDSL_MUTEX_LOCK(&srv->queue_lock);
+		CDSL_COND_BROADCAST(&srv->queue_not_empty);
+		CDSL_MUTEX_UNLOCK(&srv->queue_lock);
+		for (size_t i = 0; i < srv->num_workers; i++) {
+			CDSL_THREAD_JOIN(srv->worker_threads[i]);
+		}
+		free(srv->worker_threads);
+		srv->worker_threads = NULL;
+		srv->num_workers = 0;
 		CDSL_CLOSE_SOCKET(srv->server_fd);
 		srv->server_fd = CDSL_INVALID_SOCKET;
 		return -1;
@@ -808,9 +941,38 @@ cdsl_server_stop(cdsl_server_t* srv)
 		return;
 	}
 	server_set_running(srv, false);
-	CDSL_THREAD_JOIN(srv->worker_thread);
+
+	/* Wait for listener thread to finish */
+	CDSL_THREAD_JOIN(srv->listener_thread);
+
 	if (srv->server_fd != CDSL_INVALID_SOCKET) {
-		CDSL_CLOSE_SOCKET(srv->server_fd);
+		cdsl_socket_t fd = srv->server_fd;
 		srv->server_fd = CDSL_INVALID_SOCKET;
+		CDSL_CLOSE_SOCKET(fd);
 	}
+
+	/* Wake up all worker threads */
+	CDSL_MUTEX_LOCK(&srv->queue_lock);
+	CDSL_COND_BROADCAST(&srv->queue_not_empty);
+	CDSL_COND_BROADCAST(&srv->queue_not_full);
+	CDSL_MUTEX_UNLOCK(&srv->queue_lock);
+
+	for (size_t i = 0; i < srv->num_workers; i++) {
+		CDSL_THREAD_JOIN(srv->worker_threads[i]);
+	}
+	free(srv->worker_threads);
+	srv->worker_threads = NULL;
+	srv->num_workers = 0;
+
+	/* Drain any remaining sockets in queue */
+	CDSL_MUTEX_LOCK(&srv->queue_lock);
+	while (srv->queue_count > 0) {
+		cdsl_socket_t sock = srv->queue[srv->queue_head];
+		srv->queue_head = (srv->queue_head + 1) % CDSL_SERVER_QUEUE_CAP;
+		srv->queue_count--;
+		if (sock != CDSL_INVALID_SOCKET) {
+			CDSL_CLOSE_SOCKET(sock);
+		}
+	}
+	CDSL_MUTEX_UNLOCK(&srv->queue_lock);
 }
