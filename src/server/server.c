@@ -389,12 +389,11 @@ cdsl_server_handle_request(cdsl_server_t* srv, const char* http_request)
 						 rpt->total_failed);
 					cdsl_ruleset_report_free(rpt);
 					return server_http_json_response(200, "OK", body);
-				} else {
-					return server_http_json_response(
-					    500,
-					    "Internal Server Error",
-					    "{\"error\":\"evaluation_failed\"}\n");
 				}
+				return server_http_json_response(
+				    500,
+				    "Internal Server Error",
+				    "{\"error\":\"evaluation_failed\"}\n");
 			}
 			/* No active ruleset and no DSL in request -> reject with 400 */
 			if (json_root) {
@@ -410,8 +409,8 @@ cdsl_server_handle_request(cdsl_server_t* srv, const char* http_request)
 
 		/* Determine evaluation target via JSON field "type", with fallback to DSL prefix */
 		char json_result[1024];
-		int status_code = 200;
-		const char* status_text = "OK";
+		int status_code;
+		const char* status_text;
 
 		if ((target_type && (strcmp(target_type, "dtable") == 0 ||
 				     strcmp(target_type, "decision_table") == 0)) ||
