@@ -35,7 +35,7 @@
 - Modify: `src/manager/consul.c:135-148`
 - Test: `tests/test_distributed.c`
 
-- [ ] **Step 1: Write the failing reentrancy test in `tests/test_distributed.c`**
+- [x] **Step 1: Write the failing reentrancy test in `tests/test_distributed.c`**
 
 Add `test_watcher_reentrancy()` to `tests/test_distributed.c`:
 ```c
@@ -105,12 +105,12 @@ test_watcher_reentrancy_all_drivers(void)
 ```
 And add call to `test_watcher_reentrancy_all_drivers()` in `main()`.
 
-- [ ] **Step 2: Run test to verify it deadlocks/fails**
+- [x] **Step 2: Run test to verify it deadlocks/fails**
 
 Run: `cmake --build build -j$(nproc) && ./build/test_distributed`  
 Expected: Process hangs/times out due to self-deadlock on `d->lock`.
 
-- [ ] **Step 3: Implement snapshot-and-unlock in `src/manager/config_source.c`, `src/manager/etcd.c`, and `src/manager/consul.c`**
+- [x] **Step 3: Implement snapshot-and-unlock in `src/manager/config_source.c`, `src/manager/etcd.c`, and `src/manager/consul.c`**
 
 In each driver's `publish()` function, define:
 ```c
@@ -170,12 +170,12 @@ Replace the watcher iteration under lock with:
 ```
 (Apply symmetrically to `mem_driver_publish` in `src/manager/config_source.c`, `etcd_publish` in `src/manager/etcd.c`, and `consul_publish` in `src/manager/consul.c`.)
 
-- [ ] **Step 4: Run test to verify it passes**
+- [x] **Step 4: Run test to verify it passes**
 
 Run: `cmake --build build -j$(nproc) && ./build/test_distributed`  
 Expected: `All distributed configuration tests passed successfully!` with 0 hangs.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add src/manager/config_source.c src/manager/etcd.c src/manager/consul.c tests/test_distributed.c
@@ -190,7 +190,7 @@ git commit -m "fix(manager): :bug: eliminate watch callback deadlocks with snaps
 - Modify: `src/server/server.c:190-535`
 - Test: `tests/test_server.c`
 
-- [ ] **Step 1: Write failing negative tests in `tests/test_server.c`**
+- [x] **Step 1: Write failing negative tests in `tests/test_server.c`**
 
 Add negative test assertions in `tests/test_server.c`:
 ```c
@@ -217,12 +217,12 @@ Add negative test assertions in `tests/test_server.c`:
 	free(resp_empty_deploy);
 ```
 
-- [ ] **Step 2: Run test to verify it fails**
+- [x] **Step 2: Run test to verify it fails**
 
 Run: `cmake --build build -j$(nproc) && ./build/test_server`  
 Expected: FAIL on `assert(strstr(resp_empty, "400 Bad Request") != NULL)` (currently returns 200 OK).
 
-- [ ] **Step 3: Refactor `src/server/server.c`**
+- [x] **Step 3: Refactor `src/server/server.c`**
 
 1. Introduce helper:
 ```c
@@ -262,12 +262,12 @@ server_http_json_response(int status_code, const char* status_text, const char* 
 - If `!dsl_text || strlen(dsl_text) == 0`:
   - Return `server_http_json_response(400, "Bad Request", "{\"status\":\"rejected\",\"error\":\"missing rule dsl to deploy\"}\n")`.
 
-- [ ] **Step 4: Run test to verify it passes**
+- [x] **Step 4: Run test to verify it passes**
 
 Run: `cmake --build build -j$(nproc) && ./build/test_server`  
 Expected: PASS (all endpoints and negative test cases passing).
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add src/server/server.c tests/test_server.c
@@ -284,12 +284,12 @@ git commit -m "fix(server): :security: replace silent approval fallback with exp
 - Modify: `README.md`
 - Modify: `CHANGELOG.md`
 
-- [ ] **Step 1: Update comments and docstrings in `include/cdsl/jit.h` and `src/vm/jit.c`**
+- [x] **Step 1: Update comments and docstrings in `include/cdsl/jit.h` and `src/vm/jit.c`**
 
 Align terminology:
 - Describe `cdsl_jit_compile()` as generating a native executable trampoline thunk bridging the host ABI to VM execution with W^X page protection and instruction cache synchronization.
 
-- [ ] **Step 2: Update `CHANGELOG.md` and `README.md`**
+- [x] **Step 2: Update `CHANGELOG.md` and `README.md`**
 
 In `README.md`:
 - Under Features -> Advanced Capabilities:
@@ -302,12 +302,12 @@ In `CHANGELOG.md`:
   - Concurrency fix: snapshot-and-unlock in config sources eliminating callback deadlocks.
   - Server fix: explicit 400 Bad Request replacing default approve fallbacks.
 
-- [ ] **Step 3: Run test suite to verify no regressions**
+- [x] **Step 3: Run test suite to verify no regressions**
 
 Run: `ctest --test-dir build --output-on-failure`  
 Expected: 100% tests passed out of 45.
 
-- [ ] **Step 4: Commit**
+- [x] **Step 4: Commit**
 
 ```bash
 git add include/cdsl/jit.h src/vm/jit.c README.md CHANGELOG.md
@@ -321,21 +321,21 @@ git commit -m "docs(jit): :pencil2: accurately refine JIT terminology to Native 
 **Files:**
 - Full repository verification.
 
-- [ ] **Step 1: Check formatting**
+- [x] **Step 1: Check formatting**
 
 Run: `clang-format --dry-run --Werror src/manager/*.c src/server/*.c tests/*.c`  
 Expected: Exit code 0.
 
-- [ ] **Step 2: Run all 45 unit tests locally**
+- [x] **Step 2: Run all 45 unit tests locally**
 
 Run: `ctest --test-dir build --output-on-failure`  
 Expected: 45/45 Passed.
 
-- [ ] **Step 3: Push to `origin master`**
+- [x] **Step 3: Push to `origin master`**
 
 Run: `git push origin master`
 
-- [ ] **Step 4: Monitor GitHub Actions CI Run**
+- [x] **Step 4: Monitor GitHub Actions CI Run**
 
 Run: `gh run watch <run_id>`  
 Expected: 13/13 Jobs Green.
