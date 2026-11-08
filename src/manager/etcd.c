@@ -1,6 +1,8 @@
 /**
  * @file src/manager/etcd.c
- * @brief Etcd v3 distributed configuration source driver.
+ * @brief Etcd v3 in-memory simulation configuration source driver.
+ *
+ * Simulates Etcd v3 key-value and revision semantics in-memory without external network dependencies.
  */
 
 #include "cdsl/config_source.h"
@@ -10,10 +12,6 @@
 #include <stdlib.h>
 #include <string.h>
 #include <stdint.h>
-
-#ifdef CDSL_USE_CURL
-#include <curl/curl.h>
-#endif
 
 typedef struct etcd_entry {
 	char* key;
@@ -43,7 +41,7 @@ static const char*
 etcd_name(cdsl_config_source_t* src)
 {
 	(void)src;
-	return "etcd";
+	return "etcd-memory";
 }
 
 static int
@@ -217,6 +215,12 @@ static const cdsl_config_source_ops_t s_etcd_ops = {
     .watch = etcd_watch,
     .close = etcd_close,
 };
+
+cdsl_config_source_t*
+cdsl_config_source_create_etcd_mem(const char* key_prefix)
+{
+	return cdsl_config_source_create_etcd(NULL, key_prefix);
+}
 
 cdsl_config_source_t*
 cdsl_config_source_create_etcd(const char* endpoints, const char* key_prefix)

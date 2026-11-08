@@ -60,6 +60,15 @@ cdsl_config_source_free(cdsl_config_source_t* src)
 	free(src);
 }
 
+const char*
+cdsl_config_source_get_name(const cdsl_config_source_t* src)
+{
+	if (!src || !src->ops || !src->ops->name) {
+		return "unknown";
+	}
+	return src->ops->name((cdsl_config_source_t*)src);
+}
+
 /* ---- In-Memory Driver ---- */
 
 typedef struct mem_entry {

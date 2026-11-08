@@ -1,6 +1,8 @@
 /**
  * @file src/manager/consul.c
- * @brief Consul KV distributed configuration source driver.
+ * @brief Consul KV in-memory simulation configuration source driver.
+ *
+ * Simulates Consul KV ModifyIndex semantics in-memory without external network dependencies.
  */
 
 #include "cdsl/config_source.h"
@@ -10,10 +12,6 @@
 #include <stdlib.h>
 #include <string.h>
 #include <stdint.h>
-
-#ifdef CDSL_USE_CURL
-#include <curl/curl.h>
-#endif
 
 typedef struct consul_entry {
 	char* key;
@@ -43,7 +41,7 @@ static const char*
 consul_name(cdsl_config_source_t* src)
 {
 	(void)src;
-	return "consul";
+	return "consul-memory";
 }
 
 static int
@@ -217,6 +215,12 @@ static const cdsl_config_source_ops_t s_consul_ops = {
     .watch = consul_watch,
     .close = consul_close,
 };
+
+cdsl_config_source_t*
+cdsl_config_source_create_consul_mem(const char* key_prefix)
+{
+	return cdsl_config_source_create_consul(NULL, key_prefix);
+}
 
 cdsl_config_source_t*
 cdsl_config_source_create_consul(const char* endpoint, const char* key_prefix)

@@ -14,7 +14,7 @@
   - Deterministic AST and ruleset fingerprinting (`cdsl_rule_hash`, `cdsl_ruleset_hash`) for cluster-wide version drift detection and audit trails.
 - **Distributed Configuration Drivers & Cluster Governance (`include/cdsl/config_source.h`, `src/manager/`)**:
   - Pluggable config source abstraction (`cdsl_config_source_t`) for cluster synchronization and dynamic watch events.
-  - Production-ready drivers: Memory mock driver, Etcd v3 driver (`src/manager/etcd.c`), and Consul KV driver (`src/manager/consul.c`).
+  - In-memory configuration drivers: Zero-dependency Memory driver, Etcd v3 in-memory simulation driver (`src/manager/etcd.c`) preserving Etcd revision semantics (`etcd-rev-<N>`), and Consul KV in-memory simulation driver (`src/manager/consul.c`) preserving ModifyIndex semantics (`consul-idx-<N>`).
   - Seamless integration with enterprise rule manager (`cdsl_manager_attach_config_source`).
   - Automated canary verification: incoming rule changes undergo sandbox parsing and trial verification before atomic RCU cutover, with instant self-healing rollback on validation failure.
 - **5-Engine Cross-Equivalence Verification (`tests/test_jit.c`, `tests/test_distributed.c`)**:

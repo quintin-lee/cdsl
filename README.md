@@ -39,10 +39,12 @@
 - **Tri-state results** — PASSED / PARTIALLY PASSED / FAILED with weighted scoring and critical-rule veto
 - **Zero external dependencies** — Custom JSON parser, arena allocator, hash map; no third-party libraries
 
-### Rule Management
+### Rule Management & Distributed Governance
 
 - **RuleSet batch execution** — Priority-ordered rule groups with aggregate reports
-- **Hot reload** — Load, remove, and reload rules at runtime from files or strings
+- **RCU hot reload & rollback** — Zero-lock RCU reader execution, atomic version deployment, and multi-version history retention (`cdsl_manager_t`)
+- **Automated canary validation** — Pre-flight sandbox verification rejecting faulty updates with zero downtime
+- **In-memory configuration drivers** — Zero-dependency configuration sources conforming to Etcd v3 revision (`etcd-rev-<N>`) and Consul KV ModifyIndex (`consul-idx-<N>`) data models
 - **Dependency & topology** — `depends_on` metadata with topological sort for ordered execution
 - **Parallel execution** — Multi-threaded RuleSet evaluation via pthreads
 

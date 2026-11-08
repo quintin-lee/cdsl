@@ -81,16 +81,27 @@ test_watch_callback(
 static void
 test_drivers_crud(void)
 {
-	printf("Running test_drivers_crud (Memory, Etcd, Consul)...\n");
+	printf("Running test_drivers_crud (Memory, Etcd, Consul in-memory)...\n");
 	cdsl_config_source_t* sources[] = {
 	    cdsl_config_source_create_mem(),
 	    cdsl_config_source_create_etcd("http://127.0.0.1:2379", "/cdsl/rules/"),
+	    cdsl_config_source_create_etcd_mem("/cdsl/rules/"),
 	    cdsl_config_source_create_consul("http://127.0.0.1:8500", "cdsl/rules/"),
+	    cdsl_config_source_create_consul_mem("cdsl/rules/"),
+	};
+	const char* expected_names[] = {
+	    "memory",
+	    "etcd-memory",
+	    "etcd-memory",
+	    "consul-memory",
+	    "consul-memory",
 	};
 
-	for (size_t i = 0; i < 3; i++) {
+	size_t num_sources = sizeof(sources) / sizeof(sources[0]);
+	for (size_t i = 0; i < num_sources; i++) {
 		cdsl_config_source_t* src = sources[i];
 		assert(src != NULL);
+		assert(strcmp(cdsl_config_source_get_name(src), expected_names[i]) == 0);
 
 		const char* key = "rules/finance";
 		int watch_flag = 0;
@@ -103,6 +114,12 @@ test_drivers_crud(void)
 		       0);
 		assert(ver1 != NULL);
 		assert(watch_flag == 1);
+
+		if (strstr(expected_names[i], "etcd") != NULL) {
+			assert(strncmp(ver1, "etcd-rev-", 9) == 0);
+		} else if (strstr(expected_names[i], "consul") != NULL) {
+			assert(strncmp(ver1, "consul-idx-", 11) == 0);
+		}
 
 		char* fetched = NULL;
 		size_t fetched_len = 0;
