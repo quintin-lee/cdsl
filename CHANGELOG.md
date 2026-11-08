@@ -1,5 +1,24 @@
 # Changelog
 
+## [2.0.3] - 2026-11-09
+
+### Fixed
+- **Watch Callback Content Snapshot (`src/manager/etcd.c`, `src/manager/consul.c`, `src/manager/config_source.c`)**:
+  - `publish` now copies the content into a heap snapshot under the driver mutex and dispatches callbacks with the snapshot, eliminating the use-after-free window where a concurrent publish of the same key could free `target->content` while a callback still read it.
+  - Added `test_watch_content_uaf_concurrent` (8 threads × 200 publishes, byte-exact content validation, ASan-clean).
+- **Graceful Server Shutdown (`src/server/server.c`)**:
+  - `server_handle_client` no longer aborts mid-request when the server is stopping; in-flight requests are drained to completion before sockets close.
+  - The listener hands off an already-accepted connection to a worker even when stopping (closing it only when the queue is full).
+  - Added `test_server_stop_drain`.
+- **AArch64 JIT Trampoline Literal Pool (`src/vm/jit.c`)**:
+  - LDR literal imm9 fields are now computed from the actual prologue layout (`imm9 = n - idx`) instead of hand-filled `#20`/`#24`, which were inconsistent with the real layout. Added an overflow guard and an AArch64-only native-vs-threaded self-check test.
+- **Test Assertion Hygiene (`CMakeLists.txt`)**:
+  - All test targets are compiled with `-UNDEBUG` / `/UNDEBUG` so `assert()` stays enabled under Release builds, doubling up with the per-source `#undef NDEBUG` guards.
+
+### Docs
+- `jit.c` header now documents the layout-computed AArch64 pool offsets.
+- `docs/architecture.md` watch semantics note updated (content passed by snapshot).
+
 ## [2.0.2] - 2026-11-08
 
 ### Added

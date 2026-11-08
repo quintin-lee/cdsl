@@ -143,6 +143,13 @@ The Execution Layer interprets the verified AST against a runtime context. It ha
 - **vm/codegen.c**: Translation of DSL rules into standalone C code.
 - **vm/visualize.c**: Generation of Graphviz DOT representations for rules and rulesets.
 
+**Watch callback semantics (config-source drivers)**: when a `publish` is
+performed, the driver copies the new content into a heap snapshot while the
+mutex is held, then releases the mutex and dispatches watch callbacks with
+that snapshot pointer; the snapshot is freed after dispatch. A concurrent
+`publish` of the same key therefore cannot free the buffer a callback is
+still reading (prevents use-after-free).
+
 **Two execution paths**: `cdsl_vm_execute()` uses the recursive tree-walk interpreter in `eval.c`. `cdsl_vm_execute_compiled()` dispatches to the bytecode VM in `bytecode.c` when a compiled bytecode chunk is available (produced by `cdsl_compile()`), falling back to the tree-walk path for metric-rule execution when the bytecode chunk has no metric instructions. Both paths implement identical rule semantics (threshold checks, critical-veto, tri-state status).
 
 **Execution flow**:
