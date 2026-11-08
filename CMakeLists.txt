@@ -228,6 +228,14 @@ foreach(test_src ${TEST_SOURCES})
             -Wno-null-dereference -Wno-sign-compare -Wno-unused-result)
     endif()
     target_compile_definitions(${test_name} PRIVATE CDSL_TESTING)
+    # Tests must keep assertions enabled under any build type: strip the
+    # -DNDEBUG that Release builds inject, doubling up with the per-source
+    # #undef NDEBUG guards already present in test files
+    if(CMAKE_C_COMPILER_ID MATCHES "GNU|Clang")
+        target_compile_options(${test_name} PRIVATE -UNDEBUG)
+    elseif(MSVC)
+        target_compile_options(${test_name} PRIVATE /UNDEBUG)
+    endif()
     target_link_libraries(${test_name} PRIVATE cdsl_static)
     add_test(NAME ${test_name} COMMAND ${test_name})
     if(${test_name} STREQUAL "test_doc")
