@@ -264,6 +264,107 @@ test_watcher_reentrancy_all_drivers(void)
 	}
 }
 
+/* ---- concurrent watch content snapshot UAF regression ---- */
+#include <stdatomic.h>
+#include <pthread.h>
+
+typedef struct uaf_worker_arg {
+	int thread_id;
+} uaf_worker_arg_t;
+
+#define UAF_THREADS 8
+#define UAF_PUBLISH_PER_THREAD 200
+#define UAF_CONTENT_LEN 1024
+
+static cdsl_config_source_t* s_uaf_src = NULL;
+static atomic_int s_uaf_total_count = 0;
+static atomic_int s_uaf_valid_count = 0;
+
+/* 合法内容布局：'A' 填充，头部第 0 字节固定 'A'，第 5..8 字节内嵌线程号（左对齐、
+ * 不足 4 位补 'A'），尾部最后一字节 'A'。回调据此逐字节校验快照完整性。 */
+static void
+uaf_watch_callback(
+    const char* key, const char* content, size_t len, const char* version, void* user_data)
+{
+	(void)key;
+	(void)version;
+	(void)user_data;
+	atomic_fetch_add_explicit(&s_uaf_total_count, 1, memory_order_relaxed);
+	if (!content || len != UAF_CONTENT_LEN) {
+		return;
+	}
+	for (size_t i = 0; i < len; i++) {
+		int is_thread_num_slot = (i >= 5 && i <= 8);
+		char c = content[i];
+		if (c == 'A') {
+			continue;
+		}
+		if (is_thread_num_slot && c >= '0' && c <= '9') {
+			continue;
+		}
+		return; /* 内容被踩坏（UAF/竞争）→ 不计入 valid */
+	}
+	atomic_fetch_add_explicit(&s_uaf_valid_count, 1, memory_order_relaxed);
+}
+
+static void*
+uaf_worker_main(void* arg)
+{
+	uaf_worker_arg_t* a = (uaf_worker_arg_t*)arg;
+	char content[UAF_CONTENT_LEN];
+	char tidbuf[5] = {0};
+	int tb_len = snprintf(tidbuf, sizeof(tidbuf), "%d", a->thread_id);
+
+	memset(content, 'A', sizeof(content));
+	memcpy(content + 5, tidbuf, (size_t)(tb_len > 0 ? tb_len : 0));
+	/* content[0] 与 content[len-1] 保持 'A' 标记 */
+
+	for (int i = 0; i < UAF_PUBLISH_PER_THREAD; i++) {
+		(void)cdsl_config_source_publish(
+		    s_uaf_src, "uaf/key", content, UAF_CONTENT_LEN, NULL);
+	}
+	return NULL;
+}
+
+static void
+test_watch_content_uaf_concurrent(void)
+{
+	printf("Running test_watch_content_uaf_concurrent...\n");
+	cdsl_config_source_t* sources[] = {
+	    cdsl_config_source_create_mem(),
+	    cdsl_config_source_create_etcd_mem("/cdsl/rules/"),
+	    cdsl_config_source_create_consul_mem("cdsl/rules/"),
+	};
+
+	size_t count = sizeof(sources) / sizeof(sources[0]);
+	for (size_t i = 0; i < count; i++) {
+		s_uaf_src = sources[i];
+		assert(s_uaf_src != NULL);
+		atomic_store_explicit(&s_uaf_total_count, 0, memory_order_relaxed);
+		atomic_store_explicit(&s_uaf_valid_count, 0, memory_order_relaxed);
+
+		assert(cdsl_config_source_watch(s_uaf_src, "uaf/key", uaf_watch_callback, NULL) ==
+		       0);
+
+		pthread_t threads[UAF_THREADS];
+		uaf_worker_arg_t args[UAF_THREADS];
+		for (int t = 0; t < UAF_THREADS; t++) {
+			args[t].thread_id = t;
+			assert(pthread_create(&threads[t], NULL, uaf_worker_main, &args[t]) == 0);
+		}
+		for (int t = 0; t < UAF_THREADS; t++) {
+			pthread_join(threads[t], NULL);
+		}
+
+		int total = atomic_load_explicit(&s_uaf_total_count, memory_order_relaxed);
+		int valid = atomic_load_explicit(&s_uaf_valid_count, memory_order_relaxed);
+		assert(total == UAF_THREADS * UAF_PUBLISH_PER_THREAD);
+		assert(valid == UAF_THREADS * UAF_PUBLISH_PER_THREAD);
+
+		cdsl_config_source_free(s_uaf_src);
+	}
+}
+
 int
 main(void)
 {
@@ -272,6 +373,7 @@ main(void)
 	test_drivers_crud();
 	test_watcher_reentrancy_all_drivers();
 	test_canary_auto_reload_and_rollback();
+	test_watch_content_uaf_concurrent();
 	printf("All distributed configuration tests passed successfully!\n");
 	return 0;
 }

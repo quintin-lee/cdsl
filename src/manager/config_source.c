@@ -223,20 +223,32 @@ mem_driver_publish(
 		}
 	}
 
-	const char* out_content_ptr = target->content;
+	/* Snapshot content under lock: a concurrent publish of the same key can
+	 * free target->content, so callbacks must only see this copy */
+	char* content_snapshot = malloc(target->len + 1);
+	if (!content_snapshot) {
+		CDSL_MUTEX_UNLOCK(&data->lock);
+		if (dispatch_list != stack_entries) {
+			free(dispatch_list);
+		}
+		return -1;
+	}
+	memcpy(content_snapshot, target->content, target->len);
+	content_snapshot[target->len] = '\0';
 	size_t out_len = target->len;
 
 	/* Release mutex BEFORE invoking user callbacks */
 	CDSL_MUTEX_UNLOCK(&data->lock);
 
-	/* Dispatch callbacks lock-free */
+	/* Dispatch callbacks lock-free with the content snapshot */
 	for (size_t i = 0; i < idx; i++) {
 		if (dispatch_list[i].callback) {
 			dispatch_list[i].callback(
-			    key, out_content_ptr, out_len, vbuf, dispatch_list[i].user_data);
+			    key, content_snapshot, out_len, vbuf, dispatch_list[i].user_data);
 		}
 	}
 
+	free(content_snapshot);
 	if (dispatch_list != stack_entries) {
 		free(dispatch_list);
 	}
