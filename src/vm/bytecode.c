@@ -1049,10 +1049,8 @@ bc_run_instructions(cdsl_vm_t* vm,
 		switch (ip->op) {
 #define OP_HANDLER(op) case op
 #define NEXT_INST()                                                                                \
-	do {                                                                                       \
-		ip++;                                                                              \
-		break;                                                                             \
-	} while (0)
+	ip++;                                                                                      \
+	break
 #define DISPATCH_NEXT() break
 #include "instructions.inc"
 #undef OP_HANDLER
