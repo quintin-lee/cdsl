@@ -199,12 +199,78 @@ test_canary_auto_reload_and_rollback(void)
 	cdsl_config_source_free(src);
 }
 
+static int s_reentrant_fetch_success = 0;
+static int s_reentrant_publish_success = 0;
+
+static void
+test_reentrant_watch_callback(
+    const char* key, const char* content, size_t len, const char* version, void* user_data)
+{
+	(void)content;
+	(void)len;
+	(void)version;
+	cdsl_config_source_t* src = (cdsl_config_source_t*)user_data;
+	if (!src) {
+		return;
+	}
+
+	/* Reentrant fetch while in callback */
+	char* fetched = NULL;
+	size_t fetched_len = 0;
+	char* fetched_ver = NULL;
+	if (cdsl_config_source_fetch(src, key, &fetched, &fetched_len, &fetched_ver) == 0) {
+		s_reentrant_fetch_success++;
+		free(fetched);
+		free(fetched_ver);
+	}
+
+	/* Reentrant publish to another key */
+	const char* audit_key = "rules/audit";
+	const char* audit_content = "RULE audit { WHEN true THEN log() }";
+	if (cdsl_config_source_publish(
+		src, audit_key, audit_content, strlen(audit_content), NULL) == 0) {
+		s_reentrant_publish_success++;
+	}
+}
+
+static void
+test_watcher_reentrancy_all_drivers(void)
+{
+	printf("Running test_watcher_reentrancy_all_drivers...\n");
+	cdsl_config_source_t* sources[] = {
+	    cdsl_config_source_create_mem(),
+	    cdsl_config_source_create_etcd_mem("/cdsl/rules/"),
+	    cdsl_config_source_create_consul_mem("cdsl/rules/"),
+	};
+
+	size_t count = sizeof(sources) / sizeof(sources[0]);
+	for (size_t i = 0; i < count; i++) {
+		cdsl_config_source_t* src = sources[i];
+		assert(src != NULL);
+
+		const char* key = "rules/finance";
+		assert(cdsl_config_source_watch(src, key, test_reentrant_watch_callback, src) == 0);
+
+		int initial_fetch = s_reentrant_fetch_success;
+		int initial_pub = s_reentrant_publish_success;
+
+		const char* content = "RULE finance { WHEN amount > 1000 THEN flag() }";
+		assert(cdsl_config_source_publish(src, key, content, strlen(content), NULL) == 0);
+
+		assert(s_reentrant_fetch_success == initial_fetch + 1);
+		assert(s_reentrant_publish_success == initial_pub + 1);
+
+		cdsl_config_source_free(src);
+	}
+}
+
 int
 main(void)
 {
 	test_sha256_known_vector();
 	test_ruleset_fingerprinting();
 	test_drivers_crud();
+	test_watcher_reentrancy_all_drivers();
 	test_canary_auto_reload_and_rollback();
 	printf("All distributed configuration tests passed successfully!\n");
 	return 0;

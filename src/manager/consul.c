@@ -134,14 +134,56 @@ consul_publish(
 		*out_version = cdsl_strdup(vbuf);
 	}
 
-	/* Notify watchers */
+	/* Snapshot matching watchers under lock */
+	size_t match_count = 0;
 	for (consul_watcher_t* w = d->watchers; w; w = w->next) {
 		if (strcmp(w->key, key) == 0 || strcmp(w->key, "*") == 0) {
-			w->callback(key, target->content, target->len, vbuf, w->user_data);
+			match_count++;
 		}
 	}
 
+	typedef struct watcher_cb_entry {
+		cdsl_config_watch_fn callback;
+		void* user_data;
+	} watcher_cb_entry_t;
+
+	watcher_cb_entry_t stack_entries[16];
+	watcher_cb_entry_t* dispatch_list = stack_entries;
+	if (match_count > 16) {
+		dispatch_list = malloc(match_count * sizeof(watcher_cb_entry_t));
+		if (!dispatch_list) {
+			dispatch_list = stack_entries;
+			match_count = 16;
+		}
+	}
+
+	size_t idx = 0;
+	for (consul_watcher_t* w = d->watchers; w && idx < match_count; w = w->next) {
+		if (strcmp(w->key, key) == 0 || strcmp(w->key, "*") == 0) {
+			dispatch_list[idx].callback = w->callback;
+			dispatch_list[idx].user_data = w->user_data;
+			idx++;
+		}
+	}
+
+	const char* out_content_ptr = target->content;
+	size_t out_len = target->len;
+
+	/* Release mutex BEFORE invoking user callbacks */
 	CDSL_MUTEX_UNLOCK(&d->lock);
+
+	/* Dispatch callbacks lock-free */
+	for (size_t i = 0; i < idx; i++) {
+		if (dispatch_list[i].callback) {
+			dispatch_list[i].callback(
+			    key, out_content_ptr, out_len, vbuf, dispatch_list[i].user_data);
+		}
+	}
+
+	if (dispatch_list != stack_entries) {
+		free(dispatch_list);
+	}
+
 	return 0;
 }
 
