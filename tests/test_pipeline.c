@@ -1,7 +1,10 @@
+#ifdef NDEBUG
+#undef NDEBUG
+#endif
+#include <assert.h>
 #include "cdsl/pipeline.h"
 #include "cdsl/context.h"
 #include "cdsl/vm.h"
-#include <assert.h>
 #include <stdio.h>
 #include <string.h>
 

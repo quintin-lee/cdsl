@@ -1,7 +1,10 @@
+#ifdef NDEBUG
+#undef NDEBUG
+#endif
+#include <assert.h>
 #include "cdsl/dtable.h"
 #include "cdsl/context.h"
 #include "cdsl/schema.h"
-#include <assert.h>
 #include <stdio.h>
 #include <string.h>
 

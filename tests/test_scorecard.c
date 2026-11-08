@@ -1,7 +1,10 @@
+#ifdef NDEBUG
+#undef NDEBUG
+#endif
+#include <assert.h>
 #include "cdsl/scorecard.h"
 #include "cdsl/context.h"
 #include "cdsl/schema.h"
-#include <assert.h>
 #include <math.h>
 #include <stdio.h>
 #include <string.h>
