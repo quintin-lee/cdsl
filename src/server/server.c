@@ -361,15 +361,12 @@ cdsl_server_handle_request(cdsl_server_t* srv, const char* http_request)
 				for (cdsl_json_value_t* it = v_ctx->value.object.items; it;
 				     it = it->next) {
 					if (it->type == CDSL_JSON_NUMBER) {
-						if ((double)(int64_t)it->value.number_val ==
-						    it->value.number_val) {
+						if (it->is_int) {
 							cdsl_context_set_long(
-							    ctx,
-							    it->key,
-							    (int64_t)it->value.number_val);
+							    ctx, it->key, it->value.i64);
 						} else {
 							cdsl_context_set_float(
-							    ctx, it->key, it->value.number_val);
+							    ctx, it->key, it->value.f64);
 						}
 					} else if (it->type == CDSL_JSON_BOOL) {
 						cdsl_context_set_bool(

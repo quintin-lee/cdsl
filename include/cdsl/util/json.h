@@ -28,9 +28,15 @@ typedef enum {
 typedef struct cdsl_json_value {
 	char* key;
 	cdsl_json_type_t type;
+	int is_int; /**< Number fields: 1 when the number was parsed as a pure
+	             * integer (so value.i64 is the lossless 64-bit value), 0
+	             * otherwise (so value.f64 is the double). 0 for non-number
+	             * types. A pure integer that overflows int64_t falls back to
+	             * f64 and is marked non-int (overflow protocol: degrade). */
 	union {
 		int bool_val;
-		double number_val;
+		double f64; /**< floating-point number (formerly number_val) */
+		int64_t i64; /**< 64-bit integer, valid when is_int != 0 */
 		char* string_val;
 		struct {
 			struct cdsl_json_value* items;

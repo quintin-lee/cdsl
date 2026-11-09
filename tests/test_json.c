@@ -116,7 +116,7 @@ test_json_nested_parsing()
 	cdsl_json_value_t* age = cdsl_json_get_object(user, "age");
 	TEST_ASSERT_NOT_NULL(age, "Age should exist");
 	TEST_ASSERT(age->type == CDSL_JSON_NUMBER, "Age should be number");
-	TEST_ASSERT(age->value.number_val == 25, "Age should match");
+	TEST_ASSERT(age->value.f64 == 25, "Age should match");
 
 	// Test nested object
 	cdsl_json_value_t* address = cdsl_json_get_object(user, "address");
@@ -136,12 +136,12 @@ test_json_nested_parsing()
 	cdsl_json_value_t* score1 = cdsl_json_get_array(scores, 0);
 	TEST_ASSERT_NOT_NULL(score1, "First score should exist");
 	TEST_ASSERT(score1->type == CDSL_JSON_NUMBER, "Score should be number");
-	TEST_ASSERT(score1->value.number_val == 100, "First score should match");
+	TEST_ASSERT(score1->value.f64 == 100, "First score should match");
 
 	cdsl_json_value_t* score3 = cdsl_json_get_array(scores, 2);
 	TEST_ASSERT_NOT_NULL(score3, "Third score should exist");
 	TEST_ASSERT(score3->type == CDSL_JSON_NUMBER, "Score should be number");
-	TEST_ASSERT(score3->value.number_val == 87, "Third score should match");
+	TEST_ASSERT(score3->value.f64 == 87, "Third score should match");
 
 	// Test boolean access
 	cdsl_json_value_t* active = cdsl_json_get_object(root, "active");
@@ -178,7 +178,7 @@ test_json_array_handling()
 	cdsl_json_value_t* elem1 = cdsl_json_get_array(arr, 1);
 	TEST_ASSERT_NOT_NULL(elem1, "Element 1 should exist");
 	TEST_ASSERT(elem1->type == CDSL_JSON_NUMBER, "Element 1 should be number");
-	TEST_ASSERT(elem1->value.number_val == 42, "Element 1 should match");
+	TEST_ASSERT(elem1->value.f64 == 42, "Element 1 should match");
 
 	cdsl_json_value_t* elem2 = cdsl_json_get_array(arr, 2);
 	TEST_ASSERT_NOT_NULL(elem2, "Element 2 should exist");
@@ -486,7 +486,7 @@ test_json_performance()
 
 			TEST_ASSERT_NOT_NULL(id, "ID should exist");
 			TEST_ASSERT_NOT_NULL(name, "Name should exist");
-			TEST_ASSERT(id->value.number_val == j + 1, "ID should match");
+			TEST_ASSERT(id->value.f64 == j + 1, "ID should match");
 		}
 	}
 

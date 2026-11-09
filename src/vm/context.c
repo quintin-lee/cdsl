@@ -20,6 +20,7 @@
 #include <string.h>
 #include <stdio.h>
 #include <time.h>
+#include <limits.h>
 
 /**
  * @brief Get a high-resolution timestamp in microseconds.
@@ -1017,11 +1018,15 @@ load_json_recursive(cdsl_context_t* ctx, cdsl_json_value_t* obj, const char* pre
 		if (child->type == CDSL_JSON_OBJECT) {
 			load_json_recursive(ctx, child, key);
 		} else if (child->type == CDSL_JSON_NUMBER) {
-			double v = child->value.number_val;
-			if (v != (double)(int)v) {
-				cdsl_context_set_float(ctx, key, v);
+			if (child->is_int) {
+				int64_t iv = child->value.i64;
+				if (iv > INT_MAX || iv < INT_MIN) {
+					cdsl_context_set_long(ctx, key, iv);
+				} else {
+					cdsl_context_set_int(ctx, key, (int)iv);
+				}
 			} else {
-				cdsl_context_set_int(ctx, key, (int)v);
+				cdsl_context_set_float(ctx, key, child->value.f64);
 			}
 		} else if (child->type == CDSL_JSON_BOOL) {
 			cdsl_context_set_bool(ctx, key, child->value.bool_val);
@@ -1041,13 +1046,18 @@ load_json_recursive(cdsl_context_t* ctx, cdsl_json_value_t* obj, const char* pre
 				     elem && arr->items && idx < arr->count;
 				     elem = elem->next, idx++) {
 					if (elem->type == CDSL_JSON_NUMBER) {
-						double nv = elem->value.number_val;
-						if (nv != (double)(int)nv) {
-							arr->items[idx].type = CDSL_TYPE_FLOAT;
-							arr->items[idx].data.float_val = nv;
+						if (elem->is_int) {
+							int64_t iv = elem->value.i64;
+							if (iv > INT_MAX || iv < INT_MIN) {
+								arr->items[idx].type = CDSL_TYPE_LONG;
+								arr->items[idx].data.long_val = iv;
+							} else {
+								arr->items[idx].type = CDSL_TYPE_INT;
+								arr->items[idx].data.int_val = (int)iv;
+							}
 						} else {
-							arr->items[idx].type = CDSL_TYPE_INT;
-							arr->items[idx].data.int_val = (int)nv;
+							arr->items[idx].type = CDSL_TYPE_FLOAT;
+							arr->items[idx].data.float_val = elem->value.f64;
 						}
 					} else if (elem->type == CDSL_JSON_BOOL) {
 						arr->items[idx].type = CDSL_TYPE_BOOL;
