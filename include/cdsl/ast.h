@@ -691,6 +691,16 @@ void cdsl_free_rule(cdsl_rule_t* rule);
  *                 a new error list is allocated and returned.
  *                 If an error list already exists, errors are appended.
  * @return Parsed rule, or NULL on parse error
+ *
+ * @note Ownership contract on the errors path: when a partial rule is
+ *       returned alongside a non-empty error list, the caller takes
+ *       ownership of that rule and MUST free it with cdsl_free_rule();
+ *       the parse-time arena is attached to rule->arena so that
+ *       cdsl_free_rule reclaims it safely. Fine-grained cdsl_free_expr()
+ *       must not be called on such a rule, because the thread-local arena
+ *       is reset after the parse and per-node arena memory is no longer
+ *       reachable through it. A NULL return (total parse failure) leaves
+ *       no rule for the caller to free.
  */
 CDSL_NODISCARD
 cdsl_rule_t* cdsl_parse_string(const char* dsl_code, cdsl_error_list_t** errors);

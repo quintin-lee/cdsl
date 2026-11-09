@@ -84,11 +84,21 @@ cdsl_parse_string(const char* dsl_code, cdsl_error_list_t** errors)
 
 	if (yyparse(scanner, &rule, &error_count, error_list) != 0 || error_count > 0) {
 		if (errors) {
-			/* Caller wants errors: keep partial rule if any, report errors via list */
-			if (!rule) {
-				cdsl_arena_free(arena);
+			/* Caller wants errors: keep partial rule if any, report errors via list.
+			 * A partial rule that survives a parse error keeps ownership of the
+			 * arena that allocated its AST nodes. Attach that arena to rule->arena
+			 * (if the parser did not already) so that cdsl_free_rule(rule) reclaims
+			 * it safely, and null the local so the fallback free below is skipped.
+			 * Callers MUST free a returned partial rule via cdsl_free_rule(), not
+			 * via fine-grained cdsl_free_expr(), because the thread-local arena is
+			 * reset below and per-node arena memory is no longer reachable. */
+			if (rule) {
+				if (!rule->arena) {
+					rule->arena = arena;
+				}
 				arena = NULL;
 			}
+			/* rule == NULL: nothing to keep; arena is freed by the fallback below */
 		} else {
 			/* Caller doesn't want errors: fail fast, discard partial results */
 			if (rule) {
