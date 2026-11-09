@@ -116,7 +116,7 @@ test_json_nested_parsing()
 	cdsl_json_value_t* age = cdsl_json_get_object(user, "age");
 	TEST_ASSERT_NOT_NULL(age, "Age should exist");
 	TEST_ASSERT(age->type == CDSL_JSON_NUMBER, "Age should be number");
-	TEST_ASSERT(age->value.f64 == 25, "Age should match");
+	TEST_ASSERT(age->value.i64 == 25, "Age should match");
 
 	// Test nested object
 	cdsl_json_value_t* address = cdsl_json_get_object(user, "address");
@@ -136,12 +136,12 @@ test_json_nested_parsing()
 	cdsl_json_value_t* score1 = cdsl_json_get_array(scores, 0);
 	TEST_ASSERT_NOT_NULL(score1, "First score should exist");
 	TEST_ASSERT(score1->type == CDSL_JSON_NUMBER, "Score should be number");
-	TEST_ASSERT(score1->value.f64 == 100, "First score should match");
+	TEST_ASSERT(score1->value.i64 == 100, "First score should match");
 
 	cdsl_json_value_t* score3 = cdsl_json_get_array(scores, 2);
 	TEST_ASSERT_NOT_NULL(score3, "Third score should exist");
 	TEST_ASSERT(score3->type == CDSL_JSON_NUMBER, "Score should be number");
-	TEST_ASSERT(score3->value.f64 == 87, "Third score should match");
+	TEST_ASSERT(score3->value.i64 == 87, "Third score should match");
 
 	// Test boolean access
 	cdsl_json_value_t* active = cdsl_json_get_object(root, "active");
@@ -178,7 +178,7 @@ test_json_array_handling()
 	cdsl_json_value_t* elem1 = cdsl_json_get_array(arr, 1);
 	TEST_ASSERT_NOT_NULL(elem1, "Element 1 should exist");
 	TEST_ASSERT(elem1->type == CDSL_JSON_NUMBER, "Element 1 should be number");
-	TEST_ASSERT(elem1->value.f64 == 42, "Element 1 should match");
+	TEST_ASSERT(elem1->value.i64 == 42, "Element 1 should match");
 
 	cdsl_json_value_t* elem2 = cdsl_json_get_array(arr, 2);
 	TEST_ASSERT_NOT_NULL(elem2, "Element 2 should exist");
@@ -486,7 +486,7 @@ test_json_performance()
 
 			TEST_ASSERT_NOT_NULL(id, "ID should exist");
 			TEST_ASSERT_NOT_NULL(name, "Name should exist");
-			TEST_ASSERT(id->value.f64 == j + 1, "ID should match");
+			TEST_ASSERT(id->value.i64 == j + 1, "ID should match");
 		}
 	}
 
@@ -551,6 +551,50 @@ test_json_edge_cases()
 	TEST_JSON_END();
 }
 
+// Test 11: int64 / 32-bit-boundary number marking at the JSON layer
+static void
+test_json_int64_mapping()
+{
+	TEST_JSON_BEGIN("JSON int64 parse and 32-bit boundary");
+
+	/* Pure 64-bit integer: lossless i64, int-marked */
+	cdsl_json_value_t* big = cdsl_json_parse("9007199254740993"); /* 2^53 + 1 */
+	TEST_ASSERT_NOT_NULL(big, "big int should parse");
+	TEST_ASSERT(big->type == CDSL_JSON_NUMBER, "number type");
+	TEST_ASSERT(big->is_int == 1, "64-bit int should be int-marked");
+	TEST_ASSERT(big->value.i64 == 9007199254740993LL, "lossless 64-bit value");
+	cdsl_json_free(big);
+
+	/* Small integer: int-marked */
+	cdsl_json_value_t* small = cdsl_json_parse("42");
+	TEST_ASSERT(small->is_int == 1, "small int should be int-marked");
+	TEST_ASSERT(small->value.i64 == 42, "i64 value");
+	cdsl_json_free(small);
+
+	/* Float: not int-marked */
+	cdsl_json_value_t* fl = cdsl_json_parse("9.2");
+	TEST_ASSERT(fl->is_int == 0, "decimal should not be int-marked");
+	TEST_ASSERT(fl->value.f64 == 9.2, "f64 value");
+	cdsl_json_free(fl);
+
+	/* Overflow: > INT64_MAX literal degrades to double, non-int */
+	cdsl_json_value_t* ovf = cdsl_json_parse("9223372036854775808");
+	TEST_ASSERT(ovf->is_int == 0, "overflow should be float-marked");
+	TEST_ASSERT(ovf->value.f64 == 9223372036854775808.0, "degraded to double");
+	cdsl_json_free(ovf);
+
+	/* 32-bit boundary: INT32_MAX is int-marked; INT32_MAX+1 is too */
+	cdsl_json_value_t* imax = cdsl_json_parse("2147483647");
+	TEST_ASSERT(imax->is_int == 1, "INT32_MAX int-marked");
+	cdsl_json_free(imax);
+	cdsl_json_value_t* over32 = cdsl_json_parse("2147483648");
+	TEST_ASSERT(over32->is_int == 1, "INT32_MAX+1 still int-marked (i64)");
+	TEST_ASSERT(over32->value.i64 == 2147483648LL, "i64 value > INT32_MAX");
+	cdsl_json_free(over32);
+
+	TEST_JSON_END();
+}
+
 int
 main()
 {
@@ -567,6 +611,7 @@ main()
 	test_json_context_error_handling();
 	test_json_performance();
 	test_json_edge_cases();
+	test_json_int64_mapping();
 
 	TEST_SUMMARY();
 	TEST_EXIT();

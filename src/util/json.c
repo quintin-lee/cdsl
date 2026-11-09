@@ -373,29 +373,23 @@ parse_value(json_parser_t* p)
 		}
 		v->type = CDSL_JSON_NUMBER;
 		const char* num_start = p->src + p->pos;
-		/* Dual-path number parse: first try strtoq (pure integer -> lossless
-		 * i64 + is_int=1). On ERANGE overflow, on a decimal/scientific
-		 * suffix, or on a non-integer token, fall back to strtod -> f64 with
-		 * is_int=0 (overflow protocol: a >INT64_MAX literal degrades to
-		 * double rather than erroring, keeping the "numbers always parse" contract).
-		 * JSON grammar forbids '+' and trailing characters, so strtoq
-		 * consuming the whole remaining token (with strpbrk confirming the
-		 * token has no '.'/'e'/'E') is an unambiguous pure-integer test. */
-		if (strpbrk(num_start, ".eE") == NULL) {
-			errno = 0;
-			int64_t iv;
-			char* iend = NULL;
-			iv = strtoq(num_start, &iend, 10);
-			if (errno == 0 && iend && *iend == '\0') {
+		char* end = NULL;
+		errno = 0;
+		int64_t iv = strtoq(num_start, &end, 10);
+		if (end && end != num_start && *end != '.' && *end != 'e' && *end != 'E') {
+			/* Pure integer token (stopped at delimiter like ',', '}', ']', whitespace, etc.) */
+			if (errno == 0) {
 				v->is_int = 1;
 				v->value.i64 = iv;
 			} else {
-				/* integer overflowed int64_t: degrade to double */
-				v->value.f64 = strtod(num_start, (char**)&iend);
+				/* Integer literal overflowed int64_t: degrade to double per protocol */
+				end = NULL;
+				v->value.f64 = strtod(num_start, &end);
 			}
-			p->pos = (int)(iend - p->src);
+			p->pos = (int)(end - p->src);
 		} else {
-			char* end;
+			/* Floating point literal (has decimal point or exponent) */
+			end = NULL;
 			v->value.f64 = strtod(num_start, &end);
 			p->pos = (int)(end - p->src);
 		}
