@@ -273,7 +273,8 @@ class cdsl_json_value_data_arr(Structure):
 class cdsl_json_value_union(Union):
     _fields_ = [
         ("bool_val", c_int),
-        ("number_val", c_double),
+        ("f64", c_double),
+        ("i64", c_int64),
         ("string_val", c_char_p),
         ("object", cdsl_json_value_data_obj),
         ("array", cdsl_json_value_data_arr),
@@ -282,6 +283,7 @@ class cdsl_json_value_union(Union):
 cdsl_json_value._fields_ = [
     ("key", c_char_p),
     ("type", c_int),
+    ("is_int", c_int),
     ("value", cdsl_json_value_union),
     ("next", POINTER(cdsl_json_value)),
 ]
