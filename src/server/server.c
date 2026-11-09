@@ -84,6 +84,10 @@ typedef struct cdsl_server_metrics {
 } cdsl_server_metrics_t;
 
 #define CDSL_SERVER_QUEUE_CAP 128
+/* Upper bound on HTTP request bodies: the client's Content-Length beyond
+ * this is rejected with 413 Payload Too Large before the read loop runs,
+ * and the in-flight buffer expansion loop caps at this size. */
+#define CDSL_SERVER_MAX_BODY_BYTES 10485760ul /* 10 MB */
 
 struct cdsl_server {
 	cdsl_server_config_t config;
@@ -710,7 +714,7 @@ server_handle_client(cdsl_server_t* srv, cdsl_socket_t client_fd)
 	 * connection finishes, it must not abort the request read mid-flight */
 	while (1) {
 		if (len + 1024 >= cap) {
-			if (cap >= (size_t)10 * 1024 * 1024) { /* 10MB safety threshold */
+			if (cap >= CDSL_SERVER_MAX_BODY_BYTES) {
 				break;
 			}
 			cap *= 2;
@@ -735,6 +739,19 @@ server_handle_client(cdsl_server_t* srv, cdsl_socket_t client_fd)
 			if (header_end) {
 				content_len = http_get_content_length(
 				    req_buf, (size_t)(header_end - req_buf));
+				if (content_len > 0 &&
+				    (size_t)content_len > CDSL_SERVER_MAX_BODY_BYTES) {
+					/* Reject oversized bodies before the read loop
+					 * so a forged Content-Length cannot drive the
+					 * buffer to its 10MB cap with an unsatisfiable
+					 * total-length check. */
+					send(client_fd, "HTTP/1.1 413 Payload Too Large\r\n"
+					     "Content-Length: 0\r\nConnection: close\r\n\r\n",
+				     72, 0);
+					free(req_buf);
+					CDSL_CLOSE_SOCKET(client_fd);
+					return;
+				}
 			}
 		}
 
