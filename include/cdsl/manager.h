@@ -93,7 +93,12 @@ int cdsl_manager_deploy_dsl(cdsl_manager_t* mgr,
 /**
  * @brief Acquire a read reference to the currently active snapshot (lock-free).
  *
- * Readers must call cdsl_manager_release() when finished evaluating the snapshot.
+ * Thread-safety contract (RCU):
+ *  - cdsl_manager_acquire is a lock-free atomic refcount bump (fetch_add).
+ *    It MAY be called from any reader thread, in parallel with other readers
+ *    and with a concurrent writer.
+ *  - The returned snapshot handle must be used as a read-only view of the
+ *    rule-set; the reader MUST NOT mutate the snapshot while holding the ref.
  *
  * @param mgr Manager
  * @return Active snapshot handle, or NULL if no version has been deployed
@@ -102,6 +107,18 @@ cdsl_snapshot_t* cdsl_manager_acquire(cdsl_manager_t* mgr);
 
 /**
  * @brief Release a previously acquired snapshot reference.
+ *
+ * Thread-safety contract (RCU):
+ *  - cdsl_manager_release is an atomic refcount drop (fetch_sub) and is
+ *    thread-safe: any thread that acquired the reference may release it.
+ *  - The reader MUST NOT dereference the snapshot after calling release.
+ *  - Reclamation of a retired snapshot's arena happens only when ref_count
+ *    has dropped to the baseline (1) AND the writer has flagged the snapshot
+ *    retired. The writer (deploy_canary / rollback / destroy) serializes
+ *    this retirement under the manager's write_lock; no thread may free a
+ *    snapshot's arena while any reader still holds a ref.
+ *  - Violation (freeing a snapshot while ref_count > baseline) =
+ *    use-after-free on the snapshot's arena.
  *
  * @param mgr Manager
  * @param snapshot Snapshot to release
