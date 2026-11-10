@@ -883,6 +883,77 @@ class TestCompileCache:
         assert cc._ptr is None
 
 
+class TestStaticAnalysisAndTracing:
+    """Static analysis (warnings), detailed verification errors, trace capture."""
+
+    def test_analyze_valid_rule(self):
+        s = make_schema()
+        rule = cdsl.parse(SAMPLE_DSL)
+        s.verify(rule)
+        # A fully-valid rule produces no static-analysis warnings.
+        warnings = s.analyze(rule)
+        assert isinstance(warnings, list)
+        assert len(warnings) == 0, f"unexpected warnings: {warnings}"
+
+    def test_analyze_returns_structured_dicts(self):
+        s = make_schema()
+        rule = cdsl.parse(SCORING_DSL)
+        s.add_var("supplier.is_blacklisted", cdsl.Type.BOOL)
+        s.add_var("supplier.capital", cdsl.Type.LONG)
+        s.add_action("score", cdsl.Type.VOID, [cdsl.Type.INT])
+        s.add_action("fail_metric", cdsl.Type.VOID, [cdsl.Type.INT, cdsl.Type.STRING])
+        warnings = s.analyze(rule)
+        for w in warnings:
+            assert isinstance(w, dict)
+            for key in ("line", "column", "message", "hint", "kind"):
+                assert key in w, f"warning dict missing key {key!r}"
+            # analyze() reports warnings only (CDSL_ERR_WARNING == 4)
+            assert w["kind"] == 4, f"non-warning kind {w['kind']}"
+
+    def test_verify_detailed_invalid_rule(self):
+        s = cdsl.Schema()
+        s.add_var("user.age", cdsl.Type.INT)
+        # References an undeclared action (approve is not registered) ->
+        # verification must fail with a semantic error.
+        rule = cdsl.parse('RULE bad { WHEN user.age THEN approve() }')
+        errs = s.verify_detailed(rule)
+        assert len(errs) >= 1, f"expected semantic error, got {errs}"
+        assert isinstance(errs[0], dict)
+        assert errs[0]["message"]
+        # Schema.verify() raises DSLError on the same rule.
+        with pytest.raises(cdsl.DSLError):
+            s.verify(rule)
+
+    def test_trace_callback_receives_events(self):
+        s = make_schema()
+        rule = cdsl.parse(SAMPLE_DSL)
+        s.verify(rule)
+
+        ctx = cdsl.Context(s)
+        ctx.set_int("user.age", 25)
+        ctx.set_float("user.income", 50000.0)
+
+        events = []
+
+        def on_trace(event_ptr, user_data):
+            ev = event_ptr.contents
+            events.append((ev.kind, ev.depth, ev.rule_name))
+
+        vm = cdsl.VM(s)
+        vm.register_action("approve", lambda name, args, data: None)
+        vm.set_trace_callback(on_trace)
+
+        report = vm.execute(rule, ctx)
+        assert report.status in (0, 1, 2)
+        # Tracing was enabled, so at least one trace event was captured.
+        assert len(events) >= 1
+        kinds = {k for k, _d, _n in events}
+        assert any(k in (cdsl.TraceKind.EXPR, cdsl.TraceKind.METRIC)
+                   for k in kinds), f"no expression/metric events: {kinds}"
+        for k, depth, name in events:
+            assert depth >= 0
+
+
 class TestMemoryManagement:
     def test_double_free(self):
         s = cdsl.Schema()
