@@ -11,8 +11,13 @@
  * - LLM translator: OpenAI-compatible API calls (cURL or subprocess)
  * - Safety reviewer: mock scoring or LLM-based analysis
  * - Streaming API: SSE-based real-time translation/review
- * - Provider registry: pluggable AI backends
- * - Cache driver registry: pluggable response caching (Redis, etc.)
+ *
+ * Cross-file layout (this module is split into three translation units):
+ * - bridge_registry.c: provider / cache-driver registries (the only mutable
+ *   global state in the AI layer)
+ * - bridge_curl.c: libcurl response collectors (write + stream callbacks)
+ * - bridge.c (this file): public API, mock translator, LLM call wrappers,
+ *   SSE processing, schema prompt builders
  *
  * When CDSL_USE_CURL is defined, libcurl is used for HTTP requests.
  * Otherwise, the system curl command is invoked via popen().
@@ -23,6 +28,7 @@
 
 #include "cdsl/ai.h"
 #include "internal.h"
+#include "bridge_internal.h"
 #include "cdsl/util/json.h"
 #include "cdsl/util/hashmap.h"
 #include "cdsl/util/portability.h"
@@ -88,32 +94,8 @@ find_json_key(cdsl_json_value_t* obj, const char* key)
 
 #ifdef CDSL_USE_CURL
 #include <curl/curl.h>
-
-/* Memory buffer for CURL response */
-struct curl_mem_buffer {
-	char* data;
-	size_t size;
-};
-
-/* Callback to collect CURL response data */
-static size_t
-cdsl_curl_write_callback(void* contents, size_t size, size_t nmemb, void* userp)
-{
-	size_t realsize = size * nmemb;
-	struct curl_mem_buffer* mem = (struct curl_mem_buffer*)userp;
-
-	char* ptr = realloc(mem->data, mem->size + realsize + 1);
-	if (!ptr) {
-		return 0; /* out of memory */
-	}
-
-	mem->data = ptr;
-	memcpy(&(mem->data[mem->size]), contents, realsize);
-	mem->size += realsize;
-	mem->data[mem->size] = 0;
-
-	return realsize;
-}
+/* libcurl response collectors live in bridge_curl.c; declared here
+ * (via bridge_internal.h) for use by the call wrappers below. */
 #endif
 
 /* Escapes single quotes in s for use inside a single-quoted POSIX shell argument.
@@ -275,6 +257,9 @@ static char* default_review_stream(void* ctx,
 				   cdsl_ai_stream_cb_t callback,
 				   void* user_data);
 
+/**
+ * @brief Default built-in AI provider.
+ */
 static cdsl_ai_provider_t g_default_provider = {
     .ctx = NULL,
     .translate = default_translate,
@@ -282,85 +267,6 @@ static cdsl_ai_provider_t g_default_provider = {
     .translate_stream = default_translate_stream,
     .review_stream = default_review_stream,
 };
-
-static cdsl_hashmap_t* g_providers = NULL;
-static cdsl_hashmap_t* g_cache_drivers = NULL;
-static cdsl_rwlock_t g_ai_registry_lock;
-static cdsl_once_t g_ai_registry_once = CDSL_ONCE_INIT;
-
-static void
-init_registries(void)
-{
-	CDSL_RWLOCK_INIT(&g_ai_registry_lock);
-	g_providers = cdsl_hashmap_create(16);
-	cdsl_ai_provider_t* copy = malloc(sizeof(*copy));
-	if (copy) {
-		*copy = g_default_provider;
-		cdsl_hashmap_put(g_providers, "default", copy);
-	}
-	g_cache_drivers = cdsl_hashmap_create(16);
-}
-
-void
-cdsl_ai_register_provider(const char* name, const cdsl_ai_provider_t* provider)
-{
-	CDSL_ONCE_RUN(&g_ai_registry_once, init_registries);
-	CDSL_RWLOCK_WRLOCK(&g_ai_registry_lock);
-	/* NOTE: old provider entry is NOT freed here — concurrent readers
-	   may hold a pointer obtained under the read lock. Leaking a small
-	   struct on re-registration is acceptable since registration is rare
-	   and eliminates a use-after-free race. */
-	cdsl_ai_provider_t* copy = malloc(sizeof(*copy));
-	if (copy) {
-		*copy = *provider;
-		cdsl_hashmap_put(g_providers, name, copy);
-	}
-	CDSL_RWLOCK_UNLOCK_WR(&g_ai_registry_lock);
-}
-
-void
-cdsl_ai_register_cache_driver(const char* name, const cdsl_ai_cache_t* cache)
-{
-	CDSL_ONCE_RUN(&g_ai_registry_once, init_registries);
-	CDSL_RWLOCK_WRLOCK(&g_ai_registry_lock);
-	/* Same intentional leak as cdsl_ai_register_provider — prevents
-	   use-after-free race with concurrent readers. */
-	cdsl_ai_cache_t* copy = malloc(sizeof(*copy));
-	if (copy) {
-		*copy = *cache;
-		cdsl_hashmap_put(g_cache_drivers, name, copy);
-	}
-	CDSL_RWLOCK_UNLOCK_WR(&g_ai_registry_lock);
-}
-
-static cdsl_ai_provider_t*
-get_provider(const char* name)
-{
-	CDSL_ONCE_RUN(&g_ai_registry_once, init_registries);
-	CDSL_RWLOCK_RDLOCK(&g_ai_registry_lock);
-	cdsl_ai_provider_t* p =
-	    (cdsl_ai_provider_t*)cdsl_hashmap_get(g_providers, name ? name : "default");
-	cdsl_ai_provider_t* result = p ? p : &g_default_provider;
-	CDSL_RWLOCK_UNLOCK_RD(&g_ai_registry_lock);
-	return result;
-}
-
-static cdsl_ai_cache_t*
-get_cache_driver(const cdsl_ai_config_t* cfg)
-{
-	if (cfg->cache) {
-		return cfg->cache;
-	}
-	if (cfg->cache_driver_name) {
-		CDSL_ONCE_RUN(&g_ai_registry_once, init_registries);
-		CDSL_RWLOCK_RDLOCK(&g_ai_registry_lock);
-		cdsl_ai_cache_t* result =
-		    (cdsl_ai_cache_t*)cdsl_hashmap_get(g_cache_drivers, cfg->cache_driver_name);
-		CDSL_RWLOCK_UNLOCK_RD(&g_ai_registry_lock);
-		return result;
-	}
-	return NULL;
-}
 
 /**
  * @brief Send a prompt to a remote LLM API via cURL (internal).
@@ -379,7 +285,7 @@ call_llm_api(const char* prompt, const cdsl_ai_config_t* config)
 		return NULL;
 	}
 
-	cdsl_ai_cache_t* cache = get_cache_driver(config);
+	cdsl_ai_cache_t* cache = cdsl_ai_get_cache_driver(config);
 	if (cache && cache->get) {
 		char* cached = cache->get(cache->ctx, prompt);
 		if (cached) {
@@ -543,13 +449,13 @@ call_llm_api(const char* prompt, const cdsl_ai_config_t* config)
  * @param callback    User stream callback
  * @param user_data   User opaque pointer
  */
-static void
-process_sse_data(const char* data,
-		 char** result_ptr,
-		 size_t* total_ptr,
-		 size_t* cap_ptr,
-		 cdsl_ai_stream_cb_t callback,
-		 void* user_data)
+void
+cdsl_ai_process_sse_data(const char* data,
+		      char** result_ptr,
+		      size_t* total_ptr,
+		      size_t* cap_ptr,
+		      cdsl_ai_stream_cb_t callback,
+		      void* user_data)
 {
 	if (strncmp(data, "[DONE]", 6) == 0) {
 		return;
@@ -594,52 +500,6 @@ process_sse_data(const char* data,
 	}
 	cdsl_json_free(root);
 }
-
-#ifdef CDSL_USE_CURL
-/**
- * @brief Context for CURL streaming (internal).
- */
-struct curl_stream_ctx {
-	cdsl_ai_stream_cb_t callback; /**< User callback */
-	void* user_data;	      /**< User opaque data */
-	char** result_ptr;	      /**< Pointer to accumulated result */
-	size_t* total_ptr;	      /**< Pointer to total length */
-	size_t* cap_ptr;	      /**< Pointer to capacity */
-	char line_buf[16384];	      /**< Internal line buffer for SSE */
-	size_t line_len;	      /**< Current line buffer length */
-};
-
-/**
- * @brief CURL callback for streaming responses.
- *
- * Buffers partial lines and processes them as SSE "data: " chunks.
- */
-static size_t
-cdsl_curl_stream_callback(void* contents, size_t size, size_t nmemb, void* userp)
-{
-	size_t realsize = size * nmemb;
-	struct curl_stream_ctx* ctx = (struct curl_stream_ctx*)userp;
-	const char* p = (const char*)contents;
-
-	for (size_t i = 0; i < realsize; i++) {
-		if (p[i] == '\n') {
-			ctx->line_buf[ctx->line_len] = '\0';
-			if (strncmp(ctx->line_buf, "data: ", 6) == 0) {
-				process_sse_data(ctx->line_buf + 6,
-						 ctx->result_ptr,
-						 ctx->total_ptr,
-						 ctx->cap_ptr,
-						 ctx->callback,
-						 ctx->user_data);
-			}
-			ctx->line_len = 0;
-		} else if (ctx->line_len < sizeof(ctx->line_buf) - 1) {
-			ctx->line_buf[ctx->line_len++] = p[i];
-		}
-	}
-	return realsize;
-}
-#endif
 
 /**
  * @brief Return a default AI config that uses mock generation.
@@ -1011,7 +871,10 @@ cdsl_ai_translate(const char* natural_language,
 		  const cdsl_schema_t* schema,
 		  const cdsl_ai_config_t* config)
 {
-	cdsl_ai_provider_t* p = get_provider(config ? config->provider_name : NULL);
+	cdsl_ai_provider_t* p = cdsl_ai_get_provider(config ? config->provider_name : NULL);
+	if (!p) {
+		p = &g_default_provider;
+	}
 	return p->translate(p->ctx, natural_language, schema, config);
 }
 
@@ -1199,7 +1062,10 @@ default_review(void* ctx,
 cdsl_ai_review_t*
 cdsl_ai_review(const char* dsl_code, const cdsl_schema_t* schema, const cdsl_ai_config_t* config)
 {
-	cdsl_ai_provider_t* p = get_provider(config ? config->provider_name : NULL);
+	cdsl_ai_provider_t* p = cdsl_ai_get_provider(config ? config->provider_name : NULL);
+	if (!p) {
+		p = &g_default_provider;
+	}
 	return p->review(p->ctx, dsl_code, schema, config);
 }
 
@@ -1242,7 +1108,7 @@ call_llm_api_stream(const char* prompt,
 		return NULL;
 	}
 
-	cdsl_ai_cache_t* cache = get_cache_driver(config);
+	cdsl_ai_cache_t* cache = cdsl_ai_get_cache_driver(config);
 	if (cache && cache->get) {
 		char* cached = cache->get(cache->ctx, prompt);
 		if (cached) {
@@ -1349,7 +1215,7 @@ call_llm_api_stream(const char* prompt,
 	char line[4096];
 	while (fgets(line, sizeof(line), fp)) {
 		if (strncmp(line, "data: ", 6) == 0) {
-			process_sse_data(line + 6, &result, &total, &cap, callback, user_data);
+			cdsl_ai_process_sse_data(line + 6, &result, &total, &cap, callback, user_data);
 		}
 	}
 	pclose(fp);
@@ -1433,7 +1299,10 @@ cdsl_ai_translate_stream(const char* natural_language,
 			 cdsl_ai_stream_cb_t callback,
 			 void* user_data)
 {
-	cdsl_ai_provider_t* p = get_provider(config ? config->provider_name : NULL);
+	cdsl_ai_provider_t* p = cdsl_ai_get_provider(config ? config->provider_name : NULL);
+	if (!p) {
+		p = &g_default_provider;
+	}
 	return p->translate_stream(p->ctx, natural_language, schema, config, callback, user_data);
 }
 
@@ -1514,7 +1383,10 @@ cdsl_ai_review_stream(const char* dsl_code,
 		      cdsl_ai_stream_cb_t callback,
 		      void* user_data)
 {
-	cdsl_ai_provider_t* p = get_provider(config ? config->provider_name : NULL);
+	cdsl_ai_provider_t* p = cdsl_ai_get_provider(config ? config->provider_name : NULL);
+	if (!p) {
+		p = &g_default_provider;
+	}
 	return p->review_stream(p->ctx, dsl_code, schema, config, callback, user_data);
 }
 /** @} */
