@@ -22,6 +22,14 @@
  * serialized by an internal mutex; file I/O and JSON construction
  * run outside the critical section.
  *
+ * @section no_libreoffice Build without the LibreOffice SDK
+ *
+ * When the SDK is absent at configure time, a no-op stub is compiled in
+ * instead of the real parser.  The API surface is unchanged, but
+ * `cdsl_doc_init()` returns 0 and the extract functions return NULL.
+ * Callers should branch on the init result to skip document features
+ * gracefully rather than crash.
+ *
  * @defgroup cdsl_doc Document Parser
  * @{
  */
