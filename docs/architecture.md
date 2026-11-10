@@ -24,7 +24,7 @@ C-DSL is a three-layer rule engine framework built in C23. It transforms natural
 | Component       | Technology                  |
 |-----------------|-----------------------------|
 | Language        | C23                         |
-| Build system    | CMake 3.14+                 |
+| Build system    | CMake 3.20+                 |
 | Lexer           | Flex 2.6+                   |
 | Parser          | Bison 3.8+                  |
 | Documentation   | Doxygen + Markdown          |

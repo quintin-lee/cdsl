@@ -88,7 +88,7 @@
 | Tool     | Minimum Version |
 |----------|-----------------|
 | C23 compiler (GCC / Clang / MSVC) | —               |
-| CMake    | 3.19            |
+| CMake    | 3.20            |
 | Flex     | 2.6             |
 | Bison    | 3.8             |
 
@@ -105,7 +105,7 @@ cmake --build build --target install-git-hooks
 # Run demo (6 scenarios)
 ./build/cdsl_demo
 
-# Run tests (22+)
+# Run tests (49 suites)
 ctest --test-dir build --output-on-failure
 
 # Run clang-tidy on source files
@@ -338,7 +338,7 @@ cdsl/
 ├── demo/
 │   ├── main.c        # 6 demo scenarios
 │   └── official_review.c
-├── tests/            # Unit tests (22), fuzz, benchmarks
+├── tests/            # Unit tests (49 suites), fuzz, benchmarks
 ├── docs/             # Documentation
 ├── cmake/            # Build configuration
 └── .github/          # CI workflows + PR template
