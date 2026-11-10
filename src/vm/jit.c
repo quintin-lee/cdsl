@@ -55,6 +55,48 @@
 #endif
 #endif
 
+/*
+ * Trampoline registry (dlclose safety net)
+ * ------------------------------------------
+ * Every cdsl_jit_compile() registers its result so that cdsl_jit_teardown()
+ * can reclaim trampolines a caller forgot to free before the shared library
+ * is unloaded.  A single process-wide list is sufficient because each
+ * trampoline is bound to one library image.
+ */
+typedef struct cdsl_jit_code_entry {
+	struct cdsl_jit_code* code;
+	struct cdsl_jit_code_entry* next;
+} cdsl_jit_code_entry_t;
+
+static cdsl_jit_code_entry_t* g_jit_registry = NULL;
+
+static void
+jit_register(struct cdsl_jit_code* jit)
+{
+	cdsl_jit_code_entry_t* e = malloc(sizeof(*e));
+	if (!e) {
+		return; /* best-effort safety net; never fail the compile */
+	}
+	e->code = jit;
+	e->next = g_jit_registry;
+	g_jit_registry = e;
+}
+
+static void
+jit_unregister(struct cdsl_jit_code* code)
+{
+	cdsl_jit_code_entry_t** link = &g_jit_registry;
+	while (*link) {
+		if ((*link)->code == code) {
+			cdsl_jit_code_entry_t* orphan = *link;
+			*link = orphan->next;
+			free(orphan);
+			return;
+		}
+		link = &(*link)->next;
+	}
+}
+
 /* Check CPU architecture */
 #if defined(__x86_64__) || defined(_M_X64)
 #define CDSL_JIT_ARCH_X86_64 1
@@ -422,6 +464,7 @@ cdsl_jit_compile(cdsl_vm_t* vm, const cdsl_bytecode_t* bc)
 #endif
 
 	(void)vm;
+	jit_register(jit);
 	return jit;
 }
 
@@ -450,8 +493,23 @@ cdsl_jit_code_free(cdsl_jit_code_t* code)
 	if (!code) {
 		return;
 	}
+	jit_unregister(code);
 	if (code->exec_mem && code->mem_size > 0) {
 		jit_free_pages(code->exec_mem, code->mem_size);
 	}
 	free(code);
+}
+
+size_t
+cdsl_jit_teardown(void)
+{
+	size_t n = 0;
+	while (g_jit_registry) {
+		cdsl_jit_code_entry_t* e = g_jit_registry;
+		g_jit_registry = e->next;
+		cdsl_jit_code_free(e->code);
+		free(e);
+		n++;
+	}
+	return n;
 }

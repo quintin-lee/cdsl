@@ -20,6 +20,9 @@
  *   lifetime of the loaded library image. If `libcdsl.so` or `cdsl.dll` is unloaded via
  *   `dlclose()` or `FreeLibrary()`, any existing JIT trampolines become dangling pointers.
  *   Callers must release all `cdsl_jit_code_t` handles before unloading the shared library.
+ *   `cdsl_jit_teardown()` makes this contract enforceable: it frees every registered
+ *   trampoline and reports how many were still live, so integrators can assert a clean
+ *   state before tearing down the library.
  * - Non-Serializable: Due to Address Space Layout Randomization (ASLR), compiled trampolines
  *   cannot be serialized to persistent storage or shared across process address spaces.
  * - W^X & Security Enforcement: On platforms with strict code signing or W^X memory policies,
@@ -96,6 +99,21 @@ int cdsl_jit_execute(cdsl_jit_code_t* code,
  * @param code Compiled JIT code object
  */
 void cdsl_jit_code_free(cdsl_jit_code_t* code);
+
+/**
+ * @brief Release every registered JIT trampoline, returning how many were still live.
+ *
+ * The JIT layer tracks every code object produced by `cdsl_jit_compile()` in an
+ * internal registry, so the shared library can detect and reclaim trampolines
+ * that a caller forgot to free.  Call this before unloading `libcdsl.so` /
+ * `cdsl.dll` (via `dlclose` / `FreeLibrary`) so no dangling native entry
+ * points survive.  Frees all registered code objects, clears the registry, and
+ * returns the number of live trampolines that were reclaimed (0 if the caller
+ * already freed them all).
+ *
+ * @return Number of live trampolines freed by this call.
+ */
+size_t cdsl_jit_teardown(void);
 
 #ifdef __cplusplus
 }
