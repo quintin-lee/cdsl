@@ -453,7 +453,28 @@ if(CDSL_BUILD_FUZZ)
     target_link_libraries(cdsl_fuzz_parse PRIVATE cdsl_static)
     target_compile_options(cdsl_fuzz_parse PRIVATE -fsanitize=fuzzer,address)
     target_link_options(cdsl_fuzz_parse PRIVATE -fsanitize=fuzzer,address)
-    message(STATUS "Fuzz target cdsl_fuzz_parse enabled (Clang + libFuzzer)")
+    # One-command entry point: `make cdsl_fuzz_parse` builds and runs libFuzzer.
+    add_custom_target(cdsl_fuzz
+        COMMAND ${CMAKE_COMMAND} --build ${CMAKE_BINARY_DIR} --target cdsl_fuzz_parse
+        COMMAND ${CMAKE_BINARY_DIR}/cdsl_fuzz_parse -max_total_time=60 -rss_limit_mb=4096
+        DEPENDS cdsl_fuzz_parse
+        COMMENT "Running cdsl_fuzz_parse (libFuzzer, 60s)"
+        VERBATIM
+    )
+    message(STATUS "Fuzz target cdsl_fuzz_parse enabled (Clang + libFuzzer); run with: make cdsl_fuzz")
+else()
+    # Even when CDSL_BUILD_FUZZ is OFF, expose a convenience target that
+    # reconfigures a sub-build with -DCDSL_BUILD_FUZZ=ON so users get a
+    # one-command `make cdsl_fuzz` without needing to know the option.
+    add_custom_target(cdsl_fuzz
+        COMMAND ${CMAKE_COMMAND} -S ${CMAKE_SOURCE_DIR} -B ${CMAKE_BINARY_DIR}/fuzz-sub
+                -DCMAKE_C_COMPILER=clang -DCMAKE_BUILD_TYPE=Debug -DCDSL_BUILD_FUZZ=ON
+        COMMAND ${CMAKE_COMMAND} --build ${CMAKE_BINARY_DIR}/fuzz-sub --target cdsl_fuzz_parse -j
+        COMMAND ${CMAKE_BINARY_DIR}/fuzz-sub/cdsl_fuzz_parse -max_total_time=60 -rss_limit_mb=4096
+        COMMENT "Configuring and running cdsl_fuzz_parse in a dedicated Clang sub-build"
+        VERBATIM
+    )
+    message(STATUS "cdsl_fuzz convenience target registered (requires clang at run time)")
 endif()
 
 # 21. Code coverage reporting target

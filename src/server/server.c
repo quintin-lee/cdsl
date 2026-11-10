@@ -88,6 +88,14 @@ typedef struct cdsl_server_metrics {
  * this is rejected with 413 Payload Too Large before the read loop runs,
  * and the in-flight buffer expansion loop caps at this size. */
 #define CDSL_SERVER_MAX_BODY_BYTES 10485760ul /* 10 MB */
+/* 413 response body; length pinned at compile time so a future edit to the
+ * string cannot silently desync from the byte count passed to send(). */
+#define CDSL_413_RESPONSE \
+    "HTTP/1.1 413 Payload Too Large\r\n" \
+    "Content-Length: 0\r\nConnection: close\r\n\r\n"
+#define CDSL_413_RESPONSE_LEN 72
+_Static_assert(sizeof(CDSL_413_RESPONSE) == CDSL_413_RESPONSE_LEN + 1,
+	       "CDSL_413_RESPONSE_LEN desynced from response string");
 
 struct cdsl_server {
 	cdsl_server_config_t config;
@@ -745,9 +753,8 @@ server_handle_client(cdsl_server_t* srv, cdsl_socket_t client_fd)
 					 * so a forged Content-Length cannot drive the
 					 * buffer to its 10MB cap with an unsatisfiable
 					 * total-length check. */
-					send(client_fd, "HTTP/1.1 413 Payload Too Large\r\n"
-					     "Content-Length: 0\r\nConnection: close\r\n\r\n",
-				     72, 0);
+					send(client_fd, CDSL_413_RESPONSE,
+					     CDSL_413_RESPONSE_LEN, 0);
 					free(req_buf);
 					CDSL_CLOSE_SOCKET(client_fd);
 					return;
